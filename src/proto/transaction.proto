@@ -1,0 +1,27 @@
+syntax = "proto2";
+
+message TransactionMessage {
+  required string id = 1;
+  required string device_id = 2;
+  enum Mode {
+    TIME_ENTRY = 0;
+    TOP_UP = 1;
+    CHARGE = 2;
+    CASHOUT = 3;
+    INIT_CARD = 4;
+  }
+  required Mode mode = 3;
+  required int32 device_time = 4;
+  required string card = 5;
+  required int32 balanceBefore = 6;
+  required int32 tokensBefore = 7;
+  required int32 balanceAfter = 8;
+  required int32 tokensAfter = 9;
+  optional string list_name = 10;
+  repeated CartItemMessage cart_items = 11;
+}
+
+message CartItemMessage {
+  required int32 price = 1;
+  required string product = 2;
+}

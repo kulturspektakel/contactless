@@ -1,0 +1,17 @@
+{
+  "files.associations": {
+    "new": "cpp",
+    "*.tcc": "cpp",
+    "fstream": "cpp",
+    "sstream": "cpp",
+    "algorithm": "cpp",
+    "array": "cpp",
+    "string": "cpp",
+    "functional": "cpp",
+    "tuple": "cpp",
+    "type_traits": "cpp",
+    "utility": "cpp",
+    "typeinfo": "cpp",
+    "random": "cpp"
+  }
+}

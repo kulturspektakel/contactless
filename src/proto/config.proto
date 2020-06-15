@@ -1,0 +1,24 @@
+syntax = "proto2";
+
+message ConfigMessage {
+  required string name = 1;
+  optional string product1 = 2;
+  optional int32 price1 = 3;
+  optional string product2 = 4;
+  optional int32 price2 = 5;
+  optional string product3 = 6;
+  optional int32 price3 = 7;
+  optional string product4 = 8;
+  optional int32 price4 = 9;
+  optional string product5 = 10;
+  optional int32 price5 = 11;
+  optional string product6 = 12;
+  optional int32 price6 = 13;
+  optional string product7 = 14;
+  optional int32 price7 = 15;
+  optional string product8 = 16;
+  optional int32 price8 = 17;
+  optional string product9 = 18;
+  optional int32 price9 = 19;
+  required int32 checksum = 20;
+}
