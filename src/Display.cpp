@@ -21,8 +21,8 @@ byte U_UMLAUT[8] = {
     // clang-format on
 };
 
-Display::Display(StateManager& sm, int address) : stateManager(sm) {
-  lcd = new LiquidCrystal_I2C(address, 16, 2);
+Display::Display(StateManager& sm) : stateManager(sm) {
+  lcd = new LiquidCrystal_I2C(PCF8574_address::PCF8574_ADDR_A21_A11_A01);
 }
 
 Display::~Display() {
@@ -30,7 +30,7 @@ Display::~Display() {
 }
 
 void Display::setup() {
-  lcd->init();
+  lcd->begin(16, 2);
   lcd->backlight();
   lcd->createChar(0, U_UMLAUT);
 }

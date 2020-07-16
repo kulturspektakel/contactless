@@ -15,7 +15,7 @@ class Display {
   void clearMessage();
 
  public:
-  Display(StateManager& stateManager, int address);
+  Display(StateManager& stateManager);
   ~Display();
   void setup();
   void loop();

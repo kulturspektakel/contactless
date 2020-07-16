@@ -14,7 +14,7 @@
 sdfat::SdFat sdCard;
 StateManager stateManager;
 Keypad* keypad = new Keypad(stateManager, 0x20);
-Display* display = new Display(stateManager, 0x27);
+Display* display = new Display(stateManager);
 Buzzer* buzzer = new Buzzer(0);
 Logger* logger = new Logger(stateManager, sdCard);
 Card* card = new Card(stateManager, 15, 2);
