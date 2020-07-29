@@ -1,13 +1,12 @@
 #include "MFRC522.h"
 
-#define STR(x...) #x
-#define XSTR(x) STR(x)
+extern const int YEAR = 2021;
+extern const int TOKEN_VALUE = 200;
+extern const int TIMEZONE_OFFSET_MINUTES = 60;
 
-extern const int YEAR = EYEAR;
-extern const int TOKEN_VALUE = ETOKEN_VALUE;
-extern const std::vector<char*> MODE_CHANGER{EMODE_CHANGER};
-extern const char* SALT = XSTR(ESALT);
-extern MFRC522::MIFARE_Key KEY_B = {{EKEY_B}};
-extern const char* WIFI_SSID = XSTR(EWIFI_SSID);
-extern const char* WIFI_PASSWORD = XSTR(EWIFI_PASSWORD);
-extern const int TIMEZONE_OFFSET_MINUTES = ETIMEZONE_OFFSET_MINUTES;
+// populated from environment variables
+extern const char* MODE_CHANGER = ENV_MODE_CHANGER;
+extern const char* SALT = ENV_SALT;
+extern MFRC522::MIFARE_Key KEY_B = {{ENV_KEY_B}};
+extern const char* WIFI_SSID = ENV_WIFI_SSID;
+extern const char* WIFI_PASSWORD = ENV_WIFI_PASSWORD;

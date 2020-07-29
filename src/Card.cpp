@@ -6,7 +6,7 @@
 extern const int TOKEN_VALUE;
 extern const char* SALT;
 extern MFRC522::MIFARE_Key KEY_B;
-extern const std::vector<char*> MODE_CHANGER;
+extern const char* MODE_CHANGER;
 
 const int Card::BLOCK_ADDRESS = 6;
 byte Card::ACCESS_BITS[4] = {0x78, 0x77, 0x88, 0x43};
@@ -90,10 +90,14 @@ void Card::setCardID() {
 }
 
 boolean Card::isModeChanger() {
-  for (auto const& elem : MODE_CHANGER) {
-    if (strcmp(stateManager.state.transaction.card, elem) == 0) {
+  int len = strlen(MODE_CHANGER);
+  int i = 0;
+  while (i < len) {
+    if (strncmp(stateManager.state.transaction.card, &MODE_CHANGER[i], 8) ==
+        0) {
       return true;
     }
+    i += 9;
   }
   return false;
 }
