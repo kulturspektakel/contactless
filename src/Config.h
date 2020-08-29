@@ -16,6 +16,7 @@ class Config {
   void readProducts();
   void parseDate(char result[9], char* date);
   int configDownloadRetries = CONFIG_DOWNLOAD_RETRIES;
+  bool shouldRequestSoftwareUpdate = false;
   const char* productsFile = "_config.cfg";
 
  public:
@@ -29,4 +30,5 @@ class Config {
   void receivedConfig();
   void resetRetryCounter();
   void updateSoftware();
+  void requestSoftwareUpdate();
 };

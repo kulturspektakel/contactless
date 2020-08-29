@@ -1,6 +1,7 @@
 #include "StateManager.h"
 #include <ESP8266WiFi.h>
 #include <TimeLib.h>
+#include "Utils.h"
 
 extern const int YEAR;
 extern const int TOKEN_VALUE;
@@ -124,7 +125,9 @@ bool StateManager::updateConfig(uint8_t* buffer, size_t len) {
 
 void StateManager::welcome() {
   char message[] = "                                ";  // 32 spaces
-  strncpy(message, WiFi.macAddress().substring(9).c_str(), 8);
+  char id[9];
+  Utils::getID(id);
+  strncpy(message, id, 8);
   snprintf(&message[16], 16, "%s", state.config.name);
   display->message(message, 2000);
 }
@@ -201,6 +204,9 @@ void StateManager::resetState() {
 }
 
 void StateManager::showDebug(bool startDebugMode) {
+  if (startDebugMode) {
+    network->tryToConnect();
+  }
   display->showDebug(startDebugMode,
                      logger->numberPendingUploadsCached(startDebugMode));
   buzzer->beep(50);
@@ -215,7 +221,6 @@ void StateManager::clearCart() {
 }
 
 void StateManager::reload() {
-  network->tryToConnect();
   config->resetRetryCounter();
   config->updateSoftware();
 }

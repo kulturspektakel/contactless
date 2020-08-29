@@ -11,7 +11,6 @@ class StateManager;
 
 class Logger {
   int pin;
-  StateManager& stateManager;
   int cachedNumberPendingUploads = -1;
 
   bool havingFilesToUpload =
@@ -24,6 +23,7 @@ class Logger {
   uint8_t logData[TransactionMessage_size];
 
  public:
+  StateManager& stateManager;
   char uploadingFileName[13];  // 8 + 1 + 3 + 1
   void uploadFinished();
   void noMoreUploads();

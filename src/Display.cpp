@@ -3,6 +3,7 @@
 #include <TimeLib.h>
 #include "Buildnumber.h"
 #include "StateManager.h"
+#include "Utils.h"
 
 extern const int TOKEN_VALUE;
 extern const int YEAR;
@@ -198,8 +199,9 @@ void Display::showDebug(bool startDebugMode, int pendingLogs) {
 
   switch (currentDebugPage) {
     case 0:
-      snprintf(m, 33, "ID:             %s",
-               WiFi.macAddress().substring(9).c_str());
+      char id[9];
+      Utils::getID(id);
+      snprintf(m, 33, "ID:             %s", id);
       break;
     case 1:
       snprintf(m, 33, "Products:       %s",
@@ -222,15 +224,16 @@ void Display::showDebug(bool startDebugMode, int pendingLogs) {
       snprintf(m, 33, "Software version%d", BUILD_NUMBER);
       break;
     case 6:
-      snprintf(m, 33, "Reload config...");
+      snprintf(m, 33, "Updating config");
       stateManager.reload();
       break;
   }
   message(m, 5000);
 
   currentDebugPage++;
-  if (currentDebugPage == NUMBER_OF_PAGES) {
-    currentDebugPage = -1;
-    clearMessage();
+  bool skipUpdate =
+      WiFi.status() != WL_CONNECTED && currentDebugPage == NUMBER_OF_PAGES - 2;
+  if (currentDebugPage == NUMBER_OF_PAGES || skipUpdate) {
+    currentDebugPage = 0;
   }
 }

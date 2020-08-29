@@ -56,8 +56,9 @@ void Logger::log() {
   }
 
   strlcpy(stateManager.state.transaction.id, filename, 9);
-  strcpy(stateManager.state.transaction.device_id,
-         WiFi.macAddress().substring(9).c_str());
+  char id[9];
+  Utils::getID(id);
+  strcpy(stateManager.state.transaction.device_id, id);
   stateManager.state.transaction.device_time = now();
   strcpy(stateManager.state.transaction.list_name,
          stateManager.state.config.name);
@@ -103,6 +104,13 @@ void requestHandler(void* instance, asyncHTTPrequest* request, int readyState) {
   } else if (responseCode < 300 && responseCode >= 200) {
     Serial.print("[LOGGER] log upload successfully: ");
     Serial.println(((Logger*)instance)->uploadingFileName);
+
+    // update time
+    char time[9];
+    Utils::parseDate(time, request->respHeaderValue("Date"));
+    ((Logger*)instance)->stateManager.receivedTime(time, true);
+
+    // TODO get time
     deleteLog = true;
   } else if (responseCode == 400) {
     // invalid log file, delete it

@@ -15,8 +15,34 @@ void Config::setup() {
 }
 
 void Config::loop() {
-  if (!request && !requestSuccessful && WiFi.status() == WL_CONNECTED) {
-    getConfig();
+  if (WiFi.status() == WL_CONNECTED) {
+    if (!request && !requestSuccessful) {
+      getConfig();
+    }
+    if (shouldRequestSoftwareUpdate) {
+      requestSoftwareUpdate();
+    }
+  }
+}
+
+void Config::requestSoftwareUpdate() {
+  char token[41];
+  Utils::getToken(token);
+  char url[81];
+  snprintf(url, 81, "http://kult.cash:51180/api/update?token=%s", token);
+  switch (ESPhttpUpdate.update(url, 1)) {
+    case HTTP_UPDATE_FAILED:
+      Serial.printf("[CONFIG] Update error (%d): %s\n",
+                    ESPhttpUpdate.getLastError(),
+                    ESPhttpUpdate.getLastErrorString().c_str());
+      break;
+    case HTTP_UPDATE_NO_UPDATES:
+      Serial.println("[CONFIG] no update");
+      break;
+    case HTTP_UPDATE_OK:
+      Serial.println("[CONFIG] got update");
+      ESP.restart();
+      break;
   }
 }
 
@@ -75,7 +101,7 @@ void Config::receivedConfig() {
 
   // update time
   char time[9];
-  parseDate(time, request->respHeaderValue("Date"));
+  Utils::parseDate(time, request->respHeaderValue("Date"));
   stateManager.receivedTime(time, true);
 
   if (request->responseHTTPcode() == 200) {
@@ -113,53 +139,11 @@ void Config::receivedConfig() {
   }
 }
 
-void Config::parseDate(char result[9], char* date) {
-  // Sun, 17 Nov 2019 18:00:48 GMT
-  result[0] = date[5];
-  result[1] = date[6];
-  result[2] = '0';
-  result[3] = '0';
-  result[4] = date[17];
-  result[5] = date[18];
-  result[6] = date[20];
-  result[7] = date[21];
-  result[8] = '\0';
-
-  if (date[8] == 'J' && date[9] == 'a') {  // January
-    result[3] = '1';
-  } else if (date[8] == 'F') {  // February
-    result[3] = '2';
-  } else if (date[8] == 'M' && date[10] == 'r') {  // March
-    result[3] = '3';
-  } else if (date[8] == 'A' && date[9] == 'p') {  // April
-    result[3] = '4';
-  } else if (date[8] == 'M' && date[10] == 'y') {  // May
-    result[3] = '5';
-  } else if (date[8] == 'J' && date[10] == 'n') {  // June
-    result[3] = '6';
-  } else if (date[8] == 'J' && date[10] == 'l') {  // July
-    result[3] = '7';
-  } else if (date[8] == 'A' && date[9] == 'u') {  // August
-    result[3] = '8';
-  } else if (date[8] == 'S') {  // September
-    result[3] = '9';
-  } else if (date[8] == 'O') {  // October
-    result[2] = '1';
-    result[3] = '0';
-  } else if (date[8] == 'N') {  // November
-    result[2] = '1';
-    result[3] = '1';
-  } else if (date[8] == 'D') {  // December
-    result[2] = '1';
-    result[3] = '2';
-  }
-}
-
 void Config::resetRetryCounter() {
   requestSuccessful = false;
   configDownloadRetries = CONFIG_DOWNLOAD_RETRIES;
 }
 
 void Config::updateSoftware() {
-  // t_httpUpdate_return ret = ESPhttpUpdate.update(updateURL);
+  shouldRequestSoftwareUpdate = true;
 }

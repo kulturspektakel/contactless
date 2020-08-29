@@ -5,3 +5,4 @@
 .vscode/ipch
 .env
 .DS_Store
+/private.key

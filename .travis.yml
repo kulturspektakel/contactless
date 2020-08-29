@@ -13,3 +13,10 @@ install:
 
 script:
   - platformio run
+  - python ~/.platformio/packages/framework-arduinoespressif8266/tools/signing.py --mode sign --privatekey private.key --bin .pio/build/esp12e/firmware.bin --out .pio/build/signed.bin
+
+deploy:
+  - provider: script
+    script: bash scripts/deploy.sh $TRAVIS_BUILD_NUMBER
+    on:
+      branch: master
