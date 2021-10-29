@@ -1,2 +1,2 @@
-ConfigMessage.name max_length:40
-ConfigMessage.products max_count:9
+DeviceConfig.name max_length:40
+DeviceConfig.products max_count:9

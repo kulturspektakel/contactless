@@ -83,29 +83,25 @@ void LogCoroutine::addProduct(int i) {
 
 void LogCoroutine::writeLog() {
   transaction.device_time = now();
-  transaction.payment_method = TransactionMessage_PaymentMethod_KULT_CARD;
+  transaction.payment_method = CardTransaction_PaymentMethod_KULT_CARD;
   strncpy(transaction.device_id, deviceID, 9);
 
   // generate client transaction ID
-  for (size_t i = 0; i < sizeof(transaction.client_transaction_id) - 1; i++) {
-    transaction.client_transaction_id[i] =
-        charset[rand() % (int)(sizeof(charset) - 1)];
+  for (size_t i = 0; i < sizeof(transaction.client_id) - 1; i++) {
+    transaction.client_id[i] = charset[rand() % (int)(sizeof(charset) - 1)];
   }
-  transaction
-      .client_transaction_id[sizeof(transaction.client_transaction_id) - 1] =
-      '\0';
+  transaction.client_id[sizeof(transaction.client_id) - 1] = '\0';
 
   // write log file
   char filename[13];
-  sprintf(filename, "%s.log", transaction.client_transaction_id);
+  sprintf(filename, "%s.log", transaction.client_id);
 
   sdfat::File logFile = sd.open(filename, O_WRITE | O_CREAT);
   if (logFile && logFile.isOpen()) {
-    uint8_t buffer[TransactionMessage_size];
-    pb_ostream_t stream =
-        pb_ostream_from_buffer(buffer, TransactionMessage_size);
-    pb_encode(&stream, TransactionMessage_fields, &transaction);
-    logFile.write(buffer, TransactionMessage_size);
+    uint8_t buffer[CardTransaction_size];
+    pb_ostream_t stream = pb_ostream_from_buffer(buffer, CardTransaction_size);
+    pb_encode(&stream, CardTransaction_fields, &transaction);
+    logFile.write(buffer, CardTransaction_size);
     Log.infoln("[Log] Written logfile %s", filename);
     logsToUpload++;
   } else {

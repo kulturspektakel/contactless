@@ -6,7 +6,7 @@
 #error Regenerate this file with the current version of nanopb generator.
 #endif
 
-PB_BIND(ConfigMessage, ConfigMessage, 2)
+PB_BIND(DeviceConfig, DeviceConfig, 2)
 
 
 

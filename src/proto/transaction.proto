@@ -1,25 +1,25 @@
 syntax = "proto3";
 import "product.proto";
 
-message TransactionMessage {
+message CardTransaction {
   string device_id = 1;
-  string client_transaction_id = 2;
+  string client_id = 2;
   TransactionType transaction_type = 3;
   int32 device_time = 4;
-
   PaymentMethod payment_method = 5;
-  sint32 deposit = 6;
-  sint32 total = 7;
-  optional string card_id = 8;
-
-  optional int32 list_id = 9;
+  sint32 balanceBefore = 6;
+  sint32 balanceAfter = 7;
+  sint32 depositBefore = 8;
+  sint32 depositAfter = 9;
+  string card_id = 10;
+  optional int32 list_id = 11;
+  repeated CartItem cart_items = 12;
+  bool device_time_is_utc = 13;
 
   message CartItem {
     int32 amount = 1;
     Product product = 2;
   }
-
-  repeated CartItem cart_items = 10;
 
   enum PaymentMethod {
     CASH = 0;

@@ -11,58 +11,58 @@
 #endif
 
 /* Enum definitions */
-typedef enum _TransactionMessage_PaymentMethod { 
-    TransactionMessage_PaymentMethod_CASH = 0, 
-    TransactionMessage_PaymentMethod_BON = 1, 
-    TransactionMessage_PaymentMethod_SUM_UP = 2, 
-    TransactionMessage_PaymentMethod_VOUCHER = 3, 
-    TransactionMessage_PaymentMethod_FREE_CREW = 4, 
-    TransactionMessage_PaymentMethod_FREE_BAND = 5, 
-    TransactionMessage_PaymentMethod_KULT_CARD = 6 
-} TransactionMessage_PaymentMethod;
+typedef enum _CardTransaction_PaymentMethod { 
+    CardTransaction_PaymentMethod_CASH = 0, 
+    CardTransaction_PaymentMethod_BON = 1, 
+    CardTransaction_PaymentMethod_SUM_UP = 2, 
+    CardTransaction_PaymentMethod_VOUCHER = 3, 
+    CardTransaction_PaymentMethod_FREE_CREW = 4, 
+    CardTransaction_PaymentMethod_FREE_BAND = 5, 
+    CardTransaction_PaymentMethod_KULT_CARD = 6 
+} CardTransaction_PaymentMethod;
 
-typedef enum _TransactionMessage_TransactionType { 
-    TransactionMessage_TransactionType_TOP_UP = 0, 
-    TransactionMessage_TransactionType_CHARGE = 1, 
-    TransactionMessage_TransactionType_CASHOUT = 2 
-} TransactionMessage_TransactionType;
+typedef enum _CardTransaction_TransactionType { 
+    CardTransaction_TransactionType_TOP_UP = 0, 
+    CardTransaction_TransactionType_CHARGE = 1, 
+    CardTransaction_TransactionType_CASHOUT = 2 
+} CardTransaction_TransactionType;
 
 /* Struct definitions */
-typedef struct _TransactionMessage_CartItem { 
+typedef struct _CardTransaction_CartItem { 
     int32_t amount; 
     bool has_product;
     Product product; 
-} TransactionMessage_CartItem;
+} CardTransaction_CartItem;
 
-typedef struct _TransactionMessage { 
+typedef struct _CardTransaction { 
     char device_id[9]; 
-    char client_transaction_id[9]; 
-    TransactionMessage_TransactionType transaction_type; 
+    char client_id[9]; 
+    CardTransaction_TransactionType transaction_type; 
     int32_t device_time; 
-    TransactionMessage_PaymentMethod payment_method; 
-    int32_t deposit; 
-    int32_t total; 
-    pb_size_t which__card_id;
-    union {
-        char card_id[9];
-    } _card_id; 
+    CardTransaction_PaymentMethod payment_method; 
+    int32_t balanceBefore; 
+    int32_t balanceAfter; 
+    int32_t depositBefore; 
+    int32_t depositAfter; 
+    char card_id[9]; 
     pb_size_t which__list_id;
     union {
         int32_t list_id;
     } _list_id; 
     pb_size_t cart_items_count;
-    TransactionMessage_CartItem cart_items[9]; 
-} TransactionMessage;
+    CardTransaction_CartItem cart_items[9]; 
+    bool device_time_is_utc; 
+} CardTransaction;
 
 
 /* Helper constants for enums */
-#define _TransactionMessage_PaymentMethod_MIN TransactionMessage_PaymentMethod_CASH
-#define _TransactionMessage_PaymentMethod_MAX TransactionMessage_PaymentMethod_KULT_CARD
-#define _TransactionMessage_PaymentMethod_ARRAYSIZE ((TransactionMessage_PaymentMethod)(TransactionMessage_PaymentMethod_KULT_CARD+1))
+#define _CardTransaction_PaymentMethod_MIN CardTransaction_PaymentMethod_CASH
+#define _CardTransaction_PaymentMethod_MAX CardTransaction_PaymentMethod_KULT_CARD
+#define _CardTransaction_PaymentMethod_ARRAYSIZE ((CardTransaction_PaymentMethod)(CardTransaction_PaymentMethod_KULT_CARD+1))
 
-#define _TransactionMessage_TransactionType_MIN TransactionMessage_TransactionType_TOP_UP
-#define _TransactionMessage_TransactionType_MAX TransactionMessage_TransactionType_CASHOUT
-#define _TransactionMessage_TransactionType_ARRAYSIZE ((TransactionMessage_TransactionType)(TransactionMessage_TransactionType_CASHOUT+1))
+#define _CardTransaction_TransactionType_MIN CardTransaction_TransactionType_TOP_UP
+#define _CardTransaction_TransactionType_MAX CardTransaction_TransactionType_CASHOUT
+#define _CardTransaction_TransactionType_ARRAYSIZE ((CardTransaction_TransactionType)(CardTransaction_TransactionType_CASHOUT+1))
 
 
 #ifdef __cplusplus
@@ -70,59 +70,65 @@ extern "C" {
 #endif
 
 /* Initializer values for message structs */
-#define TransactionMessage_init_default          {"", "", _TransactionMessage_TransactionType_MIN, 0, _TransactionMessage_PaymentMethod_MIN, 0, 0, 0, {""}, 0, {0}, 0, {TransactionMessage_CartItem_init_default, TransactionMessage_CartItem_init_default, TransactionMessage_CartItem_init_default, TransactionMessage_CartItem_init_default, TransactionMessage_CartItem_init_default, TransactionMessage_CartItem_init_default, TransactionMessage_CartItem_init_default, TransactionMessage_CartItem_init_default, TransactionMessage_CartItem_init_default}}
-#define TransactionMessage_CartItem_init_default {0, false, Product_init_default}
-#define TransactionMessage_init_zero             {"", "", _TransactionMessage_TransactionType_MIN, 0, _TransactionMessage_PaymentMethod_MIN, 0, 0, 0, {""}, 0, {0}, 0, {TransactionMessage_CartItem_init_zero, TransactionMessage_CartItem_init_zero, TransactionMessage_CartItem_init_zero, TransactionMessage_CartItem_init_zero, TransactionMessage_CartItem_init_zero, TransactionMessage_CartItem_init_zero, TransactionMessage_CartItem_init_zero, TransactionMessage_CartItem_init_zero, TransactionMessage_CartItem_init_zero}}
-#define TransactionMessage_CartItem_init_zero    {0, false, Product_init_zero}
+#define CardTransaction_init_default             {"", "", _CardTransaction_TransactionType_MIN, 0, _CardTransaction_PaymentMethod_MIN, 0, 0, 0, 0, "", 0, {0}, 0, {CardTransaction_CartItem_init_default, CardTransaction_CartItem_init_default, CardTransaction_CartItem_init_default, CardTransaction_CartItem_init_default, CardTransaction_CartItem_init_default, CardTransaction_CartItem_init_default, CardTransaction_CartItem_init_default, CardTransaction_CartItem_init_default, CardTransaction_CartItem_init_default}, 0}
+#define CardTransaction_CartItem_init_default    {0, false, Product_init_default}
+#define CardTransaction_init_zero                {"", "", _CardTransaction_TransactionType_MIN, 0, _CardTransaction_PaymentMethod_MIN, 0, 0, 0, 0, "", 0, {0}, 0, {CardTransaction_CartItem_init_zero, CardTransaction_CartItem_init_zero, CardTransaction_CartItem_init_zero, CardTransaction_CartItem_init_zero, CardTransaction_CartItem_init_zero, CardTransaction_CartItem_init_zero, CardTransaction_CartItem_init_zero, CardTransaction_CartItem_init_zero, CardTransaction_CartItem_init_zero}, 0}
+#define CardTransaction_CartItem_init_zero       {0, false, Product_init_zero}
 
 /* Field tags (for use in manual encoding/decoding) */
-#define TransactionMessage_CartItem_amount_tag   1
-#define TransactionMessage_CartItem_product_tag  2
-#define TransactionMessage_device_id_tag         1
-#define TransactionMessage_client_transaction_id_tag 2
-#define TransactionMessage_transaction_type_tag  3
-#define TransactionMessage_device_time_tag       4
-#define TransactionMessage_payment_method_tag    5
-#define TransactionMessage_deposit_tag           6
-#define TransactionMessage_total_tag             7
-#define TransactionMessage_card_id_tag           8
-#define TransactionMessage_list_id_tag           9
-#define TransactionMessage_cart_items_tag        10
+#define CardTransaction_CartItem_amount_tag      1
+#define CardTransaction_CartItem_product_tag     2
+#define CardTransaction_device_id_tag            1
+#define CardTransaction_client_id_tag            2
+#define CardTransaction_transaction_type_tag     3
+#define CardTransaction_device_time_tag          4
+#define CardTransaction_payment_method_tag       5
+#define CardTransaction_balanceBefore_tag        6
+#define CardTransaction_balanceAfter_tag         7
+#define CardTransaction_depositBefore_tag        8
+#define CardTransaction_depositAfter_tag         9
+#define CardTransaction_card_id_tag              10
+#define CardTransaction_list_id_tag              11
+#define CardTransaction_cart_items_tag           12
+#define CardTransaction_device_time_is_utc_tag   13
 
 /* Struct field encoding specification for nanopb */
-#define TransactionMessage_FIELDLIST(X, a) \
+#define CardTransaction_FIELDLIST(X, a) \
 X(a, STATIC,   SINGULAR, STRING,   device_id,         1) \
-X(a, STATIC,   SINGULAR, STRING,   client_transaction_id,   2) \
+X(a, STATIC,   SINGULAR, STRING,   client_id,         2) \
 X(a, STATIC,   SINGULAR, UENUM,    transaction_type,   3) \
 X(a, STATIC,   SINGULAR, INT32,    device_time,       4) \
 X(a, STATIC,   SINGULAR, UENUM,    payment_method,    5) \
-X(a, STATIC,   SINGULAR, SINT32,   deposit,           6) \
-X(a, STATIC,   SINGULAR, SINT32,   total,             7) \
-X(a, STATIC,   ONEOF,    STRING,   (_card_id,card_id,_card_id.card_id),   8) \
-X(a, STATIC,   ONEOF,    INT32,    (_list_id,list_id,_list_id.list_id),   9) \
-X(a, STATIC,   REPEATED, MESSAGE,  cart_items,       10)
-#define TransactionMessage_CALLBACK NULL
-#define TransactionMessage_DEFAULT NULL
-#define TransactionMessage_cart_items_MSGTYPE TransactionMessage_CartItem
+X(a, STATIC,   SINGULAR, SINT32,   balanceBefore,     6) \
+X(a, STATIC,   SINGULAR, SINT32,   balanceAfter,      7) \
+X(a, STATIC,   SINGULAR, SINT32,   depositBefore,     8) \
+X(a, STATIC,   SINGULAR, SINT32,   depositAfter,      9) \
+X(a, STATIC,   SINGULAR, STRING,   card_id,          10) \
+X(a, STATIC,   ONEOF,    INT32,    (_list_id,list_id,_list_id.list_id),  11) \
+X(a, STATIC,   REPEATED, MESSAGE,  cart_items,       12) \
+X(a, STATIC,   SINGULAR, BOOL,     device_time_is_utc,  13)
+#define CardTransaction_CALLBACK NULL
+#define CardTransaction_DEFAULT NULL
+#define CardTransaction_cart_items_MSGTYPE CardTransaction_CartItem
 
-#define TransactionMessage_CartItem_FIELDLIST(X, a) \
+#define CardTransaction_CartItem_FIELDLIST(X, a) \
 X(a, STATIC,   SINGULAR, INT32,    amount,            1) \
 X(a, STATIC,   OPTIONAL, MESSAGE,  product,           2)
-#define TransactionMessage_CartItem_CALLBACK NULL
-#define TransactionMessage_CartItem_DEFAULT NULL
-#define TransactionMessage_CartItem_product_MSGTYPE Product
+#define CardTransaction_CartItem_CALLBACK NULL
+#define CardTransaction_CartItem_DEFAULT NULL
+#define CardTransaction_CartItem_product_MSGTYPE Product
 
-extern const pb_msgdesc_t TransactionMessage_msg;
-extern const pb_msgdesc_t TransactionMessage_CartItem_msg;
+extern const pb_msgdesc_t CardTransaction_msg;
+extern const pb_msgdesc_t CardTransaction_CartItem_msg;
 
 /* Defines for backwards compatibility with code written before nanopb-0.4.0 */
-#define TransactionMessage_fields &TransactionMessage_msg
-#define TransactionMessage_CartItem_fields &TransactionMessage_CartItem_msg
+#define CardTransaction_fields &CardTransaction_msg
+#define CardTransaction_CartItem_fields &CardTransaction_CartItem_msg
 
 /* Maximum encoded size of messages (where known) */
 #if defined(Product_size)
-#define TransactionMessage_CartItem_size         (17 + Product_size)
-#define TransactionMessage_size                  (275 + 9*Product_size)
+#define CardTransaction_CartItem_size            (17 + Product_size)
+#define CardTransaction_size                     (289 + 9*Product_size)
 #endif
 
 #ifdef __cplusplus

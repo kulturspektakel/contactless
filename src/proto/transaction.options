@@ -1,4 +1,4 @@
-TransactionMessage.device_id              max_length:8
-TransactionMessage.client_transaction_id  max_length:8
-TransactionMessage.card_id                max_length:8
-TransactionMessage.cart_items             max_count:9
+CardTransaction.device_id              max_length:8
+CardTransaction.client_id              max_length:8
+CardTransaction.card_id                max_length:8
+CardTransaction.cart_items             max_count:9

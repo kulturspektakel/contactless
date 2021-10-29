@@ -12,5 +12,5 @@ class ConfigCoroutine : public Coroutine {
 
  public:
   int runCoroutine() override;
-  ConfigMessage config = ConfigMessage_init_zero;
+  DeviceConfig config = DeviceConfig_init_zero;
 };

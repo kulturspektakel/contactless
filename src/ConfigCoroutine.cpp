@@ -31,7 +31,7 @@ int ConfigCoroutine::runCoroutine() {
     localFile.close();
 
     pb_istream_t stream = pb_istream_from_buffer(data, len);
-    pb_decode(&stream, ConfigMessage_fields, &config);
+    pb_decode(&stream, DeviceConfig_fields, &config);
     Log.infoln("[Config] loaded: %s", config.name);
     displayCoroutine.show(deviceID, config.name, -1, -1, 2000);
   } else {
@@ -57,7 +57,7 @@ int ConfigCoroutine::runCoroutine() {
     request.responseRead(buffer, len);
     pb_istream_t pbstream = pb_istream_from_buffer(buffer, len);
 
-    pb_decode(&pbstream, ConfigMessage_fields, &config);
+    pb_decode(&pbstream, DeviceConfig_fields, &config);
     Log.infoln("[Config] received: %s", config.name);
 
     // write to file

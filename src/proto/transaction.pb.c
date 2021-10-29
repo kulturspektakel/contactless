@@ -6,10 +6,10 @@
 #error Regenerate this file with the current version of nanopb generator.
 #endif
 
-PB_BIND(TransactionMessage, TransactionMessage, 2)
+PB_BIND(CardTransaction, CardTransaction, 2)
 
 
-PB_BIND(TransactionMessage_CartItem, TransactionMessage_CartItem, 2)
+PB_BIND(CardTransaction_CartItem, CardTransaction_CartItem, 2)
 
 
 

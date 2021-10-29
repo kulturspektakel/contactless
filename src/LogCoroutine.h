@@ -7,7 +7,7 @@ using namespace ace_routine;
 
 class LogCoroutine : public Coroutine {
  private:
-  uint8_t data[TransactionMessage_size];
+  uint8_t data[CardTransaction_size];
   char filename[13];
   sdfat::File file;
   boolean isLogFile();
@@ -15,7 +15,7 @@ class LogCoroutine : public Coroutine {
  public:
   int logsToUpload = 0;
   int runCoroutine() override;
-  TransactionMessage transaction = TransactionMessage_init_zero;
+  CardTransaction transaction = CardTransaction_init_zero;
   void addProduct(int i);
   void writeLog();
 };
