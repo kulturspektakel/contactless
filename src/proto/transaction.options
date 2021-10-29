@@ -1,6 +1,4 @@
-TransactionMessage.id                 max_size:9
-TransactionMessage.device_id          max_size:40
-TransactionMessage.card               max_size:9
-TransactionMessage.list_name          max_size:17
-TransactionMessage.cart_items         max_count:10
-CartItemMessage.product max_size:17
+TransactionMessage.device_id              max_length:8
+TransactionMessage.client_transaction_id  max_length:8
+TransactionMessage.card_id                max_length:8
+TransactionMessage.cart_items             max_count:9

@@ -1,57 +1,68 @@
+#include <AceRoutine.h>
 #include <Arduino.h>
+#include <ArduinoLog.h>
+#include <ESP8266WiFi.h>
+#include <Hash.h>
 #include <SPI.h>
 #include <SdFat.h>
-#include "Buzzer.h"
-#include "Card.h"
-#include "Config.h"
+#include "ChargeManualCoroutine.h"
+#include "ConfigCoroutine.h"
 #include "Constants.h"
-#include "Display.h"
-#include "Keypad.h"
-#include "Logger.h"
-#include "Network.h"
-#include "StateManager.h"
+#include "DisplayCoroutine.h"
+#include "InfoCoroutine.h"
+#include "KeypadCoroutine.h"
+#include "LogCoroutine.h"
+#include "MainCoroutine.h"
+#include "ModeChangerCoroutine.h"
+#include "RFIDCoroutine.h"
+#include "TimeEntryCoroutine.h"
+#include "WiFiCoroutine.h"
 
-sdfat::SdFat sdCard;
-StateManager stateManager;
-Keypad* keypad = new Keypad(stateManager, 0x20);
-Display* display = new Display(stateManager);
-Buzzer* buzzer = new Buzzer(0);
-Logger* logger = new Logger(stateManager, sdCard);
-Card* card = new Card(stateManager, 15, 2);
-Config* config = new Config(stateManager, sdCard);
-Network* network = new Network(stateManager);
+using namespace sdfat;
+
+WiFiCoroutine wiFiCoroutine;
+ConfigCoroutine configCoroutine;
+DisplayCoroutine displayCoroutine;
+MainCoroutine mainCoroutine;
+KeypadCoroutine keypadCoroutine;
+TimeEntryCoroutine timeEntryCoroutine;
+LogCoroutine logCoroutine;
+ChargeManualCoroutine chargeManualCoroutine;
+RFIDCoroutine rFIDCoroutine;
+InfoCoroutine infoCoroutine;
+ModeChangerCoroutine modeChangerCoroutine;
+SdFat sd;
+
+char deviceID[9];
+char deviceToken[48];
 
 void setup() {
+  snprintf(deviceID, 9, WiFi.macAddress().substring(9).c_str());
+  snprintf(deviceToken, 48, "Bearer %s", sha1(String(deviceID) + SALT).c_str());
+
   Serial.begin(9600);
-  Serial.println("SPI.begin");
+  Log.begin(LOG_LEVEL_VERBOSE, &Serial);
   SPI.begin();
 
-  stateManager.setup(display, buzzer, logger, network, config);
-  card->setup();
-  display->setup();
-  logger->setup();
-  keypad->setup();
-  buzzer->setup();
-  network->setup();
-
-  // needs to be after card setup, for SPI bus to be free
-  if (!sdCard.begin(10 /* , SPI_QUARTER_SPEED */)) {
-    Serial.println("[LOGGER] SD card failed");
-    display->message("SD-Karte fehlt", 500);
-    while (true) {
-    }  // block execution
+  // disable RFID
+  pinMode(15, OUTPUT);
+  digitalWrite(15, HIGH);
+  if (!sd.begin(10)) {
+    Log.errorln("No SD card");
+    sd.initErrorHalt(&Serial);  // TODO remove
   }
-
-  config->setup();
 }
 
 void loop() {
-  keypad->loop();
-  display->loop();
-  buzzer->loop();
-  network->loop();
-  logger->loop();
-  config->loop();
-  card->loop();  // must be after logger, because of
-                 // Logger::numberPendingUploads
+  keypadCoroutine.runCoroutine();
+  wiFiCoroutine.runCoroutine();
+  displayCoroutine.runCoroutine();
+  configCoroutine.runCoroutine();  // after display
+  mainCoroutine.runCoroutine();
+  timeEntryCoroutine.runCoroutine();
+  logCoroutine.runCoroutine();
+  chargeManualCoroutine.runCoroutine();
+  rFIDCoroutine.runCoroutine();
+  infoCoroutine.runCoroutine();
+  modeChangerCoroutine.runCoroutine();
 }

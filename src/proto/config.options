@@ -1,10 +1,2 @@
-ConfigMessage.name      max_size:17
-ConfigMessage.product1  max_size:17
-ConfigMessage.product2  max_size:17
-ConfigMessage.product3  max_size:17
-ConfigMessage.product4  max_size:17
-ConfigMessage.product5  max_size:17
-ConfigMessage.product6  max_size:17
-ConfigMessage.product7  max_size:17
-ConfigMessage.product8  max_size:17
-ConfigMessage.product9  max_size:17
+ConfigMessage.name max_length:40
+ConfigMessage.products max_count:9

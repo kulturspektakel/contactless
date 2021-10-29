@@ -1,27 +1,39 @@
-syntax = "proto2";
+syntax = "proto3";
+import "product.proto";
 
 message TransactionMessage {
-  required string id = 1;
-  required string device_id = 2;
-  enum Mode {
-    TIME_ENTRY = 0;
-    TOP_UP = 1;
-    CHARGE = 2;
-    CASHOUT = 3;
-    INIT_CARD = 4;
-  }
-  required Mode mode = 3;
-  required int32 device_time = 4;
-  required string card = 5;
-  required int32 balanceBefore = 6;
-  required int32 tokensBefore = 7;
-  required int32 balanceAfter = 8;
-  required int32 tokensAfter = 9;
-  optional string list_name = 10;
-  repeated CartItemMessage cart_items = 11;
-}
+  string device_id = 1;
+  string client_transaction_id = 2;
+  TransactionType transaction_type = 3;
+  int32 device_time = 4;
 
-message CartItemMessage {
-  required int32 price = 1;
-  required string product = 2;
+  PaymentMethod payment_method = 5;
+  sint32 deposit = 6;
+  sint32 total = 7;
+  optional string card_id = 8;
+
+  optional int32 list_id = 9;
+
+  message CartItem {
+    int32 amount = 1;
+    Product product = 2;
+  }
+
+  repeated CartItem cart_items = 10;
+
+  enum PaymentMethod {
+    CASH = 0;
+    BON = 1;
+    SUM_UP = 2;
+    VOUCHER = 3;
+    FREE_CREW = 4;
+    FREE_BAND = 5;
+    KULT_CARD = 6;
+  }
+
+  enum TransactionType {
+    TOP_UP = 0;
+    CHARGE = 1;
+    CASHOUT = 2;
+  }
 }

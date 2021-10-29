@@ -1,18 +1,22 @@
 {
   "files.associations": {
-    "new": "cpp",
-    "*.tcc": "cpp",
-    "fstream": "cpp",
-    "sstream": "cpp",
-    "algorithm": "cpp",
     "array": "cpp",
     "string": "cpp",
+    "random": "cpp",
+    "*.tcc": "cpp",
+    "istream": "cpp",
+    "ostream": "cpp",
     "functional": "cpp",
     "tuple": "cpp",
     "type_traits": "cpp",
     "utility": "cpp",
-    "typeinfo": "cpp",
-    "random": "cpp",
-    "vector": "cpp"
+    "sstream": "cpp",
+    "deque": "cpp",
+    "list": "cpp",
+    "unordered_map": "cpp",
+    "vector": "cpp",
+    "cstdarg": "cpp",
+    "initializer_list": "cpp",
+    "typeinfo": "cpp"
   }
 }
