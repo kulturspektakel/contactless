@@ -36,7 +36,7 @@ int LogCoroutine::runCoroutine() {
         size_t len = file.fileSize();
         file.readBytes(data, len);
         request.open("POST", "http://api.kulturspektakel.de:51180/$$$/log");
-        request.setReqHeader("x-ESP8266-STA-MAC", deviceID);
+        request.setReqHeader("x-ESP8266-STA-MAC", WiFi.macAddress().c_str());
         request.setReqHeader("Authorization", deviceToken);
         request.send(data, len);
 
@@ -44,7 +44,7 @@ int LogCoroutine::runCoroutine() {
         Log.infoln("[Log] upload successful: %s HTTP %d", filename,
                    request.responseHTTPcode());
         if (request.responseHTTPcode() >= 200 &&
-            request.responseHTTPcode() < 500) {
+            request.responseHTTPcode() < 300) {
           sd.remove(filename);
           logsToUpload--;
         }

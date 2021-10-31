@@ -41,7 +41,7 @@ int ConfigCoroutine::runCoroutine() {
   COROUTINE_AWAIT(WiFi.status() == WL_CONNECTED);
 
   request.open("GET", "http://api.kulturspektakel.de:51180/$$$/config");
-  request.setReqHeader("x-ESP8266-STA-MAC", deviceID);
+  request.setReqHeader("x-ESP8266-STA-MAC", WiFi.macAddress().c_str());
   request.setReqHeader("Authorization", deviceToken);
   request.send();
 

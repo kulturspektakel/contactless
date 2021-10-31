@@ -27,7 +27,13 @@ int RFIDCoroutine::runCoroutine() {
   mfrc522.PCD_Init();
 
   while (true) {
+    COROUTINE_YIELD();
+
+    // Reset reader, so a new card can be read
+    mfrc522.PICC_HaltA();
+    mfrc522.PCD_StopCrypto1();
     cardId[0] = '\0';
+
     COROUTINE_AWAIT(mfrc522.PICC_IsNewCardPresent() &&
                     mfrc522.PICC_ReadCardSerial());
 
@@ -40,7 +46,7 @@ int RFIDCoroutine::runCoroutine() {
     cardId[8] = '\0';
     Log.infoln("[RFID] Detected card ID: %s", cardId);
     if (modeChangerCoroutine.isModeChanger()) {
-      break;
+      continue;
     }
 
     switch (mainCoroutine.mode) {
@@ -103,10 +109,6 @@ int RFIDCoroutine::runCoroutine() {
         mainCoroutine.resetBalance();
         break;
     }
-
-    // Reset reader, so a new card can be read
-    mfrc522.PICC_HaltA();
-    mfrc522.PCD_StopCrypto1();
   }
 
   COROUTINE_END();
