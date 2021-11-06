@@ -1,6 +1,6 @@
 #include <AceRoutine.h>
 #include <Arduino.h>
-#include "SdFat.h"
+#include <SD.h>
 #include "proto/transaction.pb.h"
 
 using namespace ace_routine;
@@ -9,7 +9,8 @@ class LogCoroutine : public Coroutine {
  private:
   uint8_t data[CardTransaction_size];
   char filename[13];
-  sdfat::File file;
+  File dir;
+  File file;
   boolean isLogFile();
 
  public:

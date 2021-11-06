@@ -1,10 +1,11 @@
+#define SPI_DRIVER_SELECT 1
 #include <AceRoutine.h>
 #include <Arduino.h>
 #include <ArduinoLog.h>
 #include <ESP8266WiFi.h>
 #include <Hash.h>
+#include <SD.h>
 #include <SPI.h>
-#include <SdFat.h>
 #include "ChargeManualCoroutine.h"
 #include "ConfigCoroutine.h"
 #include "Constants.h"
@@ -18,8 +19,6 @@
 #include "TimeEntryCoroutine.h"
 #include "WiFiCoroutine.h"
 
-using namespace sdfat;
-
 WiFiCoroutine wiFiCoroutine;
 ConfigCoroutine configCoroutine;
 DisplayCoroutine displayCoroutine;
@@ -31,7 +30,6 @@ ChargeManualCoroutine chargeManualCoroutine;
 RFIDCoroutine rFIDCoroutine;
 InfoCoroutine infoCoroutine;
 ModeChangerCoroutine modeChangerCoroutine;
-SdFat sd;
 
 char deviceID[9];
 char deviceToken[48];
@@ -45,11 +43,8 @@ void setup() {
   SPI.begin();
 
   // disable RFID
-  pinMode(15, OUTPUT);
-  digitalWrite(15, HIGH);
-  if (!sd.begin(10)) {
+  if (!SD.begin(10)) {
     Log.errorln("No SD card");
-    sd.initErrorHalt(&Serial);  // TODO remove
   }
 }
 

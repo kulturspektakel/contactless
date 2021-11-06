@@ -8,7 +8,6 @@
 using namespace sdfat;
 
 extern ConfigCoroutine configCoroutine;
-extern SdFat sd;
 extern char deviceID[9];
 extern char deviceToken[48];
 
@@ -17,24 +16,34 @@ static asyncHTTPrequest request;
 
 int LogCoroutine::runCoroutine() {
   COROUTINE_BEGIN()
-  sd.vwd()->rewind();
-  while (file.openNext(sd.vwd(), O_READ)) {
+  dir = SD.open("/", O_READ);
+  while (true) {
+    file = dir.openNextFile();
+    if (!file) {
+      break;
+    }
     if (isLogFile()) {
       logsToUpload++;
     }
     file.close();
   }
+  dir.close();
   Log.infoln("[Log] %d files to upload", logsToUpload);
 
   while (true) {
-    COROUTINE_AWAIT(WiFi.status() == WL_CONNECTED && logsToUpload > 0);
-    sd.vwd()->rewind();
-    while (file.openNext(sd.vwd(), O_READ)) {
+    COROUTINE_AWAIT(false /*WiFi.status() == WL_CONNECTED*/ &&
+                    logsToUpload > 0);
+    dir = SD.open("/", O_READ);
+    while (true) {
+      file = dir.openNextFile();
+      if (!file) {
+        break;
+      }
       if (isLogFile()) {
         Log.infoln("[Log] starting upload: %s", filename);
 
-        size_t len = file.fileSize();
-        file.readBytes(data, len);
+        size_t len = file.size();
+        file.read(data, len);
         request.open("POST", "http://api.kulturspektakel.de:51180/$$$/log");
         request.setReqHeader("x-ESP8266-STA-MAC", WiFi.macAddress().c_str());
         request.setReqHeader("Authorization", deviceToken);
@@ -45,20 +54,20 @@ int LogCoroutine::runCoroutine() {
                    request.responseHTTPcode());
         if (request.responseHTTPcode() >= 200 &&
             request.responseHTTPcode() < 300) {
-          sd.remove(filename);
+          SD.remove(filename);
           logsToUpload--;
         }
       }
       file.close();
     }
+    dir.close();
     logsToUpload = 0;
   }
   COROUTINE_END();
 }
 
 boolean LogCoroutine::isLogFile() {
-  file.getName(filename, 13);
-  return file.isFile() && strcmp(".log", &filename[8]) == 0;
+  return file.isFile() && strcmp(".log", file.name()) == 0;
 }
 
 void LogCoroutine::addProduct(int i) {
@@ -96,8 +105,8 @@ void LogCoroutine::writeLog() {
   char filename[13];
   sprintf(filename, "%s.log", transaction.client_id);
 
-  sdfat::File logFile = sd.open(filename, O_WRITE | O_CREAT);
-  if (logFile && logFile.isOpen()) {
+  File logFile = SD.open(filename, O_WRITE | O_CREAT);
+  if (logFile && logFile.availableForWrite()) {
     uint8_t buffer[CardTransaction_size];
     pb_ostream_t stream = pb_ostream_from_buffer(buffer, CardTransaction_size);
     pb_encode(&stream, CardTransaction_fields, &transaction);

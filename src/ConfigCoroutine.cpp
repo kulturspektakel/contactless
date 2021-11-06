@@ -1,10 +1,10 @@
 #include "ConfigCoroutine.h"
 #include <ArduinoLog.h>
+#include <SD.h>
 #include <TimeLib.h>
 #include <pb_decode.h>
 #include "DisplayCoroutine.h"
 #include "MainCoroutine.h"
-#include "SdFat.h"
 #include "TimeEntryCoroutine.h"
 
 using namespace sdfat;
@@ -22,12 +22,12 @@ static const char* configFileName = "_config.cfg";
 int ConfigCoroutine::runCoroutine() {
   COROUTINE_BEGIN();
 
-  sdfat::File localFile = sd.open(configFileName, O_RDONLY);
+  File localFile = SD.open(configFileName, O_RDONLY);
 
-  if (localFile && localFile.isOpen()) {
+  if (localFile && localFile.available()) {
     size_t len = localFile.size();
     uint8_t data[len];
-    localFile.readBytes(data, len);
+    localFile.read(data, len);
     localFile.close();
 
     pb_istream_t stream = pb_istream_from_buffer(data, len);
@@ -38,7 +38,7 @@ int ConfigCoroutine::runCoroutine() {
     Log.infoln("[Config] no stored config");
   }
 
-  COROUTINE_AWAIT(WiFi.status() == WL_CONNECTED);
+  COROUTINE_AWAIT(false /*WiFi.status() == WL_CONNECTED*/);
 
   request.open("GET", "http://api.kulturspektakel.de:51180/$$$/config");
   request.setReqHeader("x-ESP8266-STA-MAC", WiFi.macAddress().c_str());
@@ -48,7 +48,9 @@ int ConfigCoroutine::runCoroutine() {
   COROUTINE_AWAIT(request.readyState() == 4);
 
   Log.infoln("[Config] Received response HTTP %d", request.responseHTTPcode());
-  timeEntryCoroutine.dateFromHTTP(request.respHeaderValue("Date"));
+  if (request.responseHTTPcode() > 0) {
+    timeEntryCoroutine.dateFromHTTP(request.respHeaderValue("Date"));
+  }
 
   if (request.responseHTTPcode() == 200) {
     // config available
@@ -61,13 +63,16 @@ int ConfigCoroutine::runCoroutine() {
     Log.infoln("[Config] received: %s", config.name);
 
     // write to file
-    sdfat::File file = sd.open(configFileName, sdfat::O_RDWR | sdfat::O_CREAT);
+    digitalWrite(15, HIGH);
+    digitalWrite(10, LOW);
+
+    File file = SD.open(configFileName, sdfat::O_RDWR | sdfat::O_CREAT);
     int written = file.write(buffer, len);
     Log.infoln("[Config] Written: %d", written);
     file.close();
   } else if (request.responseHTTPcode() == 204) {
     // delete config
-    sd.remove(configFileName);
+    SD.remove(configFileName);
     Log.infoln("[Config] No config. Deleting file.");
   }
 
