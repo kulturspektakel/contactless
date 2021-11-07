@@ -16,7 +16,7 @@ static asyncHTTPrequest request;
 
 int LogCoroutine::runCoroutine() {
   COROUTINE_BEGIN()
-  dir = SD.open("/", O_READ);
+  dir = SD.open("/", FILE_READ);
   while (true) {
     file = dir.openNextFile();
     if (!file) {
@@ -31,9 +31,8 @@ int LogCoroutine::runCoroutine() {
   Log.infoln("[Log] %d files to upload", logsToUpload);
 
   while (true) {
-    COROUTINE_AWAIT(false /*WiFi.status() == WL_CONNECTED*/ &&
-                    logsToUpload > 0);
-    dir = SD.open("/", O_READ);
+    COROUTINE_AWAIT(WiFi.status() == WL_CONNECTED && logsToUpload > 0);
+    dir = SD.open("/", FILE_READ);
     while (true) {
       file = dir.openNextFile();
       if (!file) {
@@ -105,7 +104,7 @@ void LogCoroutine::writeLog() {
   char filename[13];
   sprintf(filename, "%s.log", transaction.client_id);
 
-  File logFile = SD.open(filename, O_WRITE | O_CREAT);
+  File logFile = SD.open(filename, FILE_WRITE);
   if (logFile && logFile.availableForWrite()) {
     uint8_t buffer[CardTransaction_size];
     pb_ostream_t stream = pb_ostream_from_buffer(buffer, CardTransaction_size);

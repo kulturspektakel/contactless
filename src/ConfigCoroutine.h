@@ -9,6 +9,7 @@ using namespace ace_routine;
 class ConfigCoroutine : public Coroutine {
  private:
   void parseDate(char result[9], char* date);
+  File configFile;
 
  public:
   int runCoroutine() override;

@@ -43,6 +43,8 @@ void setup() {
   SPI.begin();
 
   // disable RFID
+  // pinMode(15, OUTPUT);
+  // digitalWrite(15, HIGH);
   if (!SD.begin(10)) {
     Log.errorln("No SD card");
   }

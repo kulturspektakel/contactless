@@ -9,8 +9,8 @@ int WiFiCoroutine::runCoroutine() {
   COROUTINE_LOOP() {
     Log.infoln("[WiFi] Connect to %s (%s)", WIFI_SSID, WIFI_PASSWORD);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    COROUTINE_AWAIT(false /*WiFi.status() == WL_CONNECTED ||
-                    WiFi.status() == WL_CONNECT_FAILED*/);
+    COROUTINE_AWAIT(WiFi.status() == WL_CONNECTED ||
+                    WiFi.status() == WL_CONNECT_FAILED);
     if (WiFi.status() == WL_CONNECTED) {
       Log.infoln("[WiFi] Connected");
     }
