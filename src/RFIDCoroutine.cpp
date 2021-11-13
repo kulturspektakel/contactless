@@ -30,9 +30,7 @@ int RFIDCoroutine::runCoroutine() {
     COROUTINE_YIELD();
 
     // Reset reader, so a new card can be read
-    mfrc522.PICC_HaltA();
-    mfrc522.PCD_StopCrypto1();
-    cardId[0] = '\0';
+    resetReader();
 
     COROUTINE_AWAIT(mfrc522.PICC_IsNewCardPresent() &&
                     mfrc522.PICC_ReadCardSerial());
@@ -183,4 +181,10 @@ boolean RFIDCoroutine::writeBalance(Balance balance) {
 
   calculateHash(writeData + 5, balance);
   return authenticateAndWrite(BLOCK_ADDRESS, writeData, &KEY_B);
+}
+
+void RFIDCoroutine::resetReader() {
+  mfrc522.PICC_HaltA();
+  mfrc522.PCD_StopCrypto1();
+  cardId[0] = '\0';
 }

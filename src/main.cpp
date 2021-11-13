@@ -1,10 +1,10 @@
-#define SPI_DRIVER_SELECT 1
+#define USE_SD_H 1
+
 #include <AceRoutine.h>
 #include <Arduino.h>
 #include <ArduinoLog.h>
 #include <ESP8266WiFi.h>
 #include <Hash.h>
-#include <SD.h>
 #include <SPI.h>
 #include "ChargeManualCoroutine.h"
 #include "ConfigCoroutine.h"
@@ -18,6 +18,11 @@
 #include "RFIDCoroutine.h"
 #include "TimeEntryCoroutine.h"
 #include "WiFiCoroutine.h"
+
+#define ENABLE_DEDICATED_SPI 0
+#define SPI_DRIVER_SELECT 1
+#define SD_FAT_TYPE 1
+#define SHARED_SPI 1
 
 WiFiCoroutine wiFiCoroutine;
 ConfigCoroutine configCoroutine;
@@ -41,25 +46,18 @@ void setup() {
   Serial.begin(9600);
   Log.begin(LOG_LEVEL_VERBOSE, &Serial);
   SPI.begin();
-
-  // disable RFID
-  // pinMode(15, OUTPUT);
-  // digitalWrite(15, HIGH);
-  if (!SD.begin(10)) {
-    Log.errorln("No SD card");
-  }
 }
 
 void loop() {
   keypadCoroutine.runCoroutine();
   wiFiCoroutine.runCoroutine();
   displayCoroutine.runCoroutine();
+  rFIDCoroutine.runCoroutine();
   configCoroutine.runCoroutine();  // after display
   mainCoroutine.runCoroutine();
   timeEntryCoroutine.runCoroutine();
   logCoroutine.runCoroutine();
   chargeManualCoroutine.runCoroutine();
-  rFIDCoroutine.runCoroutine();
   infoCoroutine.runCoroutine();
   modeChangerCoroutine.runCoroutine();
 }

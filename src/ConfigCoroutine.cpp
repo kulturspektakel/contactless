@@ -5,14 +5,13 @@
 #include <pb_decode.h>
 #include "DisplayCoroutine.h"
 #include "MainCoroutine.h"
+#include "RFIDCoroutine.h"
 #include "TimeEntryCoroutine.h"
-
-using namespace sdfat;
 
 extern TimeEntryCoroutine timeEntryCoroutine;
 extern MainCoroutine mainCoroutine;
 extern DisplayCoroutine displayCoroutine;
-extern SdFat sd;
+extern RFIDCoroutine rFIDCoroutine;
 extern char deviceID[9];
 extern char deviceToken[48];
 
@@ -21,7 +20,8 @@ static const char* configFileName = "_config.cfg";
 
 int ConfigCoroutine::runCoroutine() {
   COROUTINE_BEGIN();
-
+  rFIDCoroutine.resetReader();  // needed to free SPI
+  SD.begin(10);
   configFile = SD.open(configFileName, FILE_READ);
 
   if (configFile && configFile.available()) {
@@ -58,12 +58,13 @@ int ConfigCoroutine::runCoroutine() {
     uint8_t buffer[len];
     request.responseRead(buffer, len);
     pb_istream_t pbstream = pb_istream_from_buffer(buffer, len);
-
     pb_decode(&pbstream, DeviceConfig_fields, &config);
     Log.infoln("[Config] received: %s", config.name);
 
+    rFIDCoroutine.resetReader();  // needed to free SPI
     configFile = SD.open(configFileName, FILE_WRITE);
-    if (configFile.available()) {
+
+    if (configFile.availableForWrite()) {
       int written = configFile.write(buffer, len);
       Log.infoln("[Config] Written: %d", written);
       configFile.close();

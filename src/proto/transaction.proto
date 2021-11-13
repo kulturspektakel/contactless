@@ -5,12 +5,12 @@ message CardTransaction {
   string device_id = 1;
   string client_id = 2;
   TransactionType transaction_type = 3;
-  int32 device_time = 4;
+  uint32 device_time = 4;
   PaymentMethod payment_method = 5;
-  sint32 balanceBefore = 6;
-  sint32 balanceAfter = 7;
-  sint32 depositBefore = 8;
-  sint32 depositAfter = 9;
+  uint32 balanceBefore = 6;
+  uint32 balanceAfter = 7;
+  uint32 depositBefore = 8;
+  uint32 depositAfter = 9;
   string card_id = 10;
   optional int32 list_id = 11;
   repeated CartItem cart_items = 12;

@@ -17,6 +17,8 @@
     "vector": "cpp",
     "cstdarg": "cpp",
     "initializer_list": "cpp",
-    "typeinfo": "cpp"
+    "typeinfo": "cpp",
+    "string_view": "cpp",
+    "ranges": "cpp"
   }
 }

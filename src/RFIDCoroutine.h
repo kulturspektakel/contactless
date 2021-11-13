@@ -20,5 +20,6 @@ class RFIDCoroutine : public Coroutine {
  public:
   boolean isModeChanger;
   int runCoroutine() override;
+  void resetReader();
   char cardId[9] = "";
 };

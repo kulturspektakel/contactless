@@ -38,12 +38,12 @@ typedef struct _CardTransaction {
     char device_id[9]; 
     char client_id[9]; 
     CardTransaction_TransactionType transaction_type; 
-    int32_t device_time; 
+    uint32_t device_time; 
     CardTransaction_PaymentMethod payment_method; 
-    int32_t balanceBefore; 
-    int32_t balanceAfter; 
-    int32_t depositBefore; 
-    int32_t depositAfter; 
+    uint32_t balanceBefore; 
+    uint32_t balanceAfter; 
+    uint32_t depositBefore; 
+    uint32_t depositAfter; 
     char card_id[9]; 
     pb_size_t which__list_id;
     union {
@@ -97,12 +97,12 @@ extern "C" {
 X(a, STATIC,   SINGULAR, STRING,   device_id,         1) \
 X(a, STATIC,   SINGULAR, STRING,   client_id,         2) \
 X(a, STATIC,   SINGULAR, UENUM,    transaction_type,   3) \
-X(a, STATIC,   SINGULAR, INT32,    device_time,       4) \
+X(a, STATIC,   SINGULAR, UINT32,   device_time,       4) \
 X(a, STATIC,   SINGULAR, UENUM,    payment_method,    5) \
-X(a, STATIC,   SINGULAR, SINT32,   balanceBefore,     6) \
-X(a, STATIC,   SINGULAR, SINT32,   balanceAfter,      7) \
-X(a, STATIC,   SINGULAR, SINT32,   depositBefore,     8) \
-X(a, STATIC,   SINGULAR, SINT32,   depositAfter,      9) \
+X(a, STATIC,   SINGULAR, UINT32,   balanceBefore,     6) \
+X(a, STATIC,   SINGULAR, UINT32,   balanceAfter,      7) \
+X(a, STATIC,   SINGULAR, UINT32,   depositBefore,     8) \
+X(a, STATIC,   SINGULAR, UINT32,   depositAfter,      9) \
 X(a, STATIC,   SINGULAR, STRING,   card_id,          10) \
 X(a, STATIC,   ONEOF,    INT32,    (_list_id,list_id,_list_id.list_id),  11) \
 X(a, STATIC,   REPEATED, MESSAGE,  cart_items,       12) \
@@ -128,7 +128,7 @@ extern const pb_msgdesc_t CardTransaction_CartItem_msg;
 /* Maximum encoded size of messages (where known) */
 #if defined(Product_size)
 #define CardTransaction_CartItem_size            (17 + Product_size)
-#define CardTransaction_size                     (289 + 9*Product_size)
+#define CardTransaction_size                     (284 + 9*Product_size)
 #endif
 
 #ifdef __cplusplus
