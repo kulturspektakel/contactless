@@ -86,16 +86,18 @@ boolean LogCoroutine::isLogFile() {
 }
 
 void LogCoroutine::addProduct(int i) {
-  // for (int j = 0; j < transaction.cart_items_count; j++) {
-  //   Log.infoln("[Log] cmp %s %s", transaction.cart_items[j].product.name,
-  //              configCoroutine.config.products[i].name);
+  for (int j = 0; j < transaction.cart_items_count; j++) {
+    Log.infoln("[Log] cmp %s %s %d", transaction.cart_items[j].product.name,
+               configCoroutine.config.products[i].name,
+               strcmp(transaction.cart_items[j].product.name,
+                      configCoroutine.config.products[i].name));
 
-  //   if (strcmp(transaction.cart_items[j].product.name,
-  //              configCoroutine.config.products[i].name) == 0) {
-  //     transaction.cart_items[i].amount++;
-  //     return;
-  //   }
-  // }
+    if (strcmp(transaction.cart_items[j].product.name,
+               configCoroutine.config.products[i].name) == 0) {
+      transaction.cart_items[i].amount++;
+      return;
+    }
+  }
 
   // add to cart
   transaction.cart_items[transaction.cart_items_count].amount = 1;
@@ -124,10 +126,9 @@ void LogCoroutine::writeLog() {
   File logFile = SD.open(filename, FILE_WRITE);
   if (logFile && logFile.availableForWrite()) {
     uint8_t buffer[CardTransaction_size];
-    pb_ostream_t stream = pb_ostream_from_buffer(buffer, CardTransaction_size);
-    boolean a = pb_encode(&stream, CardTransaction_fields, &transaction);
-    Log.errorln("bool %d %s", a ? 1 : 0, stream.errmsg);
-    logFile.write(buffer, CardTransaction_size);
+    pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(transaction));
+    pb_encode(&stream, CardTransaction_fields, &transaction);
+    logFile.write(buffer, stream.bytes_written);
     Log.infoln("[Log] Written logfile %s", filename);
     logsToUpload++;
   } else {
