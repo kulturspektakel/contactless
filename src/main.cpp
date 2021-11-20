@@ -44,6 +44,7 @@ void setup() {
   snprintf(deviceToken, 48, "Bearer %s", sha1(String(deviceID) + SALT).c_str());
 
   Serial.begin(9600);
+  randomSeed(ESP.getCycleCount());
   Log.begin(LOG_LEVEL_VERBOSE, &Serial);
   SPI.begin();
 }

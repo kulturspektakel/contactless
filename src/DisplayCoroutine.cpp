@@ -202,6 +202,12 @@ void DisplayCoroutine::show(const char* line1,
   if (line2) {
     lcd.setCursor(0, 1);
     lcd.write(line2);
+  } else if (strlen(line1) > 16) {
+    // break first line into second line
+    lcd.setCursor(0, 1);
+    size_t offset = line1[16] == ' ' ? 17 : 16;  // remove leading space
+    lcd.write(&line1[offset],
+              strlen(line1) > (offset + 10) ? 10 : strlen(line1) - offset);
   }
 
   if (price2 != -1) {

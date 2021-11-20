@@ -23,7 +23,7 @@ int ChargeManualCoroutine::runCoroutine() {
       if (++count > 2) {
         mainCoroutine.mode =
             mainCoroutine.mode == CHARGE_MANUAL ? CHARGE_LIST : CHARGE_MANUAL;
-        mainCoroutine.reset();
+        mainCoroutine.resetBalance();
         count = 0;
       }
     } else {
@@ -32,8 +32,7 @@ int ChargeManualCoroutine::runCoroutine() {
           configCoroutine.config.products_count > 0) {
         // revert back to list mode
         mainCoroutine.mode = CHARGE_LIST;
-        mainCoroutine.reset();
-        //
+        mainCoroutine.resetBalance();
       }
       count = 0;
       lastKey = 0;

@@ -15,10 +15,11 @@ class RFIDCoroutine : public Coroutine {
                                MFRC522::MIFARE_Key* key);
   boolean readBalance();
   boolean writeBalance(Balance balance);
-  Balance cardValue;
 
  public:
   boolean isModeChanger;
+  Balance cardValueBefore;
+  Balance cardValueAfter;
   int runCoroutine() override;
   void resetReader();
   char cardId[9] = "";

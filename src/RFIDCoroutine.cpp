@@ -58,52 +58,58 @@ int RFIDCoroutine::runCoroutine() {
             mainCoroutine.balance.deposit != 0) {
           int i = mainCoroutine.mode == TOP_UP ? -1 : 1;
           // TODO: here might be bugs
-          cardValue.deposit += mainCoroutine.balance.deposit * i;
-          cardValue.total -= mainCoroutine.balance.total * i +
-                             mainCoroutine.balance.deposit * TOKEN_VALUE * i;
+          cardValueAfter.deposit += mainCoroutine.balance.deposit * i;
+          cardValueAfter.total -=
+              mainCoroutine.balance.total * i +
+              mainCoroutine.balance.deposit * TOKEN_VALUE * i;
 
-          if (cardValue.deposit < 0) {
+          if (cardValueAfter.deposit < 0) {
             displayCoroutine.show("Nicht genug", "Pfandmarken", -1, -1, 2000);
             break;
-          } else if (cardValue.total < 0) {
+          } else if (cardValueAfter.total < 0) {
             displayCoroutine.show("Nicht genug", "Guthaben", -1, -1, 2000);
             break;
-          } else if (cardValue.total > 9999 || cardValue.deposit > 9) {
+          } else if (cardValueAfter.total > 9999 ||
+                     cardValueAfter.deposit > 9) {
             displayCoroutine.show("Kartenlimit", "überschritten", -1, -1, 2000);
             break;
-          } else if (!writeBalance(cardValue)) {
+          } else if (!writeBalance(cardValueAfter)) {
             break;
           }
           logCoroutine.writeLog();
         }
         // show balance
         char deposit[16];
-        sprintf(deposit, "%d Pfandmarke%c", cardValue.deposit,
-                cardValue.deposit == 1 ? ' ' : 'n');
-        displayCoroutine.show("Guthaben", deposit, cardValue.total, -1, 2000);
+        sprintf(deposit, "%d Pfandmarke%c", cardValueAfter.deposit,
+                cardValueAfter.deposit == 1 ? ' ' : 'n');
+        displayCoroutine.show("Guthaben", deposit, cardValueAfter.total, -1,
+                              2000);
         mainCoroutine.resetBalance();
         break;
       case INITIALIZE_CARD:
         // TODO write keys
-        cardValue.deposit = 0;
-        cardValue.total = 0;
-        if (!writeBalance(cardValue)) {
+        cardValueAfter.deposit = 0;
+        cardValueAfter.total = 0;
+        if (!writeBalance(cardValueAfter)) {
           break;
         }
-        displayCoroutine.show("Auszahlen", nullptr, -1, -1, 3000);
+        displayCoroutine.show("Initialisierung", "OK", -1, -1, 2000);
         mainCoroutine.resetBalance();
         break;
       case CASH_OUT:
         if (!readBalance()) {
           break;
         }
-        int total = cardValue.total + cardValue.deposit * TOKEN_VALUE;
-        cardValue.deposit = 0;
-        cardValue.total = 0;
-        if (!writeBalance(cardValue)) {
+        cardValueAfter.deposit = 0;
+        cardValueAfter.total = 0;
+        if (!writeBalance(cardValueAfter)) {
           break;
         }
-        displayCoroutine.show("Auszahlen", nullptr, total, -1, 3000);
+        displayCoroutine.show(
+            "Auszahlen", nullptr,
+            cardValueBefore.total + cardValueBefore.deposit * TOKEN_VALUE, -1,
+            3000);
+        logCoroutine.writeLog();
         mainCoroutine.resetBalance();
         break;
     }
@@ -154,7 +160,8 @@ boolean RFIDCoroutine::readBalance() {
         return false;
       }
     }
-    cardValue = balance;
+    cardValueBefore = balance;
+    cardValueAfter = balance;
     return true;
   }
   return false;

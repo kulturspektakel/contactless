@@ -8,6 +8,7 @@
 #include "KeypadCoroutine.h"
 #include "LogCoroutine.h"
 #include "proto/product.pb.h"
+#include "proto/transaction.pb.h"
 
 extern DisplayCoroutine displayCoroutine;
 extern KeypadCoroutine keypadCoroutine;
@@ -80,7 +81,7 @@ int MainCoroutine::runCoroutine() {
 
 void MainCoroutine::resetBalance() {
   balance = {.deposit = 0, .total = 0};
-  // TODO reset cart
-  // logCoroutine.transaction = TransactionMessage_init_zero;
+  CardTransaction t = CardTransaction_init_zero;
+  logCoroutine.transaction = t;
   displayCoroutine.requiresUpdate = true;
 }

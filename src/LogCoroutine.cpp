@@ -1,6 +1,7 @@
 #include <ArduinoLog.h>
 #include <ConfigCoroutine.h>
 #include <LogCoroutine.h>
+#include <MainCoroutine.h>
 #include <RFIDCoroutine.h>
 #include <TimeLib.h>
 #include <pb_encode.h>
@@ -10,6 +11,7 @@ using namespace sdfat;
 
 extern ConfigCoroutine configCoroutine;
 extern RFIDCoroutine rFIDCoroutine;
+extern MainCoroutine mainCoroutine;
 extern char deviceID[9];
 extern char deviceToken[48];
 
@@ -57,7 +59,7 @@ int LogCoroutine::runCoroutine() {
         }
 
         file.read(data, len);
-        request.open("POST", "http://api.kulturspektakel.de:51180/$$$/log");
+        request.open("PUT", "http://api.kulturspektakel.de:51180/$$$/log");
         request.setReqHeader("x-ESP8266-STA-MAC", WiFi.macAddress().c_str());
         request.setReqHeader("Authorization", deviceToken);
         request.send(data, len);
@@ -65,9 +67,10 @@ int LogCoroutine::runCoroutine() {
         COROUTINE_AWAIT(request.readyState() == 4);
         Log.infoln("[Log] upload finished: %s HTTP %d", file.name(),
                    request.responseHTTPcode());
-        if (request.responseHTTPcode() == 200 ||
-            request.responseHTTPcode() == 201 ||
-            request.responseHTTPcode() == 400) {
+        if (request.responseHTTPcode() == 201     // Successfully created
+            || request.responseHTTPcode() == 400  // Invalid file
+            || request.responseHTTPcode() == 409  // Already uploaded
+        ) {
           rFIDCoroutine.resetReader();  // needed to free SPI
           SD.remove(file.name());
           logsToUpload--;
@@ -75,7 +78,6 @@ int LogCoroutine::runCoroutine() {
       }
     }
     dir.close();
-    logsToUpload = 0;
   }
   COROUTINE_END();
 }
@@ -108,12 +110,37 @@ void LogCoroutine::addProduct(int i) {
 }
 
 void LogCoroutine::writeLog() {
+  switch (mainCoroutine.mode) {
+    case CASH_OUT:
+      transaction.transaction_type = CardTransaction_TransactionType_CASHOUT;
+      break;
+    case CHARGE_LIST:
+    case CHARGE_MANUAL:
+      transaction.transaction_type = CardTransaction_TransactionType_CHARGE;
+      break;
+    case TOP_UP:
+      transaction.transaction_type = CardTransaction_TransactionType_TOP_UP;
+      break;
+    default: {
+      // other events are not logged
+      CardTransaction t = CardTransaction_init_zero;
+      transaction = t;
+      return;
+    }
+  }
   transaction.device_time = now();
   transaction.payment_method = CardTransaction_PaymentMethod_KULT_CARD;
+  strncpy(transaction.card_id, rFIDCoroutine.cardId, 9);
+  transaction.balanceBefore = rFIDCoroutine.cardValueBefore.total;
+  transaction.depositBefore = rFIDCoroutine.cardValueBefore.deposit;
+  transaction.balanceAfter = rFIDCoroutine.cardValueAfter.total;
+  transaction.depositAfter = rFIDCoroutine.cardValueAfter.deposit;
+
   strncpy(transaction.device_id, deviceID, 9);
 
   // generate client transaction ID
   for (size_t i = 0; i < sizeof(transaction.client_id) - 1; i++) {
+    // TODO Random not random
     transaction.client_id[i] = charset[rand() % (int)(sizeof(charset) - 1)];
   }
   transaction.client_id[sizeof(transaction.client_id) - 1] = '\0';
