@@ -59,7 +59,7 @@ int LogCoroutine::runCoroutine() {
         }
 
         file.read(data, len);
-        request.open("PUT", "http://api.kulturspektakel.de:51180/$$$/log");
+        request.open("POST", "http://api.kulturspektakel.de:51180/$$$/log");
         request.setReqHeader("x-ESP8266-STA-MAC", WiFi.macAddress().c_str());
         request.setReqHeader("Authorization", deviceToken);
         request.send(data, len);
@@ -89,11 +89,6 @@ boolean LogCoroutine::isLogFile() {
 
 void LogCoroutine::addProduct(int i) {
   for (int j = 0; j < transaction.cart_items_count; j++) {
-    Log.infoln("[Log] cmp %s %s %d", transaction.cart_items[j].product.name,
-               configCoroutine.config.products[i].name,
-               strcmp(transaction.cart_items[j].product.name,
-                      configCoroutine.config.products[i].name));
-
     if (strcmp(transaction.cart_items[j].product.name,
                configCoroutine.config.products[i].name) == 0) {
       transaction.cart_items[i].amount++;
@@ -135,6 +130,10 @@ void LogCoroutine::writeLog() {
   transaction.depositBefore = rFIDCoroutine.cardValueBefore.deposit;
   transaction.balanceAfter = rFIDCoroutine.cardValueAfter.total;
   transaction.depositAfter = rFIDCoroutine.cardValueAfter.deposit;
+  if (configCoroutine.config.list_id > 0) {
+    transaction._list_id.list_id = configCoroutine.config.list_id;
+    transaction.which__list_id = CardTransaction_list_id_tag;
+  }
 
   strncpy(transaction.device_id, deviceID, 9);
 

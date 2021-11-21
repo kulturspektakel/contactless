@@ -10,10 +10,11 @@ using namespace ace_routine;
 class DisplayCoroutine : public Coroutine {
  private:
   unsigned long messageUntil;
-  void asciinize(const char* str);
+  void asciinize(char* traget, const char* str);
 
  public:
   bool requiresUpdate = false;
+  bool initialized = false;
   int runCoroutine() override;
   void show(const char* line1,
             const char* line2 = nullptr,

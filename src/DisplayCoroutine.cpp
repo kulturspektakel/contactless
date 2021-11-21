@@ -112,6 +112,8 @@ int DisplayCoroutine::runCoroutine() {
   lcd.createChar(7, LOWER_CASE_SHARP_S);
   lcd.clear();
   Log.traceln("[Display] init");
+  initialized = true;
+  COROUTINE_YIELD();
 
   while (true) {
     if (messageUntil > millis()) {
@@ -172,8 +174,8 @@ int DisplayCoroutine::runCoroutine() {
   COROUTINE_END();
 }
 
-void DisplayCoroutine::show(const char* line1,
-                            const char* line2,
+void DisplayCoroutine::show(const char* _line1,
+                            const char* _line2,
                             int price1,
                             int price2,
                             int duration) {
@@ -181,13 +183,11 @@ void DisplayCoroutine::show(const char* line1,
     messageUntil = millis() + duration;
   }
   lcd.clear();
-  asciinize(line1);
-  if (line2) {
-    asciinize(line2);
-  }
+  char line1[strlen(_line1) + 1];
+  asciinize(line1, _line1);
   lcd.write(line1);
 
-  if (!line2 && price2 == -1 && strlen(line1) > 10) {
+  if (!_line2 && price2 == -1 && strlen(line1) > 10) {
     price2 = price1;
     price1 = -1;
   }
@@ -199,8 +199,10 @@ void DisplayCoroutine::show(const char* line1,
     lcd.write(price);
   }
 
-  if (line2) {
+  if (_line2) {
     lcd.setCursor(0, 1);
+    char line2[strlen(_line2) + 1];
+    asciinize(line2, _line2);
     lcd.write(line2);
   } else if (strlen(line1) > 16) {
     // break first line into second line
@@ -218,7 +220,7 @@ void DisplayCoroutine::show(const char* line1,
   }
 }
 
-void DisplayCoroutine::asciinize(const char* str) {
+void DisplayCoroutine::asciinize(char* traget, const char* str) {
   bool isUnicode = false;
   size_t j = 0;
   for (size_t i = 0; i < strlen(str); i++) {
@@ -228,56 +230,56 @@ void DisplayCoroutine::asciinize(const char* str) {
       continue;
     } else if (!isUnicode) {
       // regular character
-      ((char*)str)[j] = str[i];
+      ((char*)traget)[j] = str[i];
       j++;
       continue;
     }
 
     switch (str[i]) {
       case 0x84:  // Ä
-        ((char*)str)[j] = '\1';
+        ((char*)traget)[j] = '\1';
         break;
       case 0x96:  // Ö
-        ((char*)str)[j] = '\2';
+        ((char*)traget)[j] = '\2';
         break;
       case 0x9c:  // Ü
-        ((char*)str)[j] = '\3';
+        ((char*)traget)[j] = '\3';
         break;
       case 0xa4:  // ä
-        ((char*)str)[j] = '\4';
+        ((char*)traget)[j] = '\4';
         break;
       case 0xb6:  // ö
-        ((char*)str)[j] = '\5';
+        ((char*)traget)[j] = '\5';
         break;
       case 0xbc:  // ü
-        ((char*)str)[j] = '\6';
+        ((char*)traget)[j] = '\6';
         break;
       case 0x9f:  // ß
-        ((char*)str)[j] = '\7';
+        ((char*)traget)[j] = '\7';
         break;
       case 0xa2:  // â
       case 0xa1:  // á
       case 0xa0:  // à
-        ((char*)str)[j] = 'a';
+        ((char*)traget)[j] = 'a';
         break;
       case 0xaa:  // ê
       case 0xa9:  // é
       case 0xa8:  // è
-        ((char*)str)[j] = 'e';
+        ((char*)traget)[j] = 'e';
         break;
       case 0xb3:  // ó
       case 0xb2:  // ò
       case 0xb4:  // ô
-        ((char*)str)[j] = 'o';
+        ((char*)traget)[j] = 'o';
         break;
       case 0xbb:  // û
       case 0xba:  // ú
       case 0xb9:  // ù
-        ((char*)str)[j] = 'u';
+        ((char*)traget)[j] = 'u';
         break;
     }
     j++;
     isUnicode = false;
   }
-  ((char*)str)[j] = '\0';
+  ((char*)traget)[j] = '\0';
 }

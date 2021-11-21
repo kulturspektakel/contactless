@@ -22,7 +22,10 @@ int ConfigCoroutine::runCoroutine() {
   COROUTINE_BEGIN();
   rFIDCoroutine.resetReader();  // needed to free SPI
   SD.begin(10);
+  SD.remove(configFileName);
   configFile = SD.open(configFileName, FILE_READ);
+
+  COROUTINE_AWAIT(displayCoroutine.initialized);
 
   if (configFile && configFile.available()) {
     size_t len = configFile.size();
@@ -36,6 +39,7 @@ int ConfigCoroutine::runCoroutine() {
     displayCoroutine.show(deviceID, config.name, -1, -1, 2000);
   } else {
     Log.infoln("[Config] no stored config");
+    displayCoroutine.show(deviceID, nullptr, -1, -1, 2000);
   }
 
   COROUTINE_AWAIT(WiFi.status() == WL_CONNECTED);
@@ -73,7 +77,10 @@ int ConfigCoroutine::runCoroutine() {
     }
   } else if (request.responseHTTPcode() == 204) {
     // delete config
+    rFIDCoroutine.resetReader();  // needed to free SPI
     SD.remove(configFileName);
+    DeviceConfig emptyConfig = DeviceConfig_init_zero;
+    config = emptyConfig;
     Log.infoln("[Config] No config. Deleting file.");
   }
 

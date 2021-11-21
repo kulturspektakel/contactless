@@ -16,6 +16,7 @@
 #include "MainCoroutine.h"
 #include "ModeChangerCoroutine.h"
 #include "RFIDCoroutine.h"
+#include "SoftwareUpdateCoroutine.h"
 #include "TimeEntryCoroutine.h"
 #include "WiFiCoroutine.h"
 
@@ -35,6 +36,7 @@ ChargeManualCoroutine chargeManualCoroutine;
 RFIDCoroutine rFIDCoroutine;
 InfoCoroutine infoCoroutine;
 ModeChangerCoroutine modeChangerCoroutine;
+SoftwareUpdateCoroutine softwareUpdateCoroutine;
 
 char deviceID[9];
 char deviceToken[48];
@@ -43,9 +45,13 @@ void setup() {
   snprintf(deviceID, 9, WiFi.macAddress().substring(9).c_str());
   snprintf(deviceToken, 48, "Bearer %s", sha1(String(deviceID) + SALT).c_str());
 
-  Serial.begin(9600);
   randomSeed(ESP.getCycleCount());
+
+#ifndef DISABLE_LOGGING
+  Serial.begin(9600);
   Log.begin(LOG_LEVEL_VERBOSE, &Serial);
+#endif
+
   SPI.begin();
 }
 
@@ -54,11 +60,12 @@ void loop() {
   wiFiCoroutine.runCoroutine();
   displayCoroutine.runCoroutine();
   rFIDCoroutine.runCoroutine();
-  configCoroutine.runCoroutine();  // after display
+  configCoroutine.runCoroutine();
   mainCoroutine.runCoroutine();
   timeEntryCoroutine.runCoroutine();
   logCoroutine.runCoroutine();
   chargeManualCoroutine.runCoroutine();
   infoCoroutine.runCoroutine();
   modeChangerCoroutine.runCoroutine();
+  softwareUpdateCoroutine.runCoroutine();
 }
