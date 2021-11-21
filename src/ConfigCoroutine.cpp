@@ -22,7 +22,7 @@ int ConfigCoroutine::runCoroutine() {
   COROUTINE_BEGIN();
   rFIDCoroutine.resetReader();  // needed to free SPI
   SD.begin(10);
-  SD.remove(configFileName);
+  // SD.remove(configFileName);
   configFile = SD.open(configFileName, FILE_READ);
 
   COROUTINE_AWAIT(displayCoroutine.initialized);
@@ -87,6 +87,7 @@ int ConfigCoroutine::runCoroutine() {
   if (mainCoroutine.mode != TIME_ENTRY) {
     mainCoroutine.mode =
         config.products_count > 0 ? CHARGE_LIST : CHARGE_MANUAL;
+    displayCoroutine.requiresUpdate = true;
   }
 
   COROUTINE_END();
