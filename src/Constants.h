@@ -1,6 +1,7 @@
 #include <MFRC522.h>
 
 extern const int TOKEN_VALUE = 200;
+extern const int BUILD_NUMBER = ENV_BUILD_NUMBER;
 const int TIMEZONE_OFFSET_MINUTES = 120;
 const char* MODE_CHANGER = ENV_MODE_CHANGER;
 const char* SALT = ENV_SALT;

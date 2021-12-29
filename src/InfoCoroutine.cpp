@@ -10,6 +10,7 @@
 #include "WiFiCoroutine.h"
 
 extern const char* WIFI_SSID;
+extern const int BUILD_NUMBER;
 
 extern MainCoroutine mainCoroutine;
 extern KeypadCoroutine keypadCoroutine;
@@ -61,7 +62,11 @@ int InfoCoroutine::runCoroutine() {
       COROUTINE_DELAY(2000);
 
       // Screen 3: Software version
-      displayCoroutine.show("Software", "1.0.0", -1, -1, 2000);
+      char build[] = "debug";
+      if (BUILD_NUMBER > 0) {
+        itoa(BUILD_NUMBER, build, 10);
+      }
+      displayCoroutine.show("Software", build, -1, -1, 2000);
     } else {
       lastKey = 0;
     }
