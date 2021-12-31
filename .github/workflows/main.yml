@@ -28,6 +28,12 @@ jobs:
           pip install --upgrade platformio
       - name: Run PlatformIO
         run: pio run -e release
+        env:
+          WIFI_SSID: ${{ secrets.WIFI_SSID }}
+          WIFI_PASSWORD: ${{ secrets.WIFI_PASSWORD }}
+          KEY_B: ${{ secrets.KEY_B }}
+          MODE_CHANGER: ${{ secrets.MODE_CHANGER }}
+          SALT: ${{ secrets.SALT }}
       - name: Install SSH key
         uses: shimataro/ssh-key-action@v2
         with:
