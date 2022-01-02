@@ -40,6 +40,8 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           known_hosts: ${{ secrets.KNOWN_HOSTS }}
           if_key_exists: replace
-      - name: Upload binary
+      - name: Sign binary
+        run: python ~/.platformio/packages/framework-arduinoespressif8266/tools/signing.py --mode sign --privatekey ~/.ssh/id_rsa --bin .pio/build/release/firmware.bin --out .pio/build/release/firmware.signed.bin
+      - name: Upload signed binary
         run: |
-          scp .pio/build/release/firmware.bin kultursp@kulturspektakel.de:contactless-firmware/${{ github.run_number }}.bin
+          scp .pio/build/release/firmware.signed.bin kultursp@kulturspektakel.de:contactless-firmware/${{ github.run_number }}.bin
