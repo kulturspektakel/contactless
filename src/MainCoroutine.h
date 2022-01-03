@@ -12,7 +12,8 @@ enum Mode {
   CHARGE_LIST,
   TOP_UP,
   CASH_OUT,
-  INITIALIZE_CARD
+  INITIALIZE_CARD,
+  SOFTWARE_UPDATE,
 };
 
 struct Balance {

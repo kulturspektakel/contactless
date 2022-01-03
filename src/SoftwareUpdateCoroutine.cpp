@@ -1,23 +1,60 @@
 #include "SoftwareUpdateCoroutine.h"
 #include <ArduinoLog.h>
 #include <ESP8266httpUpdate.h>
+#include "DisplayCoroutine.h"
+#include "MainCoroutine.h"
 
 extern char deviceToken[48];
 extern const int BUILD_NUMBER;
+extern DisplayCoroutine displayCoroutine;
+extern MainCoroutine mainCoroutine;
+
 WiFiClient client;
+
+void update_started() {
+  Log.infoln("[SoftwareUpdate] HTTP update process started");
+  mainCoroutine.mode = SOFTWARE_UPDATE;
+  displayCoroutine.show("Software-Update", "verfügbar");
+}
+
+void update_finished() {
+  Log.infoln("[SoftwareUpdate] HTTP update process finished");
+  displayCoroutine.show("Software-Update", "erfolgreich");
+}
+
+void update_progress(int cur, int total) {
+  Log.infoln("[SoftwareUpdate] HTTP update process at %d of %d bytes...\n", cur,
+             total);
+  char progress[17];
+  sprintf(progress, "Download: %*i%%", 3, 100 * cur / total);
+  displayCoroutine.show("Software-Update", progress);
+}
+
+void update_error(int err) {
+  Log.infoln("[SoftwareUpdate] HTTP update fatal error code %d\n", err);
+  char error[17];
+  sprintf(error, "Fehler: %d", err);
+  displayCoroutine.show("Software-Update", error);
+}
 
 int SoftwareUpdateCoroutine::runCoroutine() {
   COROUTINE_BEGIN();
 
-  // if (BUILD_NUMBER == 0) {
-  //   // TODO: not updating debug builds
-  //   COROUTINE_END();
-  // }
+  if (BUILD_NUMBER == 0) {
+    Log.infoln("[SoftwareUpdate] Updates disabled in debug mode");
+    COROUTINE_END();
+  }
 
   COROUTINE_AWAIT(WiFi.status() == WL_CONNECTED);
 
   Log.infoln("[SoftwareUpdate] Check for updates");
   ESPhttpUpdate.setAuthorization(deviceToken);
+
+  ESPhttpUpdate.rebootOnUpdate(true);
+  ESPhttpUpdate.onStart(update_started);
+  ESPhttpUpdate.onProgress(update_progress);
+  ESPhttpUpdate.onError(update_error);
+  ESPhttpUpdate.onEnd(update_finished);
 
   t_httpUpdate_return ret =
       ESPhttpUpdate.update(client, "api.kulturspektakel.de", 51180,
