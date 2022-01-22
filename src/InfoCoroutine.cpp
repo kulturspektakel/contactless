@@ -23,7 +23,7 @@ extern char deviceID[9];
 int InfoCoroutine::runCoroutine() {
   COROUTINE_LOOP() {
     COROUTINE_AWAIT(mainCoroutine.mode != TIME_ENTRY &&
-                    keypadCoroutine.currentKey != '\0');
+                    keypadCoroutine.currentKey);
 
     if (keypadCoroutine.currentKey == '*') {
       lastKey = millis();
@@ -66,7 +66,7 @@ int InfoCoroutine::runCoroutine() {
       if (BUILD_NUMBER > 0) {
         itoa(BUILD_NUMBER, build, 10);
       }
-      displayCoroutine.show("Software", build, -1, -1, 2000);
+      displayCoroutine.show("Software", build, 2000);
     } else {
       lastKey = 0;
     }

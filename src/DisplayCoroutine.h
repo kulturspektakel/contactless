@@ -7,9 +7,12 @@
 
 using namespace ace_routine;
 
+#define NOT_SET -99999999
+
 class DisplayCoroutine : public Coroutine {
  private:
   unsigned long messageUntil;
+  bool keyClearsMessage = false;
   void asciinize(char* traget, const char* str);
 
  public:
@@ -18,7 +21,7 @@ class DisplayCoroutine : public Coroutine {
   int runCoroutine() override;
   void show(const char* line1,
             const char* line2 = nullptr,
-            int price1 = -1,
-            int price2 = -1,
-            int duration = -1);
+            int duration = NOT_SET,
+            int total = NOT_SET,
+            int deposit = NOT_SET);
 };

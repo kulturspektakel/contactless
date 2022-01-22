@@ -48,7 +48,7 @@ int TimeEntryCoroutine::runCoroutine() {
   setTime(hours, minutes,
           0,  // seconds
           day, month, year);
-  adjustTime(-utcOffsetMinutes * 60);
+
   Log.infoln("[TimeEntry] set time to  %d.%d.%d %d:%d", day, month, year, hours,
              minutes);
 
@@ -93,9 +93,9 @@ void TimeEntryCoroutine::dateFromHTTP(char* date) {
     tm.Month = 12;
   }
 
-  time_t unixtime = makeTime(tm) + utcOffsetMinutes * 60;
+  time_t unixtime = makeTime(tm);
+  deviceTimeIsUtc = true;
   breakTime(unixtime, tm);
   sprintf(value, "%02d%02d%02d%02d%02d", tm.Day, tm.Month, tm.Year - 30,
           tm.Hour, tm.Minute);
-  utcOffsetMinutes = 0;
 }

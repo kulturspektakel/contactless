@@ -36,10 +36,10 @@ int ConfigCoroutine::runCoroutine() {
     pb_istream_t stream = pb_istream_from_buffer(data, len);
     pb_decode(&stream, DeviceConfig_fields, &config);
     Log.infoln("[Config] loaded: %s", config.name);
-    displayCoroutine.show(deviceID, config.name, -1, -1, 2000);
+    displayCoroutine.show(deviceID, config.name, 2000);
   } else {
     Log.infoln("[Config] no stored config");
-    displayCoroutine.show(deviceID, nullptr, -1, -1, 2000);
+    displayCoroutine.show(deviceID, nullptr, 2000);
   }
 
   COROUTINE_AWAIT(WiFi.status() == WL_CONNECTED);

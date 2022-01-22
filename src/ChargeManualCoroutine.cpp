@@ -14,15 +14,20 @@ extern DisplayCoroutine displayCoroutine;
 int ChargeManualCoroutine::runCoroutine() {
   COROUTINE_LOOP() {
     COROUTINE_AWAIT((mainCoroutine.mode == CHARGE_MANUAL ||
-                     mainCoroutine.mode == CHARGE_LIST) &&
-                    keypadCoroutine.currentKey != '\0');
+                     mainCoroutine.mode == CHARGE_LIST ||
+                     mainCoroutine.mode == TOP_UP) &&
+                    keypadCoroutine.currentKey);
 
     if (keypadCoroutine.currentKey == '#' &&
         (lastKey == 0 || (millis() - lastKey) < 700)) {
       lastKey = millis();
       if (++count > 2) {
-        mainCoroutine.mode =
-            mainCoroutine.mode == CHARGE_MANUAL ? CHARGE_LIST : CHARGE_MANUAL;
+        if (mainCoroutine.mode == TOP_UP) {
+          mainCoroutine.mode = INITIALIZE_CARD;
+        } else {
+          mainCoroutine.mode =
+              mainCoroutine.mode == CHARGE_MANUAL ? CHARGE_LIST : CHARGE_MANUAL;
+        }
         mainCoroutine.resetBalance();
         count = 0;
       }

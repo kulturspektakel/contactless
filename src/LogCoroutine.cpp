@@ -3,6 +3,7 @@
 #include <LogCoroutine.h>
 #include <MainCoroutine.h>
 #include <RFIDCoroutine.h>
+#include <TimeEntryCoroutine.h>
 #include <TimeLib.h>
 #include <pb_encode.h>
 #include "proto/product.pb.h"
@@ -12,6 +13,7 @@ using namespace sdfat;
 extern ConfigCoroutine configCoroutine;
 extern RFIDCoroutine rFIDCoroutine;
 extern MainCoroutine mainCoroutine;
+extern TimeEntryCoroutine timeEntryCoroutine;
 extern char deviceID[9];
 extern char deviceToken[48];
 
@@ -124,6 +126,7 @@ void LogCoroutine::writeLog() {
     }
   }
   transaction.device_time = now();
+  transaction.device_time_is_utc = timeEntryCoroutine.deviceTimeIsUtc;
   transaction.payment_method = CardTransaction_PaymentMethod_KULT_CARD;
   strncpy(transaction.card_id, rFIDCoroutine.cardId, 9);
   transaction.balanceBefore = rFIDCoroutine.cardValueBefore.total;

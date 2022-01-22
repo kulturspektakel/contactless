@@ -50,7 +50,7 @@ int RFIDCoroutine::runCoroutine() {
     switch (mainCoroutine.mode) {
       case CHARGE_MANUAL:
       case CHARGE_LIST:
-      case TOP_UP:
+      case TOP_UP: {
         if (!readBalance()) {
           break;
         }
@@ -64,14 +64,14 @@ int RFIDCoroutine::runCoroutine() {
               mainCoroutine.balance.deposit * TOKEN_VALUE * i;
 
           if (cardValueAfter.deposit < 0) {
-            displayCoroutine.show("Nicht genug", "Pfandmarken", -1, -1, 2000);
+            displayCoroutine.show("Nicht genug", "Pfandmarken", 2000);
             break;
           } else if (cardValueAfter.total < 0) {
-            displayCoroutine.show("Nicht genug", "Guthaben", -1, -1, 2000);
+            displayCoroutine.show("Nicht genug", "Guthaben", 2000);
             break;
           } else if (cardValueAfter.total > 9999 ||
                      cardValueAfter.deposit > 9) {
-            displayCoroutine.show("Kartenlimit", "überschritten", -1, -1, 2000);
+            displayCoroutine.show("Kartenlimit", "überschritten", 2000);
             break;
           } else if (!writeBalance(cardValueAfter)) {
             break;
@@ -82,21 +82,54 @@ int RFIDCoroutine::runCoroutine() {
         char deposit[16];
         sprintf(deposit, "%d Pfandmarke%c", cardValueAfter.deposit,
                 cardValueAfter.deposit == 1 ? ' ' : 'n');
-        displayCoroutine.show("Guthaben", deposit, cardValueAfter.total, -1,
-                              2000);
+        displayCoroutine.show("Guthaben", deposit, 2000, cardValueAfter.total);
         mainCoroutine.resetBalance();
         break;
-      case INITIALIZE_CARD:
-        // TODO write keys
+      }
+      case INITIALIZE_CARD: {
+        unsigned char writeData[6][16] = {
+            // clang-format off
+            {0x14, 0x01, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1},  // 1: NDEF message
+            {0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1},  // 2: NDEF message
+            {},                                                                                                // 3: access
+            {0x00, 0x00, 0x03, 0x2B, 0xD1, 0x01, 0x27, 0x55, 0x04, 0x6B, 0x75, 0x6C, 0x74, 0x2E, 0x63, 0x61},  // 4: kult.ca
+            {0x73, 0x68, 0x2F, 0x24, 0x24, 0x24, 0x2F, cardId[0], cardId[1], cardId[2], cardId[3], cardId[4], cardId[5], cardId[6], cardId[7], 0x2F},  // 5: sh/$$$/________/
+            {0x30, 0x30, 0x30, 0x30, 0x30, 0x5F, 0x5F, 0x5F, 0x5F, 0x5F, 0x5F, 0x5F, 0x5F, 0x5F, 0x5F, 0xFE},  // 6: 00000__________
+            // clang-format on
+        };
+
+        memcpy(&writeData[2][0], KEY_A1.keyByte, sizeof(KEY_A1.keyByte));
+        memcpy(&writeData[2][6], ACCESS_BITS, sizeof(ACCESS_BITS));
+        memcpy(&writeData[2][10], KEY_B.keyByte, sizeof(KEY_B.keyByte));
+        calculateHash(writeData[5] + 5, {.deposit = 0, .total = 0});
+
+        // initialize card
+        for (int i = 0; i < 6; i++) {
+          if (!authenticateAndWrite(i + 1, writeData[i], &KEY_INIT)) {
+            break;
+          }
+        }
+
+        // lock all blocks
+        unsigned char trailer[16];
+        memcpy(&trailer[0], KEY_A2.keyByte, sizeof(KEY_A2.keyByte));
+        memcpy(&trailer[6], ACCESS_BITS, sizeof(ACCESS_BITS));
+        memcpy(&trailer[10], KEY_B.keyByte, sizeof(KEY_B.keyByte));
+        for (int i = 7; i < 64; i += 4) {
+          if (!authenticateAndWrite(i, trailer, &KEY_INIT)) {
+            break;
+          }
+        }
         cardValueAfter.deposit = 0;
         cardValueAfter.total = 0;
         if (!writeBalance(cardValueAfter)) {
           break;
         }
-        displayCoroutine.show("Initialisierung", "OK", -1, -1, 2000);
+        displayCoroutine.show("Initialisierung", "OK", 2000);
         mainCoroutine.resetBalance();
         break;
-      case CASH_OUT:
+      }
+      case CASH_OUT: {
         if (!readBalance()) {
           break;
         }
@@ -105,13 +138,12 @@ int RFIDCoroutine::runCoroutine() {
         if (!writeBalance(cardValueAfter)) {
           break;
         }
-        displayCoroutine.show(
-            "Auszahlen", nullptr,
-            cardValueBefore.total + cardValueBefore.deposit * TOKEN_VALUE, -1,
-            3000);
+        displayCoroutine.show("Auszahlen", nullptr, 3000,
+                              cardValueBefore.total + cardValueBefore.deposit);
         logCoroutine.writeLog();
         mainCoroutine.resetBalance();
         break;
+      }
     }
   }
 
@@ -127,7 +159,7 @@ boolean RFIDCoroutine::authenticateAndWrite(int block,
     return mfrc522.MIFARE_Write(block, writeData, 16) == MFRC522::STATUS_OK;
   }
   Log.errorln("[RFID] Card not writable");
-  displayCoroutine.show("Karte nicht", "schreibbar", -1, -1, 2000);
+  displayCoroutine.show("Karte nicht", "schreibbar", 2000);
   return false;
 }
 
@@ -141,7 +173,7 @@ boolean RFIDCoroutine::authenticateAndRead(int block,
     return mfrc522.MIFARE_Read(block, target, &size) == MFRC522::STATUS_OK;
   }
   Log.errorln("[RFID] Card not readable");
-  displayCoroutine.show("Karte nicht", "lesbar", -1, -1, 2000);
+  displayCoroutine.show("Karte nicht", "lesbar", 2000);
   return false;
 }
 

@@ -1,5 +1,6 @@
 #include "DisplayCoroutine.h"
 #include <ArduinoLog.h>
+#include "KeypadCoroutine.h"
 #include "MainCoroutine.h"
 #include "TimeEntryCoroutine.h"
 
@@ -98,6 +99,7 @@ static byte LOWER_CASE_SHARP_S[8] = {
 
 extern MainCoroutine mainCoroutine;
 extern TimeEntryCoroutine timeEntryCoroutine;
+extern KeypadCoroutine keypadCoroutine;
 static hd44780_I2Cexp lcd(0x27);
 
 int DisplayCoroutine::runCoroutine() {
@@ -151,20 +153,22 @@ int DisplayCoroutine::runCoroutine() {
         show("Datum/Uhrzeit?", line1);
         break;
       case CHARGE_MANUAL:
-        show("Manuell", "Pfand", mainCoroutine.balance.total,
-             mainCoroutine.balance.deposit * TOKEN_VALUE);
+        show("Manuell", "Pfand", -1, mainCoroutine.balance.total,
+             mainCoroutine.balance.deposit);
         break;
       case CHARGE_LIST:
-        show("Preis", "Pfand", mainCoroutine.balance.total,
-             mainCoroutine.balance.deposit * TOKEN_VALUE);
+        show("Preis", "Pfand", -1, mainCoroutine.balance.total,
+             mainCoroutine.balance.deposit);
         break;
       case TOP_UP:
-        show("Aufladen", "Pfand", mainCoroutine.balance.total,
-             mainCoroutine.balance.deposit * TOKEN_VALUE);
+        show("Aufladen", "Pfand", -1, mainCoroutine.balance.total,
+             mainCoroutine.balance.deposit);
         break;
       case CASH_OUT:
         show("Karte auszahlen?");
         break;
+      case INITIALIZE_CARD:
+        show("Karte", "initialisieren");
       default:
         show("Home");
         break;
@@ -174,112 +178,146 @@ int DisplayCoroutine::runCoroutine() {
   COROUTINE_END();
 }
 
-void DisplayCoroutine::show(const char* _line1,
-                            const char* _line2,
-                            int price1,
-                            int price2,
-                            int duration) {
-  if (duration > 0) {
-    messageUntil = millis() + duration;
+void DisplayCoroutine::show(
+    const char* _line1,
+    const char* _line2,
+    int duration,  // negative duration means clearable but keypress
+    int total,
+    int deposit) {
+  Log.traceln("[Display] >%s< >%s< %d", _line1, _line2, duration);
+  if (duration != NOT_SET) {
+    keyClearsMessage = duration < 0;
+    messageUntil =
+        millis() + duration;  //(duration > 0 ? duration : duration * -1);
   }
   lcd.clear();
   char line1[strlen(_line1) + 1];
   asciinize(line1, _line1);
   lcd.write(line1);
 
-  if (!_line2 && price2 == -1 && strlen(line1) > 10) {
-    price2 = price1;
-    price1 = -1;
-  }
+  char line2[17];
+  bool totalSecondLine = false;
 
-  if (price1 != -1) {
+  if (total != NOT_SET) {
+    /*
+    ┌────────────────┐
+    │Helles      3.50│
+    │                │
+    └────────────────┘
+    ┌────────────────┐
+    │Zitronenlimo    │
+    │            3.00│
+    └────────────────┘
+    */
     char price[6];
-    snprintf(price, 6, "%5.2f", ((double)price1) / 100);
-    lcd.setCursor(11, 0);
+    snprintf(price, 6, "%5.2f", ((double)total) / 100);
+    totalSecondLine = !_line2 && deposit == NOT_SET && strlen(line1) > 10;
+    lcd.setCursor(11, totalSecondLine ? 1 : 0);
     lcd.write(price);
   }
 
-  if (_line2) {
-    lcd.setCursor(0, 1);
-    char line2[strlen(_line2) + 1];
-    asciinize(line2, _line2);
-    lcd.write(line2);
-  } else if (strlen(line1) > 16) {
-    // break first line into second line
-    lcd.setCursor(0, 1);
+  if (!_line2 && deposit == NOT_SET && strlen(_line1) > 16) {
+    /*
+    ┌────────────────┐
+    │Süßkartoffel mit│
+    │Avocado     3.50│
+    └────────────────┘
+    */
     size_t offset = line1[16] == ' ' ? 17 : 16;  // remove leading space
-    lcd.write(&line1[offset],
-              strlen(line1) > (offset + 10) ? 10 : strlen(line1) - offset);
+    strncpy(line2, &_line1[offset], 16);
+  } else if (_line2 && deposit == NOT_SET) {
+    /*
+    ┌────────────────┐
+    │Software-Update │
+    │erfolgreich     │
+    └────────────────┘
+    */
+    asciinize(line2, _line2);
+    Serial.println(line2);
+  } else if (deposit != NOT_SET) {
+    /*
+    ┌────────────────┐
+    │Guthaben   10.00│
+    │9 Pfandmarken   │
+    └────────────────┘
+    */
+    if (deposit < 0) {
+      snprintf(line2, 17, "%d Pfandr\6ckgabe", deposit * -1);
+    } else if (deposit == 1) {
+      snprintf(line2, 17, "%d Pfandmarke", deposit);
+    } else {
+      snprintf(line2, 17, "%d Pfandmarken", deposit);
+    }
   }
 
-  if (price2 != -1) {
-    char price[6];
-    snprintf(price, 7, "%6.2f", ((double)price2) / 100);
-    lcd.setCursor(10, 1);
-    lcd.write(price);
+  for (int i = strlen(line2); i < 16; i++) {
+    line2[i] = ' ';  // fill up with spaces
   }
+
+  lcd.setCursor(0, 1);
+  lcd.write(line2, totalSecondLine ? 10 : 16);
 }
 
-void DisplayCoroutine::asciinize(char* traget, const char* str) {
+void DisplayCoroutine::asciinize(char* target, const char* str) {
   bool isUnicode = false;
   size_t j = 0;
-  for (size_t i = 0; i < strlen(str); i++) {
+  for (size_t i = 0; i < strlen(str) && i < 16; i++) {
     if (str[i] == 0xc3) {
       // unicode character first byte
       isUnicode = true;
       continue;
     } else if (!isUnicode) {
       // regular character
-      ((char*)traget)[j] = str[i];
+      ((char*)target)[j] = str[i];
       j++;
       continue;
     }
 
     switch (str[i]) {
       case 0x84:  // Ä
-        ((char*)traget)[j] = '\1';
+        ((char*)target)[j] = '\1';
         break;
       case 0x96:  // Ö
-        ((char*)traget)[j] = '\2';
+        ((char*)target)[j] = '\2';
         break;
       case 0x9c:  // Ü
-        ((char*)traget)[j] = '\3';
+        ((char*)target)[j] = '\3';
         break;
       case 0xa4:  // ä
-        ((char*)traget)[j] = '\4';
+        ((char*)target)[j] = '\4';
         break;
       case 0xb6:  // ö
-        ((char*)traget)[j] = '\5';
+        ((char*)target)[j] = '\5';
         break;
       case 0xbc:  // ü
-        ((char*)traget)[j] = '\6';
+        ((char*)target)[j] = '\6';
         break;
       case 0x9f:  // ß
-        ((char*)traget)[j] = '\7';
+        ((char*)target)[j] = '\7';
         break;
       case 0xa2:  // â
       case 0xa1:  // á
       case 0xa0:  // à
-        ((char*)traget)[j] = 'a';
+        ((char*)target)[j] = 'a';
         break;
       case 0xaa:  // ê
       case 0xa9:  // é
       case 0xa8:  // è
-        ((char*)traget)[j] = 'e';
+        ((char*)target)[j] = 'e';
         break;
       case 0xb3:  // ó
       case 0xb2:  // ò
       case 0xb4:  // ô
-        ((char*)traget)[j] = 'o';
+        ((char*)target)[j] = 'o';
         break;
       case 0xbb:  // û
       case 0xba:  // ú
       case 0xb9:  // ù
-        ((char*)traget)[j] = 'u';
+        ((char*)target)[j] = 'u';
         break;
     }
     j++;
     isUnicode = false;
   }
-  ((char*)traget)[j] = '\0';
+  ((char*)target)[j] = '\0';
 }
