@@ -21,7 +21,7 @@ class DisplayCoroutine : public Coroutine {
   int runCoroutine() override;
   void show(const char* line1,
             const char* line2 = nullptr,
-            int duration = NOT_SET,
+            int duration = 0,
             int total = NOT_SET,
             int deposit = NOT_SET);
 };

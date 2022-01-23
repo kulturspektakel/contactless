@@ -56,12 +56,11 @@ int RFIDCoroutine::runCoroutine() {
         }
         if (mainCoroutine.balance.total != 0 ||
             mainCoroutine.balance.deposit != 0) {
-          int i = mainCoroutine.mode == TOP_UP ? -1 : 1;
           // TODO: here might be bugs
-          cardValueAfter.deposit += mainCoroutine.balance.deposit * i;
-          cardValueAfter.total -=
-              mainCoroutine.balance.total * i +
-              mainCoroutine.balance.deposit * TOKEN_VALUE * i;
+          cardValueAfter.deposit += mainCoroutine.balance.deposit;
+          cardValueAfter.total +=
+              mainCoroutine.balance.total * (TOP_UP ? -1 : 1) +
+              mainCoroutine.balance.deposit * TOKEN_VALUE;
 
           if (cardValueAfter.deposit < 0) {
             displayCoroutine.show("Nicht genug", "Pfandmarken", 2000);

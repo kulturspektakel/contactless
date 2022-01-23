@@ -62,7 +62,7 @@ int MainCoroutine::runCoroutine() {
       balance.total += configCoroutine.config.products[index].price;
       logCoroutine.addProduct(index);
       displayCoroutine.show(configCoroutine.config.products[index].name,
-                            nullptr, -5000,
+                            nullptr, -2000,
                             configCoroutine.config.products[index].price);
     } else if (keypadCoroutine.currentKey == 'D' && mode == TOP_UP) {
       mode = CASH_OUT;

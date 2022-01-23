@@ -115,22 +115,24 @@ int DisplayCoroutine::runCoroutine() {
   lcd.clear();
   Log.traceln("[Display] init");
   initialized = true;
-  COROUTINE_YIELD();
 
   while (true) {
-    if (messageUntil > millis()) {
+    COROUTINE_YIELD();
+    if (messageUntil > 0) {
       // displaying message
-      COROUTINE_YIELD();
+      if (
+          // message expires
+          messageUntil < millis() ||
+          // clearable message + key press
+          (keypadCoroutine.currentKey && keyClearsMessage)) {
+        // clear message
+        requiresUpdate = true;
+        messageUntil = 0;
+      }
       continue;
     }
 
-    if (messageUntil > 0 && messageUntil < millis()) {
-      requiresUpdate = true;
-      messageUntil = 0;
-    }
-
     if (!requiresUpdate) {
-      COROUTINE_YIELD();
       continue;
     }
 
@@ -153,15 +155,15 @@ int DisplayCoroutine::runCoroutine() {
         show("Datum/Uhrzeit?", line1);
         break;
       case CHARGE_MANUAL:
-        show("Manuell", "Pfand", -1, mainCoroutine.balance.total,
+        show("Manuell", "Pfand", 0, mainCoroutine.balance.total,
              mainCoroutine.balance.deposit);
         break;
       case CHARGE_LIST:
-        show("Preis", "Pfand", -1, mainCoroutine.balance.total,
+        show("Preis", "Pfand", 0, mainCoroutine.balance.total,
              mainCoroutine.balance.deposit);
         break;
       case TOP_UP:
-        show("Aufladen", "Pfand", -1, mainCoroutine.balance.total,
+        show("Aufladen", "Pfand", 0, mainCoroutine.balance.total,
              mainCoroutine.balance.deposit);
         break;
       case CASH_OUT:
@@ -169,6 +171,7 @@ int DisplayCoroutine::runCoroutine() {
         break;
       case INITIALIZE_CARD:
         show("Karte", "initialisieren");
+        break;
       default:
         show("Home");
         break;
@@ -184,18 +187,16 @@ void DisplayCoroutine::show(
     int duration,  // negative duration means clearable but keypress
     int total,
     int deposit) {
-  Log.traceln("[Display] >%s< >%s< %d", _line1, _line2, duration);
-  if (duration != NOT_SET) {
+  if (duration != 0) {
     keyClearsMessage = duration < 0;
-    messageUntil =
-        millis() + duration;  //(duration > 0 ? duration : duration * -1);
+    messageUntil = millis() + (duration > 0 ? duration : duration * -1);
   }
   lcd.clear();
   char line1[strlen(_line1) + 1];
   asciinize(line1, _line1);
   lcd.write(line1);
 
-  char line2[17];
+  char line2[17] = "";
   bool totalSecondLine = false;
 
   if (total != NOT_SET) {
@@ -233,7 +234,6 @@ void DisplayCoroutine::show(
     └────────────────┘
     */
     asciinize(line2, _line2);
-    Serial.println(line2);
   } else if (deposit != NOT_SET) {
     /*
     ┌────────────────┐
