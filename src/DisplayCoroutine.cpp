@@ -155,16 +155,18 @@ int DisplayCoroutine::runCoroutine() {
         show("Datum/Uhrzeit?", line1);
         break;
       case CHARGE_MANUAL:
-        show("Manuell", "Pfand", 0, mainCoroutine.balance.total,
-             mainCoroutine.balance.deposit);
+        show("Manuell",
+             mainCoroutine.balance.deposit < 0 ? "R\6ckgabe" : "Pfand",
+             mainCoroutine.balance.total, mainCoroutine.balance.deposit);
         break;
       case CHARGE_LIST:
-        show("Preis", "Pfand", 0, mainCoroutine.balance.total,
-             mainCoroutine.balance.deposit);
+        show("Preis", mainCoroutine.balance.deposit < 0 ? "R\6ckgabe" : "Pfand",
+             0, mainCoroutine.balance.total, mainCoroutine.balance.deposit);
         break;
       case TOP_UP:
-        show("Aufladen", "Pfand", 0, mainCoroutine.balance.total,
-             mainCoroutine.balance.deposit);
+        show("Aufladen",
+             mainCoroutine.balance.deposit > 0 ? "Pfand" : "R\6ckgabe", 0,
+             mainCoroutine.balance.total, -mainCoroutine.balance.deposit);
         break;
       case CASH_OUT:
         show("Karte auszahlen?");
@@ -238,16 +240,16 @@ void DisplayCoroutine::show(
     /*
     ┌────────────────┐
     │Guthaben   10.00│
-    │9 Pfandmarken   │
+    │1 Rückgabe -2.00│
     └────────────────┘
     */
-    if (deposit < 0) {
-      snprintf(line2, 17, "%d Pfandr\6ckgabe", deposit * -1);
-    } else if (deposit == 1) {
-      snprintf(line2, 17, "%d Pfandmarke", deposit);
-    } else {
-      snprintf(line2, 17, "%d Pfandmarken", deposit);
-    }
+
+    char price[7];
+    snprintf(price, 7, "%.2f", ((double)deposit * TOKEN_VALUE) / 100);
+    size_t remaining = 16 - 2 - strlen(price);
+    size_t fill = strlen(_line2) > remaining ? 0 : remaining - strlen(_line2);
+    snprintf(line2, 17, "%.1d %.*s%*s%s", deposit < 0 ? deposit * -1 : deposit,
+             remaining, _line2, fill, "", price);
   }
 
   for (int i = strlen(line2); i < 16; i++) {

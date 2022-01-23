@@ -32,13 +32,19 @@ int MainCoroutine::runCoroutine() {
     bool isDigit =
         keypadCoroutine.currentKey >= '0' && keypadCoroutine.currentKey <= '9';
 
-    if (keypadCoroutine.currentKey == 'D') {
+    if (keypadCoroutine.currentKey == 'D' && mode == TOP_UP && !balance) {
+      mode = CASH_OUT;
+    } else if (keypadCoroutine.currentKey == 'D' && mode != CASH_OUT) {
       // reset
       resetBalance();
-    } else if (keypadCoroutine.currentKey == 'A' && balance.deposit < 9) {
+    } else if (((keypadCoroutine.currentKey == 'A' && mode != TOP_UP) ||
+                (keypadCoroutine.currentKey == 'B' && mode == TOP_UP)) &&
+               balance.deposit < 9) {
       // increase token
       balance.deposit++;
-    } else if (keypadCoroutine.currentKey == 'B' && balance.deposit > -9) {
+    } else if (((keypadCoroutine.currentKey == 'A' && mode == TOP_UP) ||
+                (keypadCoroutine.currentKey == 'B' && mode != TOP_UP)) &&
+               balance.deposit > -9) {
       // reduce deposit
       balance.deposit--;
     } else if (keypadCoroutine.currentKey == 'C' &&
@@ -64,8 +70,6 @@ int MainCoroutine::runCoroutine() {
       displayCoroutine.show(configCoroutine.config.products[index].name,
                             nullptr, -2000,
                             configCoroutine.config.products[index].price);
-    } else if (keypadCoroutine.currentKey == 'D' && mode == TOP_UP) {
-      mode = CASH_OUT;
     } else if (mode == CASH_OUT) {
       mode = TOP_UP;
     } else {
@@ -80,7 +84,7 @@ int MainCoroutine::runCoroutine() {
 }
 
 void MainCoroutine::resetBalance() {
-  balance = {.deposit = 0, .total = 0};
+  balance.reset();
   CardTransaction t = CardTransaction_init_zero;
   logCoroutine.transaction = t;
   displayCoroutine.requiresUpdate = true;

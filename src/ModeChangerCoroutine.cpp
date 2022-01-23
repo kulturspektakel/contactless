@@ -22,6 +22,7 @@ int ModeChangerCoroutine::runCoroutine() {
     } else {
       mainCoroutine.mode = TOP_UP;
     }
+    mainCoroutine.balance.reset();
     displayCoroutine.requiresUpdate = true;
     lastModeChange = millis();
   }

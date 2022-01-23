@@ -54,8 +54,7 @@ int RFIDCoroutine::runCoroutine() {
         if (!readBalance()) {
           break;
         }
-        if (mainCoroutine.balance.total != 0 ||
-            mainCoroutine.balance.deposit != 0) {
+        if (mainCoroutine.balance) {
           // TODO: here might be bugs
           cardValueAfter.deposit += mainCoroutine.balance.deposit;
           cardValueAfter.total +=
@@ -100,7 +99,7 @@ int RFIDCoroutine::runCoroutine() {
         memcpy(&writeData[2][0], KEY_A1.keyByte, sizeof(KEY_A1.keyByte));
         memcpy(&writeData[2][6], ACCESS_BITS, sizeof(ACCESS_BITS));
         memcpy(&writeData[2][10], KEY_B.keyByte, sizeof(KEY_B.keyByte));
-        calculateHash(writeData[5] + 5, {.deposit = 0, .total = 0});
+        calculateHash(writeData[5] + 5, Balance_default);
 
         // initialize card
         for (int i = 0; i < 6; i++) {
