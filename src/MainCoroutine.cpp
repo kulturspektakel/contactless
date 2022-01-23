@@ -34,17 +34,14 @@ int MainCoroutine::runCoroutine() {
 
     if (keypadCoroutine.currentKey == 'D' && mode == TOP_UP && !balance) {
       mode = CASH_OUT;
-    } else if (keypadCoroutine.currentKey == 'D' && mode != CASH_OUT) {
+    } else if (keypadCoroutine.currentKey == 'D' && mode != CASH_OUT &&
+               balance) {
       // reset
       resetBalance();
-    } else if (((keypadCoroutine.currentKey == 'A' && mode != TOP_UP) ||
-                (keypadCoroutine.currentKey == 'B' && mode == TOP_UP)) &&
-               balance.deposit < 9) {
+    } else if (keypadCoroutine.currentKey == 'A' && balance.deposit < 9) {
       // increase token
       balance.deposit++;
-    } else if (((keypadCoroutine.currentKey == 'A' && mode == TOP_UP) ||
-                (keypadCoroutine.currentKey == 'B' && mode != TOP_UP)) &&
-               balance.deposit > -9) {
+    } else if (keypadCoroutine.currentKey == 'B' && balance.deposit > -9) {
       // reduce deposit
       balance.deposit--;
     } else if (keypadCoroutine.currentKey == 'C' &&

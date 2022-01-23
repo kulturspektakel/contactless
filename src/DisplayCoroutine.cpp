@@ -155,18 +155,15 @@ int DisplayCoroutine::runCoroutine() {
         show("Datum/Uhrzeit?", line1);
         break;
       case CHARGE_MANUAL:
-        show("Manuell",
-             mainCoroutine.balance.deposit < 0 ? "R\6ckgabe" : "Pfand",
-             mainCoroutine.balance.total, mainCoroutine.balance.deposit);
-        break;
       case CHARGE_LIST:
-        show("Preis", mainCoroutine.balance.deposit < 0 ? "R\6ckgabe" : "Pfand",
-             0, mainCoroutine.balance.total, mainCoroutine.balance.deposit);
+        show(mainCoroutine.mode == CHARGE_MANUAL ? "Manuell" : "Preis",
+             mainCoroutine.balance.deposit < 0 ? "R\6ckgabe" : "Pfand", 0,
+             mainCoroutine.balance.total, mainCoroutine.balance.deposit);
         break;
       case TOP_UP:
         show("Aufladen",
-             mainCoroutine.balance.deposit > 0 ? "Pfand" : "R\6ckgabe", 0,
-             mainCoroutine.balance.total, -mainCoroutine.balance.deposit);
+             -mainCoroutine.balance.deposit > 0 ? "Pfand" : "R\6ckgabe", 0,
+             mainCoroutine.balance.total, mainCoroutine.balance.deposit);
         break;
       case CASH_OUT:
         show("Karte auszahlen?");
@@ -189,8 +186,8 @@ void DisplayCoroutine::show(
     int duration,  // negative duration means clearable but keypress
     int total,
     int deposit) {
+  keyClearsMessage = duration < 0;
   if (duration != 0) {
-    keyClearsMessage = duration < 0;
     messageUntil = millis() + (duration > 0 ? duration : duration * -1);
   }
   lcd.clear();

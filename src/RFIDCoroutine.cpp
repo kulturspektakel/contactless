@@ -22,6 +22,34 @@ static MFRC522::MIFARE_Key KEY_INIT = {{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}};
 static byte ACCESS_BITS[4] = {0x78, 0x77, 0x88, 0x43};
 static const int BLOCK_ADDRESS = 6;
 
+/**
+ * Returns true if a PICC responds to PICC_CMD_WUPA.
+ * All cards in state IDLE or HALT are invited.
+ *
+ * @return bool
+ */
+bool PICC_IsAnyCardPresent() {
+  Serial.println("PICC_IsAnyCardPresent");
+  byte bufferATQA[2];
+  byte bufferSize = sizeof(bufferATQA);
+
+  // Reset baud rates
+  mfrc522.PCD_WriteRegister(mfrc522.TxModeReg, 0x00);
+  mfrc522.PCD_WriteRegister(mfrc522.RxModeReg, 0x00);
+  // Reset ModWidthReg
+  mfrc522.PCD_WriteRegister(mfrc522.ModWidthReg, 0x26);
+
+  MFRC522::StatusCode result = mfrc522.PICC_WakeupA(bufferATQA, &bufferSize);
+  // mfrc522.PICC_HaltA();
+
+  Serial.println(result);
+
+  bool a =
+      (result == MFRC522::STATUS_OK || result == MFRC522::STATUS_COLLISION);
+  Serial.println(a ? "present " : "notpresent");
+  return a;
+}  // End PICC_IsAnyCardPresent()
+
 int RFIDCoroutine::runCoroutine() {
   COROUTINE_BEGIN();
   mfrc522.PCD_Init();
@@ -55,11 +83,11 @@ int RFIDCoroutine::runCoroutine() {
           break;
         }
         if (mainCoroutine.balance) {
-          // TODO: here might be bugs
-          cardValueAfter.deposit += mainCoroutine.balance.deposit;
-          cardValueAfter.total +=
-              mainCoroutine.balance.total * (TOP_UP ? -1 : 1) +
-              mainCoroutine.balance.deposit * TOKEN_VALUE;
+          int i = mainCoroutine.mode == TOP_UP ? -1 : 1;
+          cardValueAfter.deposit += mainCoroutine.balance.deposit * i;
+          cardValueAfter.total -=
+              mainCoroutine.balance.total * i +
+              mainCoroutine.balance.deposit * i * TOKEN_VALUE;
 
           if (cardValueAfter.deposit < 0) {
             displayCoroutine.show("Nicht genug", "Pfandmarken", 2000);
@@ -76,11 +104,17 @@ int RFIDCoroutine::runCoroutine() {
           }
           logCoroutine.writeLog();
         }
+        // mfrc522.PICC_Select(&mfrc522.uid, 8 * mfrc522.uid.size);
+
         // show balance
         char deposit[16];
         sprintf(deposit, "%d Pfandmarke%c", cardValueAfter.deposit,
                 cardValueAfter.deposit == 1 ? ' ' : 'n');
-        displayCoroutine.show("Guthaben", deposit, 2000, cardValueAfter.total);
+        displayCoroutine.show("Guthaben", deposit, 0, cardValueAfter.total);
+
+        while (PICC_IsAnyCardPresent()) {
+          COROUTINE_DELAY(250);
+        }
         mainCoroutine.resetBalance();
         break;
       }
@@ -136,7 +170,7 @@ int RFIDCoroutine::runCoroutine() {
         if (!writeBalance(cardValueAfter)) {
           break;
         }
-        displayCoroutine.show("Auszahlen", nullptr, 3000,
+        displayCoroutine.show("Auszahlen", nullptr, -15000,
                               cardValueBefore.total + cardValueBefore.deposit);
         logCoroutine.writeLog();
         mainCoroutine.resetBalance();
