@@ -180,6 +180,10 @@ int DisplayCoroutine::runCoroutine() {
   COROUTINE_END();
 }
 
+void DisplayCoroutine::clearMessageIn(unsigned long ms) {
+  messageUntil = millis() + ms;
+}
+
 void DisplayCoroutine::show(
     const char* _line1,
     const char* _line2,

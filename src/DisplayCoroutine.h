@@ -24,4 +24,5 @@ class DisplayCoroutine : public Coroutine {
             int duration = 0,
             int total = NOT_SET,
             int deposit = NOT_SET);
+  void clearMessageIn(unsigned long ms);
 };

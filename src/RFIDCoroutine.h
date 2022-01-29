@@ -15,6 +15,8 @@ class RFIDCoroutine : public Coroutine {
                                MFRC522::MIFARE_Key* key);
   boolean readBalance();
   boolean writeBalance(Balance balance);
+  bool hasToWriteLog = false;
+  unsigned long messageStart = 0;
 
  public:
   boolean isModeChanger;

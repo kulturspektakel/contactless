@@ -22,34 +22,6 @@ static MFRC522::MIFARE_Key KEY_INIT = {{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}};
 static byte ACCESS_BITS[4] = {0x78, 0x77, 0x88, 0x43};
 static const int BLOCK_ADDRESS = 6;
 
-/**
- * Returns true if a PICC responds to PICC_CMD_WUPA.
- * All cards in state IDLE or HALT are invited.
- *
- * @return bool
- */
-bool PICC_IsAnyCardPresent() {
-  Serial.println("PICC_IsAnyCardPresent");
-  byte bufferATQA[2];
-  byte bufferSize = sizeof(bufferATQA);
-
-  // Reset baud rates
-  mfrc522.PCD_WriteRegister(mfrc522.TxModeReg, 0x00);
-  mfrc522.PCD_WriteRegister(mfrc522.RxModeReg, 0x00);
-  // Reset ModWidthReg
-  mfrc522.PCD_WriteRegister(mfrc522.ModWidthReg, 0x26);
-
-  MFRC522::StatusCode result = mfrc522.PICC_WakeupA(bufferATQA, &bufferSize);
-  // mfrc522.PICC_HaltA();
-
-  Serial.println(result);
-
-  bool a =
-      (result == MFRC522::STATUS_OK || result == MFRC522::STATUS_COLLISION);
-  Serial.println(a ? "present " : "notpresent");
-  return a;
-}  // End PICC_IsAnyCardPresent()
-
 int RFIDCoroutine::runCoroutine() {
   COROUTINE_BEGIN();
   mfrc522.PCD_Init();
@@ -75,13 +47,17 @@ int RFIDCoroutine::runCoroutine() {
       continue;
     }
 
+    hasToWriteLog = false;
+    messageStart = millis();
+
     switch (mainCoroutine.mode) {
       case CHARGE_MANUAL:
       case CHARGE_LIST:
       case TOP_UP: {
         if (!readBalance()) {
-          break;
+          continue;
         }
+
         if (mainCoroutine.balance) {
           int i = mainCoroutine.mode == TOP_UP ? -1 : 1;
           cardValueAfter.deposit += mainCoroutine.balance.deposit * i;
@@ -90,32 +66,25 @@ int RFIDCoroutine::runCoroutine() {
               mainCoroutine.balance.deposit * i * TOKEN_VALUE;
 
           if (cardValueAfter.deposit < 0) {
-            displayCoroutine.show("Nicht genug", "Pfandmarken", 2000);
+            displayCoroutine.show("Nicht genug", "Pfandmarken");
             break;
           } else if (cardValueAfter.total < 0) {
-            displayCoroutine.show("Nicht genug", "Guthaben", 2000);
+            displayCoroutine.show("Nicht genug", "Guthaben");
             break;
           } else if (cardValueAfter.total > 9999 ||
                      cardValueAfter.deposit > 9) {
-            displayCoroutine.show("Kartenlimit", "überschritten", 2000);
+            displayCoroutine.show("Kartenlimit", "überschritten");
             break;
           } else if (!writeBalance(cardValueAfter)) {
-            break;
+            continue;
           }
-          logCoroutine.writeLog();
+          hasToWriteLog = true;
         }
-        // mfrc522.PICC_Select(&mfrc522.uid, 8 * mfrc522.uid.size);
-
         // show balance
         char deposit[16];
         sprintf(deposit, "%d Pfandmarke%c", cardValueAfter.deposit,
                 cardValueAfter.deposit == 1 ? ' ' : 'n');
         displayCoroutine.show("Guthaben", deposit, 0, cardValueAfter.total);
-
-        while (PICC_IsAnyCardPresent()) {
-          COROUTINE_DELAY(250);
-        }
-        mainCoroutine.resetBalance();
         break;
       }
       case INITIALIZE_CARD: {
@@ -138,7 +107,7 @@ int RFIDCoroutine::runCoroutine() {
         // initialize card
         for (int i = 0; i < 6; i++) {
           if (!authenticateAndWrite(i + 1, writeData[i], &KEY_INIT)) {
-            break;
+            continue;
           }
         }
 
@@ -149,34 +118,53 @@ int RFIDCoroutine::runCoroutine() {
         memcpy(&trailer[10], KEY_B.keyByte, sizeof(KEY_B.keyByte));
         for (int i = 7; i < 64; i += 4) {
           if (!authenticateAndWrite(i, trailer, &KEY_INIT)) {
-            break;
+            continue;
           }
         }
         cardValueAfter.deposit = 0;
         cardValueAfter.total = 0;
         if (!writeBalance(cardValueAfter)) {
-          break;
+          continue;
         }
-        displayCoroutine.show("Initialisierung", "OK", 2000);
-        mainCoroutine.resetBalance();
+        displayCoroutine.show("Initialisierung", "OK");
         break;
       }
       case CASH_OUT: {
         if (!readBalance()) {
-          break;
+          continue;
         }
         cardValueAfter.deposit = 0;
         cardValueAfter.total = 0;
         if (!writeBalance(cardValueAfter)) {
-          break;
+          continue;
         }
-        displayCoroutine.show("Auszahlen", nullptr, -15000,
-                              cardValueBefore.total + cardValueBefore.deposit);
-        logCoroutine.writeLog();
-        mainCoroutine.resetBalance();
+        hasToWriteLog = true;
+        mainCoroutine.mode = TOP_UP;
+        char deposit[16];
+        sprintf(deposit, "%dx R\6cknahme", cardValueBefore.deposit);
+        displayCoroutine.show(
+            "Auszahlen", deposit, 0,
+            cardValueBefore.total + cardValueBefore.deposit * TOKEN_VALUE);
         break;
       }
     }
+
+    // wait until card is gone
+    byte size = 18;
+    unsigned char target[16];
+    while (mfrc522.MIFARE_Read(6, target, &size) == MFRC522::STATUS_OK) {
+      COROUTINE_DELAY(333);
+    }
+
+    if (hasToWriteLog) {
+      // delaying writing to log until card is gone
+      logCoroutine.writeLog();
+    }
+    unsigned long messageShownFor = millis() - messageStart;
+    // always display message for at least 2 seconds
+    displayCoroutine.clearMessageIn(
+        messageShownFor < 2000 ? 2000 - messageShownFor : 0);
+    mainCoroutine.resetBalance();
   }
 
   COROUTINE_END();
