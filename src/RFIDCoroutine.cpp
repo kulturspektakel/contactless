@@ -140,11 +140,8 @@ int RFIDCoroutine::runCoroutine() {
         }
         hasToWriteLog = true;
         mainCoroutine.mode = TOP_UP;
-        char deposit[16];
-        sprintf(deposit, "%dx R\6cknahme", cardValueBefore.deposit);
-        displayCoroutine.show(
-            "Auszahlen", deposit, 0,
-            cardValueBefore.total + cardValueBefore.deposit * TOKEN_VALUE);
+        displayCoroutine.show("Auszahlen", "R\6ckgabe +", 0,
+                              cardValueBefore.total, cardValueBefore.deposit);
         break;
       }
     }
