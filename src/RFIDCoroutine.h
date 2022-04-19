@@ -24,5 +24,5 @@ class RFIDCoroutine : public Coroutine {
   Balance cardValueAfter;
   int runCoroutine() override;
   void resetReader();
-  char cardId[9] = "";
+  char cardId[15] = "";  // 7*2+1
 };

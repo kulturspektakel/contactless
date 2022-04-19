@@ -35,13 +35,13 @@ int RFIDCoroutine::runCoroutine() {
     COROUTINE_AWAIT(mfrc522.PICC_IsNewCardPresent() &&
                     mfrc522.PICC_ReadCardSerial());
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < mfrc522.uid.size; i++) {
       byte nib1 = (mfrc522.uid.uidByte[i] >> 4) & 0x0F;
       byte nib2 = (mfrc522.uid.uidByte[i] >> 0) & 0x0F;
       cardId[i * 2 + 0] = nib1 < 0xA ? '0' + nib1 : 'A' + nib1 - 0xA;
       cardId[i * 2 + 1] = nib2 < 0xA ? '0' + nib2 : 'A' + nib2 - 0xA;
     }
-    cardId[8] = '\0';
+    cardId[mfrc522.uid.size * 2] = '\0';
     Log.infoln("[RFID] Detected card ID: %s", cardId);
     if (modeChangerCoroutine.isModeChanger()) {
       continue;
@@ -88,44 +88,84 @@ int RFIDCoroutine::runCoroutine() {
         break;
       }
       case INITIALIZE_CARD: {
-        unsigned char writeData[6][16] = {
-            // clang-format off
-            {0x14, 0x01, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1},  // 1: NDEF message
-            {0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1},  // 2: NDEF message
-            {},                                                                                                // 3: access
-            {0x00, 0x00, 0x03, 0x2B, 0xD1, 0x01, 0x27, 0x55, 0x04, 0x6B, 0x75, 0x6C, 0x74, 0x2E, 0x63, 0x61},  // 4: kult.ca
-            {0x73, 0x68, 0x2F, 0x24, 0x24, 0x24, 0x2F, cardId[0], cardId[1], cardId[2], cardId[3], cardId[4], cardId[5], cardId[6], cardId[7], 0x2F},  // 5: sh/$$$/________/
-            {0x30, 0x30, 0x30, 0x30, 0x30, 0x5F, 0x5F, 0x5F, 0x5F, 0x5F, 0x5F, 0x5F, 0x5F, 0x5F, 0x5F, 0xFE},  // 6: 00000__________
-            // clang-format on
-        };
+        if (mfrc522.PICC_GetType(mfrc522.uid.sak) ==
+            mfrc522.PICC_TYPE_MIFARE_UL) {
+          unsigned char hash[11] = "";
+          calculateHash(hash, Balance_default);
+          // write NDEF
+          unsigned char writeData[12][4] = {
+              // clang-format off
+              {0x03, 0x2D, 0xD1, 0x01},
+              {0x29, 0x55, 0x04, 0x6B},
+              {0x75, 0x6C, 0x74, 0x2E},
+              {0x63, 0x61, 0x73, 0x68},
+              {0x2F, cardId[0], cardId[1], cardId[2]},
+              {cardId[3], cardId[4], cardId[5], cardId[6]},
+              {cardId[7], cardId[8], cardId[9], cardId[10]},
+              {cardId[11],cardId[12],cardId[13], 0x2F},
+              {0x30, 0x30, 0x30, 0x30},
+              {0x30, hash[0], hash[1], hash[2]},
+              {hash[3], hash[4], hash[5], hash[6]},
+              {hash[7], hash[8], hash[9], hash[10]}
+              // clang-format on
+          };
 
-        memcpy(&writeData[2][0], KEY_A1.keyByte, sizeof(KEY_A1.keyByte));
-        memcpy(&writeData[2][6], ACCESS_BITS, sizeof(ACCESS_BITS));
-        memcpy(&writeData[2][10], KEY_B.keyByte, sizeof(KEY_B.keyByte));
-        calculateHash(writeData[5] + 5, Balance_default);
+          for (int i = 0; i < 12; i++) {
+            if (mfrc522.MIFARE_Ultralight_Write(i + 4, writeData[i], 4) !=
+                MFRC522::STATUS_OK) {
+              break;
+            }
+          }
+          // calculate password + PAC
 
-        // initialize card
-        for (int i = 0; i < 6; i++) {
-          if (!authenticateAndWrite(i + 1, writeData[i], &KEY_INIT)) {
+          // write password
+
+          // write PACK
+
+          // set config
+
+        } else if (mfrc522.PICC_GetType(mfrc522.uid.sak) ==
+                   mfrc522.PICC_TYPE_MIFARE_1K) {
+          unsigned char writeData[6][16] = {
+              // clang-format off
+              {0x14, 0x01, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1},  // 1: NDEF message
+              {0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1},  // 2: NDEF message
+              {},                                                                                                // 3: access
+              {0x00, 0x00, 0x03, 0x2B, 0xD1, 0x01, 0x27, 0x55, 0x04, 0x6B, 0x75, 0x6C, 0x74, 0x2E, 0x63, 0x61},  // 4: kult.ca
+              {0x73, 0x68, 0x2F, 0x24, 0x24, 0x24, 0x2F, cardId[0], cardId[1], cardId[2], cardId[3], cardId[4], cardId[5], cardId[6], cardId[7], 0x2F},  // 5: sh/$$$/________/
+              {0x30, 0x30, 0x30, 0x30, 0x30, 0x5F, 0x5F, 0x5F, 0x5F, 0x5F, 0x5F, 0x5F, 0x5F, 0x5F, 0x5F, 0xFE},  // 6: 00000__________
+              // clang-format on
+          };
+
+          memcpy(&writeData[2][0], KEY_A1.keyByte, sizeof(KEY_A1.keyByte));
+          memcpy(&writeData[2][6], ACCESS_BITS, sizeof(ACCESS_BITS));
+          memcpy(&writeData[2][10], KEY_B.keyByte, sizeof(KEY_B.keyByte));
+          calculateHash(writeData[5] + 5, Balance_default);
+
+          // initialize card
+          for (int i = 0; i < 6; i++) {
+            if (!authenticateAndWrite(i + 1, writeData[i], &KEY_INIT)) {
+              continue;
+            }
+          }
+
+          // lock all blocks
+          unsigned char trailer[16];
+          memcpy(&trailer[0], KEY_A2.keyByte, sizeof(KEY_A2.keyByte));
+          memcpy(&trailer[6], ACCESS_BITS, sizeof(ACCESS_BITS));
+          memcpy(&trailer[10], KEY_B.keyByte, sizeof(KEY_B.keyByte));
+          for (int i = 7; i < 64; i += 4) {
+            if (!authenticateAndWrite(i, trailer, &KEY_INIT)) {
+              continue;
+            }
+          }
+          cardValueAfter.deposit = 0;
+          cardValueAfter.total = 0;
+          if (!writeBalance(cardValueAfter)) {
             continue;
           }
         }
 
-        // lock all blocks
-        unsigned char trailer[16];
-        memcpy(&trailer[0], KEY_A2.keyByte, sizeof(KEY_A2.keyByte));
-        memcpy(&trailer[6], ACCESS_BITS, sizeof(ACCESS_BITS));
-        memcpy(&trailer[10], KEY_B.keyByte, sizeof(KEY_B.keyByte));
-        for (int i = 7; i < 64; i += 4) {
-          if (!authenticateAndWrite(i, trailer, &KEY_INIT)) {
-            continue;
-          }
-        }
-        cardValueAfter.deposit = 0;
-        cardValueAfter.total = 0;
-        if (!writeBalance(cardValueAfter)) {
-          continue;
-        }
         displayCoroutine.show("Initialisierung", "OK");
         break;
       }
