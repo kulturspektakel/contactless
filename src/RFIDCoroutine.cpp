@@ -116,13 +116,17 @@ int RFIDCoroutine::runCoroutine() {
               break;
             }
           }
-          // calculate password + PAC
 
-          // write password
-
-          // write PACK
-
-          // set config
+          // write password and PACK
+          byte password[4];
+          byte pack[2];
+          calculatePassword(password, pack);
+          size_t lastPage = 0x2c;
+          mfrc522.MIFARE_Ultralight_Write(lastPage - 1, password, 4);
+          mfrc522.MIFARE_Ultralight_Write(lastPage, pack, 4);
+          byte buffer[] = {0x04 /* strong modulation */, 0x00, 0x00,
+                           0x00 /* lock from page 0 */};
+          mfrc522.MIFARE_Ultralight_Write(lastPage - 3, buffer, 4);
 
         } else if (mfrc522.PICC_GetType(mfrc522.uid.sak) ==
                    mfrc522.PICC_TYPE_MIFARE_1K) {
@@ -220,40 +224,68 @@ boolean RFIDCoroutine::authenticateAndWrite(int block,
   return false;
 }
 
-boolean RFIDCoroutine::authenticateAndRead(int block,
-                                           unsigned char target[18],
-                                           MFRC522::MIFARE_Key* key) {
-  MFRC522::StatusCode status = mfrc522.PCD_Authenticate(
-      MFRC522::PICC_CMD_MF_AUTH_KEY_B, block, key, &(mfrc522.uid));
-  if (status == MFRC522::STATUS_OK) {
-    byte size = 18;
-    return mfrc522.MIFARE_Read(block, target, &size) == MFRC522::STATUS_OK;
-  }
-  Log.errorln("[RFID] Card not readable");
-  displayCoroutine.show("Karte nicht", "lesbar", 2000);
-  return false;
+void RFIDCoroutine::calculatePassword(byte* password, byte* pack) {
+  size_t len = strlen(cardId) + strlen(SALT);
+  char data[len + 1];
+  snprintf(data, len + 1, "%s%s", cardId, SALT);
+  uint8_t pwdpack[20];
+  sha1(data, len, pwdpack);
+  memcpy(password, &pwdpack[16], 4);
+  memcpy(pack, &pwdpack[14], 2);
 }
 
 boolean RFIDCoroutine::readBalance() {
-  unsigned char buffer[18];
-  if (authenticateAndRead(6, buffer, &KEY_B)) {
-    Balance balance = {
-        .deposit = (buffer[4] - '0'),
-        .total = (buffer[0] - '0') * 1000 + (buffer[1] - '0') * 100 +
-                 (buffer[2] - '0') * 10 + (buffer[3] - '0'),
-    };
-    unsigned char hash[11];
-    calculateHash(hash, balance);
-    for (int i = 0; i < 10; i++) {
-      if (hash[i] != buffer[i + 5]) {
-        return false;
-      }
+  MFRC522::StatusCode status = MFRC522::STATUS_ERROR;
+  bool isUltralight =
+      mfrc522.PICC_GetType(mfrc522.uid.sak) == mfrc522.PICC_TYPE_MIFARE_UL;
+
+  // authenticate
+  if (isUltralight) {
+    byte password[4];
+    byte pack[2];
+    calculatePassword(password, pack);
+    byte packRead[2];
+    status = mfrc522.PCD_NTAG216_AUTH(password, packRead);
+    if (memcmp(packRead, pack, 2) != 0) {
+      // PACK doesn't match
+      status = MFRC522::STATUS_ERROR;
     }
-    cardValueBefore = balance;
-    cardValueAfter = balance;
-    return true;
+  } else {
+    status = mfrc522.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_B, 6,
+                                      &KEY_B, &(mfrc522.uid));
   }
-  return false;
+
+  byte size = 18;
+  unsigned char buffer[size];
+
+  // read balance
+  if (status == MFRC522::STATUS_OK) {
+    status = mfrc522.MIFARE_Read(isUltralight ? 0x0c : 6, buffer, &size);
+  }
+
+  if (status != MFRC522::STATUS_OK) {
+    Log.errorln("[RFID] Card not readable");
+    displayCoroutine.show("Karte nicht", "lesbar", 2000);
+    return false;
+  }
+
+  Balance balance = {
+      .deposit = (buffer[4] - '0'),
+      .total = (buffer[0] - '0') * 1000 + (buffer[1] - '0') * 100 +
+               (buffer[2] - '0') * 10 + (buffer[3] - '0'),
+  };
+
+  // validate hash
+  unsigned char hash[11];
+  calculateHash(hash, balance);
+  for (int i = 0; i < 10; i++) {
+    if (hash[i] != buffer[i + 5]) {
+      return false;
+    }
+  }
+  cardValueBefore = balance;
+  cardValueAfter = balance;
+  return true;
 }
 
 void RFIDCoroutine::calculateHash(unsigned char* target, Balance balance) {
@@ -274,9 +306,19 @@ boolean RFIDCoroutine::writeBalance(Balance balance) {
   writeData[3] = (balance.total % 10) + '0';
   writeData[4] = (balance.deposit % 10) + '0';
   writeData[15] = 0xfe;
-
   calculateHash(writeData + 5, balance);
-  return authenticateAndWrite(BLOCK_ADDRESS, writeData, &KEY_B);
+
+  if (mfrc522.PICC_GetType(mfrc522.uid.sak) == mfrc522.PICC_TYPE_MIFARE_UL) {
+    for (int i = 0; i < 4; i++) {
+      if (mfrc522.MIFARE_Ultralight_Write(i + 12, &writeData[4 * i], 4) !=
+          MFRC522::STATUS_OK) {
+        return false;
+      }
+    }
+  } else if (!authenticateAndWrite(BLOCK_ADDRESS, writeData, &KEY_B)) {
+    return false;
+  }
+  return true;
 }
 
 void RFIDCoroutine::resetReader() {

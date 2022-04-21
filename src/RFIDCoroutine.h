@@ -7,12 +7,10 @@ using namespace ace_routine;
 
 class RFIDCoroutine : public Coroutine {
   void calculateHash(unsigned char* target, Balance balance);
-  boolean authenticateAndRead(int block,
-                              unsigned char target[18],
-                              MFRC522::MIFARE_Key* key);
   boolean authenticateAndWrite(int block,
                                unsigned char writeData[16],
                                MFRC522::MIFARE_Key* key);
+  void calculatePassword(byte* password, byte* pack);
   boolean readBalance();
   boolean writeBalance(Balance balance);
   bool hasToWriteLog = false;
