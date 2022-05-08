@@ -93,8 +93,9 @@ int RFIDCoroutine::runCoroutine() {
           unsigned char hash[11] = "";
           calculateHash(hash, Balance_default);
           // write NDEF
-          unsigned char writeData[12][4] = {
+          unsigned char writeData[13][4] = {
               // clang-format off
+              {0xE1, 0x10, 0x06, 0x00},
               {0x03, 0x2D, 0xD1, 0x01},
               {0x29, 0x55, 0x04, 0x6B},
               {0x75, 0x6C, 0x74, 0x2E},
@@ -106,12 +107,12 @@ int RFIDCoroutine::runCoroutine() {
               {0x30, 0x30, 0x30, 0x30},
               {0x30, hash[0], hash[1], hash[2]},
               {hash[3], hash[4], hash[5], hash[6]},
-              {hash[7], hash[8], hash[9], hash[10]}
+              {hash[7], hash[8], hash[9], 0xfe}
               // clang-format on
           };
 
-          for (int i = 0; i < 12; i++) {
-            if (mfrc522.MIFARE_Ultralight_Write(i + 4, writeData[i], 4) !=
+          for (int i = 0; i < 13; i++) {
+            if (mfrc522.MIFARE_Ultralight_Write(i + 3, writeData[i], 4) !=
                 MFRC522::STATUS_OK) {
               break;
             }
@@ -121,12 +122,14 @@ int RFIDCoroutine::runCoroutine() {
           byte password[4];
           byte pack[2];
           calculatePassword(password, pack);
-          size_t lastPage = 0x2c;
-          mfrc522.MIFARE_Ultralight_Write(lastPage - 1, password, 4);
-          mfrc522.MIFARE_Ultralight_Write(lastPage, pack, 4);
+
+          size_t lastPage = 0x13;
+          mfrc522.MIFARE_Ultralight_Write(lastPage, pack, 4);          // PACK
+          mfrc522.MIFARE_Ultralight_Write(lastPage - 1, password, 4);  // PWD
+
           byte buffer[] = {0x04 /* strong modulation */, 0x00, 0x00,
-                           0x00 /* lock from page 0 */};
-          mfrc522.MIFARE_Ultralight_Write(lastPage - 3, buffer, 4);
+                           0x04 /* lock from page 4 */};
+          mfrc522.MIFARE_Ultralight_Write(lastPage - 3, buffer, 4);  // CFG0
 
         } else if (mfrc522.PICC_GetType(mfrc522.uid.sak) ==
                    mfrc522.PICC_TYPE_MIFARE_1K) {
