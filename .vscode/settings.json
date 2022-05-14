@@ -19,6 +19,14 @@
     "initializer_list": "cpp",
     "typeinfo": "cpp",
     "string_view": "cpp",
-    "ranges": "cpp"
+    "ranges": "cpp",
+    "memory": "cpp",
+    "optional": "cpp",
+    "system_error": "cpp",
+    "atomic": "cpp",
+    "cstdint": "cpp",
+    "cstddef": "cpp",
+    "memory_resource": "cpp",
+    "fstream": "cpp"
   }
 }

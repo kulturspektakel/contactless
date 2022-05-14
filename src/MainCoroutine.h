@@ -16,9 +16,9 @@ enum Mode {
   SOFTWARE_UPDATE,
 };
 
-struct Balance_s {
-  int deposit;
-  int total;
+struct Balance_t {
+  uint8_t deposit;
+  uint16_t total;
 
   operator bool() const { return (0 != deposit || 0 != total); }
   void reset() {
@@ -27,7 +27,7 @@ struct Balance_s {
   }
 } const Balance_default = {.deposit = 0, .total = 0};
 
-typedef struct Balance_s Balance;
+typedef struct Balance_t Balance;
 
 class MainCoroutine : public Coroutine {
  private:
