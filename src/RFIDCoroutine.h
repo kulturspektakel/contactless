@@ -11,8 +11,14 @@ class RFIDCoroutine : public Coroutine {
                                unsigned char writeData[16],
                                MFRC522::MIFARE_Key* key);
   void calculatePassword(byte* password, byte* pack);
+  void calculateSignatureUltralight(unsigned char* target,
+                                    Balance balance,
+                                    uint16_t counter);
+  unsigned int constructPayload(unsigned char* target,
+                                Balance balance,
+                                uint16_t counter);
   boolean readBalance();
-  boolean writeBalance(Balance balance);
+  boolean writeBalance(Balance balance, bool needsAuthentication = true);
   bool hasToWriteLog = false;
   unsigned long messageStart = 0;
 
@@ -23,4 +29,5 @@ class RFIDCoroutine : public Coroutine {
   int runCoroutine() override;
   void resetReader();
   char cardId[15] = "";  // 7*2+1
+  uint16_t ultralightCounter = 0;
 };

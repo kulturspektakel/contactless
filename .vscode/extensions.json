@@ -5,5 +5,8 @@
         "platformio.platformio-ide",
         "xaver.clang-format",
         "zxh404.vscode-proto3"
+    ],
+    "unwantedRecommendations": [
+        "ms-vscode.cpptools-extension-pack"
     ]
 }
