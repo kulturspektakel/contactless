@@ -108,7 +108,7 @@ int RFIDCoroutine::runCoroutine() {
           }
 
           ultralightCounter = 0;
-          writeBalance(Balance_default);
+          writeBalance(Balance_default, false);
 
           // write password and PACK
           unsigned char password[4];
@@ -238,34 +238,53 @@ boolean RFIDCoroutine::readBalance() {
   Balance balance;
 
   if (mfrc522.PICC_GetType(mfrc522.uid.sak) == mfrc522.PICC_TYPE_MIFARE_UL) {
+    // read counter
     unsigned char command[] = {0x39, 0x00, 0x7F,
                                0x1A};  // Read Counter 00 + CRC
-    ultralightCounter = 0;
+    ultralightCounter = 1;
     byte backLen = sizeof(ultralightCounter);
-    if (MFRC522::STATUS_OK !=
-        mfrc522.PCD_TransceiveData(command, sizeof(command),
-                                   (byte*)&ultralightCounter, &backLen)) {
-      return false;
-    }
+    // if (mfrc522.PCD_TransceiveData(command, sizeof(command),
+    //                                (byte*)&ultralightCounter,
+    //                                &backLen) != MFRC522::STATUS_OK) {
+    //   Log.errorln("[RFID] Reading counter failed");
+    //   return false;
+    // }
 
-    unsigned char size = 23;
+    unsigned char size = 16 + 2 + 16;
     unsigned char payload[size];
-    if (MFRC522::STATUS_OK != mfrc522.MIFARE_Read(9, payload, &size)) {
+    if (mfrc522.MIFARE_Read(9, payload, &size) != MFRC522::STATUS_OK ||
+        mfrc522.MIFARE_Read(13, payload + 16, &size) != MFRC522::STATUS_OK) {
+      Log.errorln("[RFID] Reading payload failed");
       return false;
     }
-    unsigned char buffer[17];
-    decode_base64(payload, buffer);
 
-    uint8_t* deposit = (uint8_t*)(buffer + 9);
-    uint16_t* balance = (uint16_t*)(buffer + 10);
-    // uint8_t d = *deposit;
-    // uint16_t b = *balance;
+    unsigned char decodedPayload[17];
+    decode_base64(payload, decodedPayload);
+
+    uint16_t counterFromPayload =
+        *(reinterpret_cast<uint16_t*>(&decodedPayload[7]));
+
+    if (counterFromPayload != ultralightCounter) {
+      Log.errorln("[RFID] Counter from hash %d did not match card counter %d",
+                  counterFromPayload, ultralightCounter);
+      return false;
+    }
     balance = {
-        .deposit = reinterpret_cast<std::uintptr_t>(deposit),
-        .total = reinterpret_cast<std::uintptr_t>(balance),
+        .deposit = *(reinterpret_cast<uint8_t*>(&decodedPayload[9])),
+        .total = *(reinterpret_cast<uint16_t*>(&decodedPayload[10])),
     };
-    // calculateSignatureUltralight( ultralightCounter);
-    // TODO verify signature
+
+    unsigned char signatureBuffer[5];
+    calculateSignatureUltralight(signatureBuffer, balance, counterFromPayload);
+    Log.errorln("%x:%x:%x:%x:%x", decodedPayload[9], decodedPayload[13],
+                decodedPayload[14], decodedPayload[15], decodedPayload[16]);
+
+    if (memcmp(signatureBuffer, &decodedPayload[12], 5)) {
+      Log.errorln("Signature did not match");
+      return false;
+    }
+
+    balance.total = 5000;
 
   } else {
     MFRC522::StatusCode status = mfrc522.PCD_Authenticate(
@@ -348,15 +367,16 @@ unsigned int RFIDCoroutine::constructPayload(unsigned char* target,
   return target - start;
 }
 
-boolean RFIDCoroutine::writeBalance(Balance balance) {
+boolean RFIDCoroutine::writeBalance(Balance balance, bool needsAuthentication) {
   if (mfrc522.PICC_GetType(mfrc522.uid.sak) == mfrc522.PICC_TYPE_MIFARE_UL) {
-    if (false) {  // TODO
+    if (needsAuthentication) {
       unsigned char password[4];
       unsigned char pack[2];
       calculatePassword(password, pack);
-      unsigned char packRead[2];
-      if (mfrc522.PCD_NTAG216_AUTH(password, packRead) != MFRC522::STATUS_OK ||
-          memcmp(packRead, pack, 2) != 0) {
+      unsigned char packRead[2] = {0x0, 0x0};
+      if (MFRC522::STATUS_OK != mfrc522.PCD_NTAG216_AUTH(password, packRead) ||
+          !memcmp(packRead, pack, 2)) {
+        Log.errorln("[RFID] Authentication failed: %x:%x", pack[0], pack[1]);
         return false;
       }
     }
@@ -389,12 +409,13 @@ boolean RFIDCoroutine::writeBalance(Balance balance) {
     }
     Log.error("\n");
 
-    for (int i = 0; i < base64len / 4; i++) {
-      if (mfrc522.MIFARE_Ultralight_Write(i + 9, &writeData[4 * i], 4) !=
-          MFRC522::STATUS_OK) {
-        return false;
-      }
-    }
+    // for (int i = 0; i < base64len / 4; i++) {
+    //   // TODO multi write?
+    //   if (mfrc522.MIFARE_Ultralight_Write(i + 9, &writeData[4 * i], 4) !=
+    //       MFRC522::STATUS_OK) {
+    //     return false;
+    //   }
+    // }
   } else {
     unsigned char writeData[16];
     writeData[0] = ((balance.total / 1000) % 10) + '0';

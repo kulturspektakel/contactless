@@ -18,7 +18,7 @@ class RFIDCoroutine : public Coroutine {
                                 Balance balance,
                                 uint16_t counter);
   boolean readBalance();
-  boolean writeBalance(Balance balance);
+  boolean writeBalance(Balance balance, bool needsAuthentication = true);
   bool hasToWriteLog = false;
   unsigned long messageStart = 0;
 
