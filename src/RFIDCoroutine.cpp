@@ -238,23 +238,26 @@ boolean RFIDCoroutine::readBalance() {
   Balance balance;
 
   if (mfrc522.PICC_GetType(mfrc522.uid.sak) == mfrc522.PICC_TYPE_MIFARE_UL) {
-    // read counter
-    unsigned char command[] = {0x39, 0x00, 0x7F,
-                               0x1A};  // Read Counter 00 + CRC
-    ultralightCounter = 1;
-    byte backLen = sizeof(ultralightCounter);
-    // if (mfrc522.PCD_TransceiveData(command, sizeof(command),
-    //                                (byte*)&ultralightCounter,
-    //                                &backLen) != MFRC522::STATUS_OK) {
-    //   Log.errorln("[RFID] Reading counter failed");
-    //   return false;
-    // }
+    // // read counter
+    unsigned char command[] = {0x39, 0x02, 0x08,
+                               0x5c};  // Read Counter 02 + CRC
+    byte backData[8];                  // needs to be at least 8 bytes
+    byte backLen = sizeof(backData);
+    if (mfrc522.PCD_TransceiveData(command, sizeof(command), backData,
+                                   &backLen) != MFRC522::STATUS_OK) {
+      Log.errorln("[RFID] Reading counter failed");
+      return false;
+    }
+    ultralightCounter = *(reinterpret_cast<uint16_t*>(backData));
+
+    // Needed to get card into idle state after PCD_TransceiveData
+    mfrc522.PICC_IsNewCardPresent();
 
     unsigned char size = 16 + 2 + 16;
     unsigned char payload[size];
     if (mfrc522.MIFARE_Read(9, payload, &size) != MFRC522::STATUS_OK ||
         mfrc522.MIFARE_Read(13, payload + 16, &size) != MFRC522::STATUS_OK) {
-      Log.errorln("[RFID] Reading payload failed");
+      Log.errorln("[RFID] Reading payload failed", ultralightCounter);
       return false;
     }
 
@@ -276,16 +279,10 @@ boolean RFIDCoroutine::readBalance() {
 
     unsigned char signatureBuffer[5];
     calculateSignatureUltralight(signatureBuffer, balance, counterFromPayload);
-    Log.errorln("%x:%x:%x:%x:%x", decodedPayload[9], decodedPayload[13],
-                decodedPayload[14], decodedPayload[15], decodedPayload[16]);
-
     if (memcmp(signatureBuffer, &decodedPayload[12], 5)) {
       Log.errorln("Signature did not match");
       return false;
     }
-
-    balance.total = 5000;
-
   } else {
     MFRC522::StatusCode status = mfrc522.PCD_Authenticate(
         MFRC522::PICC_CMD_MF_AUTH_KEY_B, 6, &KEY_B, &(mfrc522.uid));
@@ -374,8 +371,9 @@ boolean RFIDCoroutine::writeBalance(Balance balance, bool needsAuthentication) {
       unsigned char pack[2];
       calculatePassword(password, pack);
       unsigned char packRead[2] = {0x0, 0x0};
+
       if (MFRC522::STATUS_OK != mfrc522.PCD_NTAG216_AUTH(password, packRead) ||
-          !memcmp(packRead, pack, 2)) {
+          memcmp(packRead, pack, 2) != 0) {
         Log.errorln("[RFID] Authentication failed: %x:%x", pack[0], pack[1]);
         return false;
       }
@@ -389,13 +387,6 @@ boolean RFIDCoroutine::writeBalance(Balance balance, bool needsAuthentication) {
 
     ultralightCounter++;
     unsigned char buffer[len];
-
-    unsigned char incrementCounter[] = {0xA5,  // INCR_CNT
-                                        0x00,  // Counter 0
-                                        0x01,  // increment by 1
-                                        0x00, 0x00, 0x00};
-
-    // write counter: 0xA5, 0x00, 0x01, 0x00, 0x00, 0x00
     unsigned int written = constructPayload(buffer, balance, ultralightCounter);
     calculateSignatureUltralight(buffer + written, balance, ultralightCounter);
 
@@ -404,18 +395,22 @@ boolean RFIDCoroutine::writeBalance(Balance balance, bool needsAuthentication) {
     encode_base64(buffer, len, writeData);
     writeData[base64len - 1] = 0xFE;  // override padding =
 
-    for (int i = 0; i < base64len; i++) {
-      Log.error("%c ", writeData[i]);
+    for (int i = 0; i < base64len / 4; i++) {
+      if (mfrc522.MIFARE_Ultralight_Write(i + 9, &writeData[4 * i], 4) !=
+          MFRC522::STATUS_OK) {
+        return false;
+      }
     }
-    Log.error("\n");
 
-    // for (int i = 0; i < base64len / 4; i++) {
-    //   // TODO multi write?
-    //   if (mfrc522.MIFARE_Ultralight_Write(i + 9, &writeData[4 * i], 4) !=
-    //       MFRC522::STATUS_OK) {
-    //     return false;
-    //   }
-    // }
+    unsigned char incrementCounter[] = {0xA5, 0x02, 0x01, 0x00,
+                                        0x00, 0x00};  // Increment counter 02
+    ultralightCounter = 1;
+    byte backLen = 0;
+    if (mfrc522.PCD_MIFARE_Transceive(
+            incrementCounter, sizeof(incrementCounter)) != MFRC522::STATUS_OK) {
+      Log.errorln("[RFID] Could not increment counter");
+      return false;
+    }
   } else {
     unsigned char writeData[16];
     writeData[0] = ((balance.total / 1000) % 10) + '0';
