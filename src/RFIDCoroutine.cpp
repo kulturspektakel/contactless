@@ -49,6 +49,7 @@ int RFIDCoroutine::runCoroutine() {
     }
 
     hasToWriteLog = false;
+    ultralightCounter = 0;
     messageStart = millis();
 
     switch (mainCoroutine.mode) {
@@ -107,7 +108,6 @@ int RFIDCoroutine::runCoroutine() {
             mfrc522.MIFARE_Ultralight_Write(i + 3, writeData[i], 4);
           }
 
-          ultralightCounter = 0;
           writeBalance(Balance_default, false);
 
           // write password and PACK
@@ -431,5 +431,4 @@ void RFIDCoroutine::resetReader() {
   mfrc522.PICC_HaltA();
   mfrc522.PCD_StopCrypto1();
   cardId[0] = '\0';
-  ultralightCounter = 0;
 }

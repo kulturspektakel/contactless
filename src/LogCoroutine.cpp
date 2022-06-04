@@ -76,6 +76,8 @@ int LogCoroutine::runCoroutine() {
           rFIDCoroutine.resetReader();  // needed to free SPI
           SD.remove(file.name());
           logsToUpload--;
+        } else {
+          // TODO: How to handle other status codes?
         }
       }
     }
@@ -147,6 +149,10 @@ void LogCoroutine::writeLog() {
     transaction.client_id[i] = charset[rand() % (int)(sizeof(charset) - 1)];
   }
   transaction.client_id[sizeof(transaction.client_id) - 1] = '\0';
+  if (rFIDCoroutine.ultralightCounter != 0) {
+    transaction._counter.counter = rFIDCoroutine.ultralightCounter;
+    transaction.which__counter = CardTransaction_counter_tag;
+  }
 
   // write log file
   char filename[13];
