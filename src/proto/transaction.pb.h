@@ -44,7 +44,7 @@ typedef struct _CardTransaction {
     int32_t balance_after; 
     int32_t deposit_before; 
     int32_t deposit_after; 
-    char card_id[9]; 
+    char card_id[15]; 
     pb_size_t which__list_id;
     union {
         int32_t list_id;
@@ -134,7 +134,7 @@ extern const pb_msgdesc_t CardTransaction_CartItem_msg;
 /* Maximum encoded size of messages (where known) */
 #if defined(Product_size)
 #define CardTransaction_CartItem_size            (17 + Product_size)
-#define CardTransaction_size                     (320 + 9*Product_size)
+#define CardTransaction_size                     (326 + 9*Product_size)
 #endif
 
 #ifdef __cplusplus

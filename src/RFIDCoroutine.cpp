@@ -194,7 +194,6 @@ int RFIDCoroutine::runCoroutine() {
     unsigned char size = 18;
     unsigned char target[16];
     while (mfrc522.MIFARE_Read(6, target, &size) == MFRC522::STATUS_OK) {
-      COROUTINE_DELAY(333);
     }
 
     if (hasToWriteLog) {
@@ -251,13 +250,15 @@ boolean RFIDCoroutine::readBalance() {
     ultralightCounter = *(reinterpret_cast<uint16_t*>(backData));
 
     // Needed to get card into idle state after PCD_TransceiveData
+    mfrc522.PCD_Init();
     mfrc522.PICC_IsNewCardPresent();
 
     unsigned char size = 16 + 2 + 16;
     unsigned char payload[size];
+
     if (mfrc522.MIFARE_Read(9, payload, &size) != MFRC522::STATUS_OK ||
         mfrc522.MIFARE_Read(13, payload + 16, &size) != MFRC522::STATUS_OK) {
-      Log.errorln("[RFID] Reading payload failed", ultralightCounter);
+      Log.errorln("[RFID] Reading payload failed: %d", ultralightCounter);
       return false;
     }
 
@@ -395,7 +396,7 @@ boolean RFIDCoroutine::writeBalance(Balance balance, bool needsAuthentication) {
     encode_base64(buffer, len, writeData);
     writeData[base64len - 1] = 0xFE;  // override padding =
 
-    for (int i = 0; i < base64len / 4; i++) {
+    for (unsigned int i = 0; i < base64len / 4; i++) {
       if (mfrc522.MIFARE_Ultralight_Write(i + 9, &writeData[4 * i], 4) !=
           MFRC522::STATUS_OK) {
         return false;
@@ -404,8 +405,6 @@ boolean RFIDCoroutine::writeBalance(Balance balance, bool needsAuthentication) {
 
     unsigned char incrementCounter[] = {0xA5, 0x02, 0x01, 0x00,
                                         0x00, 0x00};  // Increment counter 02
-    ultralightCounter = 1;
-    byte backLen = 0;
     if (mfrc522.PCD_MIFARE_Transceive(
             incrementCounter, sizeof(incrementCounter)) != MFRC522::STATUS_OK) {
       Log.errorln("[RFID] Could not increment counter");
@@ -428,6 +427,7 @@ boolean RFIDCoroutine::writeBalance(Balance balance, bool needsAuthentication) {
 }
 
 void RFIDCoroutine::resetReader() {
+  Log.infoln("[RFID] resetReader");
   mfrc522.PICC_HaltA();
   mfrc522.PCD_StopCrypto1();
   cardId[0] = '\0';

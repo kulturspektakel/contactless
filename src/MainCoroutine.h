@@ -17,8 +17,8 @@ enum Mode {
 };
 
 struct Balance_t {
-  uint8_t deposit;
-  uint16_t total;
+  int deposit;
+  int total;
 
   operator bool() const { return (0 != deposit || 0 != total); }
   void reset() {

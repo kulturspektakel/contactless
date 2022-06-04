@@ -128,7 +128,8 @@ void LogCoroutine::writeLog() {
   transaction.device_time = now();
   transaction.device_time_is_utc = timeEntryCoroutine.deviceTimeIsUtc;
   transaction.payment_method = CardTransaction_PaymentMethod_KULT_CARD;
-  strncpy(transaction.card_id, rFIDCoroutine.cardId, 9);
+  strncpy(transaction.card_id, rFIDCoroutine.cardId,
+          sizeof(transaction.card_id));
   transaction.balance_before = rFIDCoroutine.cardValueBefore.total;
   transaction.deposit_before = rFIDCoroutine.cardValueBefore.deposit;
   transaction.balance_after = rFIDCoroutine.cardValueAfter.total;

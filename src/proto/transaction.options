@@ -1,4 +1,4 @@
 CardTransaction.device_id              max_length:8
 CardTransaction.client_id              max_length:8
-CardTransaction.card_id                max_length:8
+CardTransaction.card_id                max_length:14
 CardTransaction.cart_items             max_count:9
