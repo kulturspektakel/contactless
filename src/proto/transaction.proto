@@ -7,14 +7,15 @@ message CardTransaction {
   TransactionType transaction_type = 3;
   int32 device_time = 4;
   PaymentMethod payment_method = 5;
-  int32 balanceBefore = 6;
-  int32 balanceAfter = 7;
-  int32 depositBefore = 8;
-  int32 depositAfter = 9;
+  int32 balance_before = 6;
+  int32 balance_after = 7;
+  int32 deposit_before = 8;
+  int32 deposit_after = 9;
   string card_id = 10;
   optional int32 list_id = 11;
   repeated CartItem cart_items = 12;
   bool device_time_is_utc = 13;
+  optional int32 counter = 14;
 
   message CartItem {
     int32 amount = 1;

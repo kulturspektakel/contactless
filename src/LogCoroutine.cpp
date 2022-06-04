@@ -129,10 +129,10 @@ void LogCoroutine::writeLog() {
   transaction.device_time_is_utc = timeEntryCoroutine.deviceTimeIsUtc;
   transaction.payment_method = CardTransaction_PaymentMethod_KULT_CARD;
   strncpy(transaction.card_id, rFIDCoroutine.cardId, 9);
-  transaction.balanceBefore = rFIDCoroutine.cardValueBefore.total;
-  transaction.depositBefore = rFIDCoroutine.cardValueBefore.deposit;
-  transaction.balanceAfter = rFIDCoroutine.cardValueAfter.total;
-  transaction.depositAfter = rFIDCoroutine.cardValueAfter.deposit;
+  transaction.balance_before = rFIDCoroutine.cardValueBefore.total;
+  transaction.deposit_before = rFIDCoroutine.cardValueBefore.deposit;
+  transaction.balance_after = rFIDCoroutine.cardValueAfter.total;
+  transaction.deposit_after = rFIDCoroutine.cardValueAfter.deposit;
   if (configCoroutine.config.list_id > 0) {
     transaction._list_id.list_id = configCoroutine.config.list_id;
     transaction.which__list_id = CardTransaction_list_id_tag;

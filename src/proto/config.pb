@@ -1,7 +1,8 @@
 
-ˆ
-config.protoproduct.proto"a
+¤
+config.protoproduct.proto"}
 DeviceConfig
 name (	Rname
 list_id (RlistId$
-products (2.ProductRproductsbproto3
+products (2.ProductRproducts
+checksum (Rchecksumbproto3

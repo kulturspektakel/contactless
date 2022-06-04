@@ -16,6 +16,7 @@ typedef struct _DeviceConfig {
     int32_t list_id; 
     pb_size_t products_count;
     Product products[9]; 
+    int32_t checksum; 
 } DeviceConfig;
 
 
@@ -24,19 +25,21 @@ extern "C" {
 #endif
 
 /* Initializer values for message structs */
-#define DeviceConfig_init_default                {"", 0, 0, {Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default}}
-#define DeviceConfig_init_zero                   {"", 0, 0, {Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero}}
+#define DeviceConfig_init_default                {"", 0, 0, {Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default}, 0}
+#define DeviceConfig_init_zero                   {"", 0, 0, {Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero}, 0}
 
 /* Field tags (for use in manual encoding/decoding) */
 #define DeviceConfig_name_tag                    1
 #define DeviceConfig_list_id_tag                 2
 #define DeviceConfig_products_tag                3
+#define DeviceConfig_checksum_tag                4
 
 /* Struct field encoding specification for nanopb */
 #define DeviceConfig_FIELDLIST(X, a) \
 X(a, STATIC,   SINGULAR, STRING,   name,              1) \
 X(a, STATIC,   SINGULAR, INT32,    list_id,           2) \
-X(a, STATIC,   REPEATED, MESSAGE,  products,          3)
+X(a, STATIC,   REPEATED, MESSAGE,  products,          3) \
+X(a, STATIC,   SINGULAR, INT32,    checksum,          4)
 #define DeviceConfig_CALLBACK NULL
 #define DeviceConfig_DEFAULT NULL
 #define DeviceConfig_products_MSGTYPE Product
@@ -48,7 +51,7 @@ extern const pb_msgdesc_t DeviceConfig_msg;
 
 /* Maximum encoded size of messages (where known) */
 #if defined(Product_size)
-#define DeviceConfig_size                        (107 + 9*Product_size)
+#define DeviceConfig_size                        (118 + 9*Product_size)
 #endif
 
 #ifdef __cplusplus

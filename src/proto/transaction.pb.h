@@ -40,10 +40,10 @@ typedef struct _CardTransaction {
     CardTransaction_TransactionType transaction_type; 
     int32_t device_time; 
     CardTransaction_PaymentMethod payment_method; 
-    int32_t balanceBefore; 
-    int32_t balanceAfter; 
-    int32_t depositBefore; 
-    int32_t depositAfter; 
+    int32_t balance_before; 
+    int32_t balance_after; 
+    int32_t deposit_before; 
+    int32_t deposit_after; 
     char card_id[9]; 
     pb_size_t which__list_id;
     union {
@@ -52,6 +52,10 @@ typedef struct _CardTransaction {
     pb_size_t cart_items_count;
     CardTransaction_CartItem cart_items[9]; 
     bool device_time_is_utc; 
+    pb_size_t which__counter;
+    union {
+        int32_t counter;
+    } _counter; 
 } CardTransaction;
 
 
@@ -70,9 +74,9 @@ extern "C" {
 #endif
 
 /* Initializer values for message structs */
-#define CardTransaction_init_default             {"", "", _CardTransaction_TransactionType_MIN, 0, _CardTransaction_PaymentMethod_MIN, 0, 0, 0, 0, "", 0, {0}, 0, {CardTransaction_CartItem_init_default, CardTransaction_CartItem_init_default, CardTransaction_CartItem_init_default, CardTransaction_CartItem_init_default, CardTransaction_CartItem_init_default, CardTransaction_CartItem_init_default, CardTransaction_CartItem_init_default, CardTransaction_CartItem_init_default, CardTransaction_CartItem_init_default}, 0}
+#define CardTransaction_init_default             {"", "", _CardTransaction_TransactionType_MIN, 0, _CardTransaction_PaymentMethod_MIN, 0, 0, 0, 0, "", 0, {0}, 0, {CardTransaction_CartItem_init_default, CardTransaction_CartItem_init_default, CardTransaction_CartItem_init_default, CardTransaction_CartItem_init_default, CardTransaction_CartItem_init_default, CardTransaction_CartItem_init_default, CardTransaction_CartItem_init_default, CardTransaction_CartItem_init_default, CardTransaction_CartItem_init_default}, 0, 0, {0}}
 #define CardTransaction_CartItem_init_default    {0, false, Product_init_default}
-#define CardTransaction_init_zero                {"", "", _CardTransaction_TransactionType_MIN, 0, _CardTransaction_PaymentMethod_MIN, 0, 0, 0, 0, "", 0, {0}, 0, {CardTransaction_CartItem_init_zero, CardTransaction_CartItem_init_zero, CardTransaction_CartItem_init_zero, CardTransaction_CartItem_init_zero, CardTransaction_CartItem_init_zero, CardTransaction_CartItem_init_zero, CardTransaction_CartItem_init_zero, CardTransaction_CartItem_init_zero, CardTransaction_CartItem_init_zero}, 0}
+#define CardTransaction_init_zero                {"", "", _CardTransaction_TransactionType_MIN, 0, _CardTransaction_PaymentMethod_MIN, 0, 0, 0, 0, "", 0, {0}, 0, {CardTransaction_CartItem_init_zero, CardTransaction_CartItem_init_zero, CardTransaction_CartItem_init_zero, CardTransaction_CartItem_init_zero, CardTransaction_CartItem_init_zero, CardTransaction_CartItem_init_zero, CardTransaction_CartItem_init_zero, CardTransaction_CartItem_init_zero, CardTransaction_CartItem_init_zero}, 0, 0, {0}}
 #define CardTransaction_CartItem_init_zero       {0, false, Product_init_zero}
 
 /* Field tags (for use in manual encoding/decoding) */
@@ -83,14 +87,15 @@ extern "C" {
 #define CardTransaction_transaction_type_tag     3
 #define CardTransaction_device_time_tag          4
 #define CardTransaction_payment_method_tag       5
-#define CardTransaction_balanceBefore_tag        6
-#define CardTransaction_balanceAfter_tag         7
-#define CardTransaction_depositBefore_tag        8
-#define CardTransaction_depositAfter_tag         9
+#define CardTransaction_balance_before_tag       6
+#define CardTransaction_balance_after_tag        7
+#define CardTransaction_deposit_before_tag       8
+#define CardTransaction_deposit_after_tag        9
 #define CardTransaction_card_id_tag              10
 #define CardTransaction_list_id_tag              11
 #define CardTransaction_cart_items_tag           12
 #define CardTransaction_device_time_is_utc_tag   13
+#define CardTransaction_counter_tag              14
 
 /* Struct field encoding specification for nanopb */
 #define CardTransaction_FIELDLIST(X, a) \
@@ -99,14 +104,15 @@ X(a, STATIC,   SINGULAR, STRING,   client_id,         2) \
 X(a, STATIC,   SINGULAR, UENUM,    transaction_type,   3) \
 X(a, STATIC,   SINGULAR, INT32,    device_time,       4) \
 X(a, STATIC,   SINGULAR, UENUM,    payment_method,    5) \
-X(a, STATIC,   SINGULAR, INT32,    balanceBefore,     6) \
-X(a, STATIC,   SINGULAR, INT32,    balanceAfter,      7) \
-X(a, STATIC,   SINGULAR, INT32,    depositBefore,     8) \
-X(a, STATIC,   SINGULAR, INT32,    depositAfter,      9) \
+X(a, STATIC,   SINGULAR, INT32,    balance_before,    6) \
+X(a, STATIC,   SINGULAR, INT32,    balance_after,     7) \
+X(a, STATIC,   SINGULAR, INT32,    deposit_before,    8) \
+X(a, STATIC,   SINGULAR, INT32,    deposit_after,     9) \
 X(a, STATIC,   SINGULAR, STRING,   card_id,          10) \
 X(a, STATIC,   ONEOF,    INT32,    (_list_id,list_id,_list_id.list_id),  11) \
 X(a, STATIC,   REPEATED, MESSAGE,  cart_items,       12) \
-X(a, STATIC,   SINGULAR, BOOL,     device_time_is_utc,  13)
+X(a, STATIC,   SINGULAR, BOOL,     device_time_is_utc,  13) \
+X(a, STATIC,   ONEOF,    INT32,    (_counter,counter,_counter.counter),  14)
 #define CardTransaction_CALLBACK NULL
 #define CardTransaction_DEFAULT NULL
 #define CardTransaction_cart_items_MSGTYPE CardTransaction_CartItem
@@ -128,7 +134,7 @@ extern const pb_msgdesc_t CardTransaction_CartItem_msg;
 /* Maximum encoded size of messages (where known) */
 #if defined(Product_size)
 #define CardTransaction_CartItem_size            (17 + Product_size)
-#define CardTransaction_size                     (309 + 9*Product_size)
+#define CardTransaction_size                     (320 + 9*Product_size)
 #endif
 
 #ifdef __cplusplus
