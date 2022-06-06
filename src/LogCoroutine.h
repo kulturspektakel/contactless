@@ -18,5 +18,5 @@ class LogCoroutine : public Coroutine {
   int runCoroutine() override;
   CardTransaction transaction = CardTransaction_init_zero;
   void addProduct(int i);
-  void writeLog();
+  void writeLog(CardTransaction_PaymentMethod paymentMethod);
 };

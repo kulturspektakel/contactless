@@ -108,7 +108,7 @@ void LogCoroutine::addProduct(int i) {
   transaction.cart_items_count++;
 }
 
-void LogCoroutine::writeLog() {
+void LogCoroutine::writeLog(CardTransaction_PaymentMethod paymentMethod) {
   switch (mainCoroutine.mode) {
     case CASH_OUT:
       transaction.transaction_type = CardTransaction_TransactionType_CASHOUT;
@@ -129,7 +129,7 @@ void LogCoroutine::writeLog() {
   }
   transaction.device_time = now();
   transaction.device_time_is_utc = timeEntryCoroutine.deviceTimeIsUtc;
-  transaction.payment_method = CardTransaction_PaymentMethod_KULT_CARD;
+  transaction.payment_method = paymentMethod;
   strncpy(transaction.card_id, rFIDCoroutine.cardId,
           sizeof(transaction.card_id));
   transaction.balance_before = rFIDCoroutine.cardValueBefore.total;

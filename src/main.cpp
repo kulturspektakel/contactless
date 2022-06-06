@@ -7,6 +7,7 @@
 #include <Hash.h>
 #include <SPI.h>
 #include "ChargeManualCoroutine.h"
+#include "ChargeWithoutCatdCoroutine.h"
 #include "ConfigCoroutine.h"
 #include "Constants.h"
 #include "DisplayCoroutine.h"
@@ -37,6 +38,7 @@ RFIDCoroutine rFIDCoroutine;
 InfoCoroutine infoCoroutine;
 ModeChangerCoroutine modeChangerCoroutine;
 SoftwareUpdateCoroutine softwareUpdateCoroutine;
+ChargeWithoutCatdCoroutine chargeWithoutCatdCoroutine;
 
 char deviceID[9];
 char deviceToken[48];
@@ -68,4 +70,5 @@ void loop() {
   infoCoroutine.runCoroutine();
   modeChangerCoroutine.runCoroutine();
   softwareUpdateCoroutine.runCoroutine();
+  chargeWithoutCatdCoroutine.runCoroutine();
 }

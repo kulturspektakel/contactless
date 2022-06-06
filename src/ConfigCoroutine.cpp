@@ -62,18 +62,24 @@ int ConfigCoroutine::runCoroutine() {
     uint8_t buffer[len];
     request.responseRead(buffer, len);
     pb_istream_t pbstream = pb_istream_from_buffer(buffer, len);
+    int oldChecksum = config.checksum;
     pb_decode(&pbstream, DeviceConfig_fields, &config);
-    Log.infoln("[Config] received: %s", config.name);
+    Log.infoln("[Config] received: %s, %d, %d", config.name, config.checksum,
+               oldChecksum);
 
-    rFIDCoroutine.resetReader();  // needed to free SPI
-    configFile = SD.open(configFileName, FILE_WRITE);
+    if (config.checksum != oldChecksum) {
+      rFIDCoroutine.resetReader();  // needed to free SPI
+      configFile = SD.open(configFileName, FILE_WRITE);
 
-    if (configFile.availableForWrite()) {
-      int written = configFile.write(buffer, len);
-      Log.infoln("[Config] Written: %d", written);
-      configFile.close();
+      if (configFile.availableForWrite()) {
+        int written = configFile.write(buffer, len);
+        Log.infoln("[Config] Written: %d", written);
+        configFile.close();
+      } else {
+        Log.errorln("[Config] config not writable");
+      }
     } else {
-      Log.infoln("[Config] config not writable");
+      Log.infoln("[Config] config same as before");
     }
   } else if (request.responseHTTPcode() == 204) {
     // delete config
