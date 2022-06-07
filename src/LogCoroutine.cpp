@@ -53,7 +53,7 @@ int LogCoroutine::runCoroutine() {
         Log.infoln("[Log] starting upload: %s", file.name());
 
         size_t len = file.size();
-        if (len > CardTransaction_size) {
+        if (len > LogMessage_size) {
           Log.error("[Log] %s was too large, deleting it", file.name());
           SD.remove(file.name());
           logsToUpload--;
@@ -92,78 +92,105 @@ boolean LogCoroutine::isLogFile() {
 }
 
 void LogCoroutine::addProduct(int i) {
-  for (int j = 0; j < transaction.cart_items_count; j++) {
-    if (strcmp(transaction.cart_items[j].product.name,
+  if (logMessage.which__order == 0) {
+    LogMessage_Order o = LogMessage_Order_init_zero;
+    logMessage._order.order = o;
+    logMessage.which__order = LogMessage_Order_list_id_tag;
+  }
+
+  for (int j = 0; j < logMessage._order.order.cart_items_count; j++) {
+    if (strcmp(logMessage._order.order.cart_items[j].product.name,
                configCoroutine.config.products[i].name) == 0) {
-      transaction.cart_items[i].amount++;
+      logMessage._order.order.cart_items[i].amount++;
       return;
     }
   }
 
   // add to cart
-  transaction.cart_items[transaction.cart_items_count].amount = 1;
-  transaction.cart_items[transaction.cart_items_count].has_product = true;
-  transaction.cart_items[transaction.cart_items_count].product =
-      configCoroutine.config.products[i];
-  transaction.cart_items_count++;
+  logMessage._order.order.cart_items[logMessage._order.order.cart_items_count]
+      .amount = 1;
+  logMessage._order.order.cart_items[logMessage._order.order.cart_items_count]
+      .has_product = true;
+  logMessage._order.order.cart_items[logMessage._order.order.cart_items_count]
+      .product = configCoroutine.config.products[i];
+  logMessage._order.order.cart_items_count++;
 }
 
-void LogCoroutine::writeLog(CardTransaction_PaymentMethod paymentMethod) {
-  switch (mainCoroutine.mode) {
-    case CASH_OUT:
-      transaction.transaction_type = CardTransaction_TransactionType_CASHOUT;
-      break;
-    case CHARGE_LIST:
-    case CHARGE_MANUAL:
-      transaction.transaction_type = CardTransaction_TransactionType_CHARGE;
-      break;
-    case TOP_UP:
-      transaction.transaction_type = CardTransaction_TransactionType_TOP_UP;
-      break;
-    default: {
-      // other events are not logged
-      CardTransaction t = CardTransaction_init_zero;
-      transaction = t;
-      return;
+void LogCoroutine::writeLog(LogMessage_Order_PaymentMethod paymentMethod) {
+  logMessage.device_time = now();
+  logMessage.device_time_is_utc = timeEntryCoroutine.deviceTimeIsUtc;
+  strncpy(logMessage.device_id, deviceID, 9);
+  // generate client transaction ID
+  for (size_t i = 0; i < sizeof(logMessage.client_id) - 1; i++) {
+    // TODO Random not random
+    logMessage.client_id[i] = charset[rand() % (int)(sizeof(charset) - 1)];
+  }
+  logMessage.client_id[sizeof(logMessage.client_id) - 1] = '\0';
+
+  if (logMessage.which__order != 0) {
+    logMessage._order.order.payment_method = paymentMethod;
+    if (configCoroutine.config.list_id > 0) {
+      logMessage._order.order._list_id.list_id = configCoroutine.config.list_id;
+      logMessage._order.order.which__list_id = LogMessage_Order_list_id_tag;
     }
   }
-  transaction.device_time = now();
-  transaction.device_time_is_utc = timeEntryCoroutine.deviceTimeIsUtc;
-  transaction.payment_method = paymentMethod;
-  strncpy(transaction.card_id, rFIDCoroutine.cardId,
-          sizeof(transaction.card_id));
-  transaction.balance_before = rFIDCoroutine.cardValueBefore.total;
-  transaction.deposit_before = rFIDCoroutine.cardValueBefore.deposit;
-  transaction.balance_after = rFIDCoroutine.cardValueAfter.total;
-  transaction.deposit_after = rFIDCoroutine.cardValueAfter.deposit;
-  if (configCoroutine.config.list_id > 0) {
-    transaction._list_id.list_id = configCoroutine.config.list_id;
-    transaction.which__list_id = CardTransaction_list_id_tag;
-  }
 
-  strncpy(transaction.device_id, deviceID, 9);
+  if (paymentMethod == LogMessage_Order_PaymentMethod_KULT_CARD) {
+    logMessage.which__card_transaction = LogMessage_card_transaction_tag;
 
-  // generate client transaction ID
-  for (size_t i = 0; i < sizeof(transaction.client_id) - 1; i++) {
-    // TODO Random not random
-    transaction.client_id[i] = charset[rand() % (int)(sizeof(charset) - 1)];
-  }
-  transaction.client_id[sizeof(transaction.client_id) - 1] = '\0';
-  if (rFIDCoroutine.ultralightCounter != 0) {
-    transaction._counter.counter = rFIDCoroutine.ultralightCounter;
-    transaction.which__counter = CardTransaction_counter_tag;
+    LogMessage_CardTransaction transaction =
+        LogMessage_CardTransaction_init_zero;
+    logMessage._card_transaction.card_transaction = transaction;
+
+    switch (mainCoroutine.mode) {
+      case CASH_OUT:
+        logMessage._card_transaction.card_transaction.transaction_type =
+            LogMessage_CardTransaction_TransactionType_CASHOUT;
+        break;
+      case CHARGE_LIST:
+      case CHARGE_MANUAL:
+        logMessage._card_transaction.card_transaction.transaction_type =
+            LogMessage_CardTransaction_TransactionType_CHARGE;
+        break;
+      case TOP_UP:
+        logMessage._card_transaction.card_transaction.transaction_type =
+            LogMessage_CardTransaction_TransactionType_TOP_UP;
+        break;
+      default: {
+        // other events are not logged
+        return;
+      }
+    }
+    strncpy(logMessage._card_transaction.card_transaction.card_id,
+            rFIDCoroutine.cardId,
+            sizeof(logMessage._card_transaction.card_transaction.card_id));
+    logMessage._card_transaction.card_transaction.balance_before =
+        rFIDCoroutine.cardValueBefore.total;
+    logMessage._card_transaction.card_transaction.deposit_before =
+        rFIDCoroutine.cardValueBefore.deposit;
+    logMessage._card_transaction.card_transaction.balance_after =
+        rFIDCoroutine.cardValueAfter.total;
+    logMessage._card_transaction.card_transaction.deposit_after =
+        rFIDCoroutine.cardValueAfter.deposit;
+
+    if (rFIDCoroutine.ultralightCounter != 0) {
+      logMessage._card_transaction.card_transaction._counter.counter =
+          rFIDCoroutine.ultralightCounter;
+      logMessage._card_transaction.card_transaction.which__counter =
+          LogMessage_CardTransaction_counter_tag;
+    }
   }
 
   // write log file
   char filename[13];
-  sprintf(filename, "%s.log", transaction.client_id);
+  sprintf(filename, "%s.log", logMessage.client_id);
 
   rFIDCoroutine.resetReader();  // needed to free SPI
   File logFile = SD.open(filename, FILE_WRITE);
   if (logFile && logFile.availableForWrite()) {
-    uint8_t buffer[CardTransaction_size];
-    pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(transaction));
-    pb_encode(&stream, CardTransaction_fields, &transaction);
+    uint8_t buffer[LogMessage_size];
+    pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(logMessage));
+    pb_encode(&stream, LogMessage_fields, &logMessage);
     logFile.write(buffer, stream.bytes_written);
     Log.infoln("[Log] Written logfile %s", filename);
     logsToUpload++;

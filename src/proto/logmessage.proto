@@ -1,0 +1,48 @@
+syntax = "proto3";
+import "product.proto";
+
+message LogMessage {
+  string device_id = 1;
+  string client_id = 2;
+  int32 device_time = 3;
+  bool device_time_is_utc = 4;
+  optional Order order = 5;
+  optional CardTransaction card_transaction = 6;
+
+  message CardTransaction {
+    TransactionType transaction_type = 1;
+    int32 balance_before = 2;
+    int32 balance_after = 3;
+    int32 deposit_before = 4;
+    int32 deposit_after = 5;
+    string card_id = 6;
+    optional int32 counter = 7;
+    
+    enum TransactionType {
+      TOP_UP = 0;
+      CHARGE = 1;
+      CASHOUT = 2;
+    }
+  }
+
+  message Order {
+    PaymentMethod payment_method = 1;
+    repeated CartItem cart_items = 2;
+    optional int32 list_id = 3;
+    
+    enum PaymentMethod {
+      CASH = 0;
+      BON = 1;
+      SUM_UP = 2;
+      VOUCHER = 3;
+      FREE_CREW = 4;
+      FREE_BAND = 5;
+      KULT_CARD = 6;
+    }
+  
+    message CartItem {
+      int32 amount = 1;
+      Product product = 2;
+    }
+  }
+}

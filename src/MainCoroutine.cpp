@@ -7,8 +7,8 @@
 #include "DisplayCoroutine.h"
 #include "KeypadCoroutine.h"
 #include "LogCoroutine.h"
+#include "proto/logMessage.pb.h"
 #include "proto/product.pb.h"
-#include "proto/transaction.pb.h"
 
 extern DisplayCoroutine displayCoroutine;
 extern KeypadCoroutine keypadCoroutine;
@@ -22,8 +22,7 @@ int MainCoroutine::runCoroutine() {
   COROUTINE_BEGIN();
 
   COROUTINE_AWAIT(timeStatus() == timeSet);
-  mode =
-      configCoroutine.config.products_count > 0 ? CHARGE_LIST : CHARGE_MANUAL;
+  defaultMode();
   displayCoroutine.requiresUpdate = true;
 
   while (true) {
@@ -67,6 +66,9 @@ int MainCoroutine::runCoroutine() {
       displayCoroutine.show(configCoroutine.config.products[index].name,
                             nullptr, -2000,
                             configCoroutine.config.products[index].price);
+    } else if (keypadCoroutine.currentKey == '*' && balance &&
+               (mode == CHARGE_LIST || mode == CHARGE_MANUAL)) {
+      mode = CHARGE_WITHOUT_CARD;
     } else if (mode == CASH_OUT) {
       mode = TOP_UP;
     } else {
@@ -82,7 +84,12 @@ int MainCoroutine::runCoroutine() {
 
 void MainCoroutine::resetBalance() {
   balance.reset();
-  CardTransaction t = CardTransaction_init_zero;
-  logCoroutine.transaction = t;
+  LogMessage l = LogMessage_init_zero;
+  logCoroutine.logMessage = l;
   displayCoroutine.requiresUpdate = true;
+}
+
+void MainCoroutine::defaultMode() {
+  mode =
+      configCoroutine.config.products_count > 0 ? CHARGE_LIST : CHARGE_MANUAL;
 }

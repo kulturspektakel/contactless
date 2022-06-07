@@ -198,7 +198,7 @@ int RFIDCoroutine::runCoroutine() {
 
     if (hasToWriteLog) {
       // delaying writing to log until card is gone
-      logCoroutine.writeLog(CardTransaction_PaymentMethod_KULT_CARD);
+      logCoroutine.writeLog(LogMessage_Order_PaymentMethod_KULT_CARD);
     }
     unsigned long messageShownFor = millis() - messageStart;
     // always display message for at least 2 seconds

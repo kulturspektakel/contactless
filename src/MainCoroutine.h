@@ -14,6 +14,7 @@ enum Mode {
   CASH_OUT,
   INITIALIZE_CARD,
   SOFTWARE_UPDATE,
+  CHARGE_WITHOUT_CARD,
 };
 
 struct Balance_t {
@@ -37,6 +38,7 @@ class MainCoroutine : public Coroutine {
   int runCoroutine() override;
   void resetBalance();
   void changeMode();
+  void defaultMode();
   Mode mode = TIME_ENTRY;
   Balance balance = Balance_default;
 };

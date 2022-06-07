@@ -1,0 +1,4 @@
+LogMessage.device_id                max_length:8
+LogMessage.client_id                max_length:8
+LogMessage.CardTransaction.card_id  max_length:14
+LogMessage.Order.cart_items         max_count:9

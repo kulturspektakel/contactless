@@ -91,8 +91,7 @@ int ConfigCoroutine::runCoroutine() {
   }
 
   if (mainCoroutine.mode != TIME_ENTRY) {
-    mainCoroutine.mode =
-        config.products_count > 0 ? CHARGE_LIST : CHARGE_MANUAL;
+    mainCoroutine.defaultMode();
     displayCoroutine.requiresUpdate = true;
   }
 
