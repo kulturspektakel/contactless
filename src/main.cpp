@@ -1,4 +1,5 @@
-#define USE_SD_H 1
+// Need to set ENABLE_DEDICATED_SPI 0 in
+// .platformio/packages/framework-arduinoespressif8266/libraries/ESP8266SdFat/src/SdFatConfig.h
 
 #include <AceRoutine.h>
 #include <Arduino.h>
@@ -20,11 +21,6 @@
 #include "SoftwareUpdateCoroutine.h"
 #include "TimeEntryCoroutine.h"
 #include "WiFiCoroutine.h"
-
-#define ENABLE_DEDICATED_SPI 0
-#define SPI_DRIVER_SELECT 1
-#define SD_FAT_TYPE 1
-#define SHARED_SPI 1
 
 WiFiCoroutine wiFiCoroutine;
 ConfigCoroutine configCoroutine;
