@@ -77,7 +77,7 @@ int LogCoroutine::runCoroutine() {
           SD.remove(file.name());
           logsToUpload--;
         } else {
-          // TODO: How to handle other status codes?
+          COROUTINE_DELAY_SECONDS(300);
         }
       }
     }
@@ -95,7 +95,7 @@ void LogCoroutine::addProduct(int i) {
   if (logMessage.which__order == 0) {
     LogMessage_Order o = LogMessage_Order_init_zero;
     logMessage._order.order = o;
-    logMessage.which__order = LogMessage_Order_list_id_tag;
+    logMessage.which__order = LogMessage_order_tag;
   }
 
   for (int j = 0; j < logMessage._order.order.cart_items_count; j++) {

@@ -23,7 +23,10 @@ int ConfigCoroutine::runCoroutine() {
   rFIDCoroutine.resetReader();  // needed to free SPI
   SD.begin(10);
   // SD.remove(configFileName);
-  configFile = SD.open(configFileName, FILE_READ);
+  if (SD.exists(configFileName)) {
+    Log.infoln("[Config] config file exists");
+    configFile = SD.open(configFileName, FILE_READ);
+  }
 
   COROUTINE_AWAIT(displayCoroutine.initialized);
 
@@ -34,8 +37,11 @@ int ConfigCoroutine::runCoroutine() {
     configFile.close();
 
     pb_istream_t stream = pb_istream_from_buffer(data, len);
-    pb_decode(&stream, DeviceConfig_fields, &config);
-    Log.infoln("[Config] loaded: %s", config.name);
+    if (pb_decode(&stream, DeviceConfig_fields, &config)) {
+      Log.infoln("[Config] loaded: %s", config.name);
+    } else {
+      Log.errorln("[Config] could not decode");
+    }
     displayCoroutine.show(deviceID, config.name, -2000);
   } else {
     Log.infoln("[Config] no stored config");
@@ -64,12 +70,12 @@ int ConfigCoroutine::runCoroutine() {
     pb_istream_t pbstream = pb_istream_from_buffer(buffer, len);
     int oldChecksum = config.checksum;
     pb_decode(&pbstream, DeviceConfig_fields, &config);
-    Log.infoln("[Config] received: %s, %d, %d", config.name, config.checksum,
-               oldChecksum);
+    Log.infoln("[Config] received: %s", config.name);
 
     if (config.checksum != oldChecksum) {
       rFIDCoroutine.resetReader();  // needed to free SPI
-      configFile = SD.open(configFileName, FILE_WRITE);
+      configFile = SD.open(configFileName, sdfat::O_READ | sdfat::O_WRITE |
+                                               sdfat::O_CREAT | sdfat::O_TRUNC);
 
       if (configFile.availableForWrite()) {
         int written = configFile.write(buffer, len);
