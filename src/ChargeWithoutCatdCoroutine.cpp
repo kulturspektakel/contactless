@@ -27,8 +27,8 @@ int ChargeWithoutCatdCoroutine::runCoroutine() {
         p = LogMessage_Order_PaymentMethod_FREE_CREW;
         displayCoroutine.show("Crew", "abgerechnet", 1500);
       } else if (keypadCoroutine.currentKey == '2') {
-        p = LogMessage_Order_PaymentMethod_FREE_BAND;
-        displayCoroutine.show("Band", "abgerechnet", 1500);
+        p = LogMessage_Order_PaymentMethod_CASH;
+        displayCoroutine.show("Barzahlung", "abgerechnet", 1500);
       } else if (keypadCoroutine.currentKey == '3') {
         p = LogMessage_Order_PaymentMethod_VOUCHER;
         displayCoroutine.show("Gutschein", "abgerechnet", 1500);

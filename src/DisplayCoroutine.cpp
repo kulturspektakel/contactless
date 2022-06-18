@@ -172,7 +172,7 @@ int DisplayCoroutine::runCoroutine() {
         show("Karte", "initialisieren");
         break;
       case CHARGE_WITHOUT_CARD:
-        show("1) Crew  2) Band", "3) Gutschein");
+        show("1) Crew  2) Bar", "3) Gutschein");
         break;
       default:
         show("Home");
