@@ -1,6 +1,8 @@
 // Need to set ENABLE_DEDICATED_SPI 0 in
 // .platformio/packages/framework-arduinoespressif8266/libraries/ESP8266SdFat/src/SdFatConfig.h
 
+#define BASE64_URL  // https://github.com/Densaugeo/base64_arduino/pull/9
+
 #include <AceRoutine.h>
 #include <Arduino.h>
 #include <ArduinoLog.h>

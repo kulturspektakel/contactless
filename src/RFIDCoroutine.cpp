@@ -57,6 +57,7 @@ int RFIDCoroutine::runCoroutine() {
       case CHARGE_LIST:
       case TOP_UP: {
         if (!readBalance()) {
+          displayCoroutine.show("Karte", "nicht lesbar");
           continue;
         }
 
