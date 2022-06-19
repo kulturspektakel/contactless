@@ -69,6 +69,10 @@ int LogCoroutine::runCoroutine() {
         COROUTINE_AWAIT(request.readyState() == 4);
         Log.infoln("[Log] upload finished: %s HTTP %d", file.name(),
                    request.responseHTTPcode());
+
+        // Update time
+        timeEntryCoroutine.dateFromHTTP(request.respHeaderValue("Date"));
+
         if (request.responseHTTPcode() == 201     // Successfully created
             || request.responseHTTPcode() == 400  // Invalid file
             || request.responseHTTPcode() == 409  // Already uploaded
@@ -77,7 +81,7 @@ int LogCoroutine::runCoroutine() {
           SD.remove(file.name());
           logsToUpload--;
         } else {
-          COROUTINE_DELAY_SECONDS(300);
+          COROUTINE_DELAY_SECONDS(5 * 60);
         }
       }
     }

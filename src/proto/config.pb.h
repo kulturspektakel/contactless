@@ -12,10 +12,10 @@
 
 /* Struct definitions */
 typedef struct _DeviceConfig { 
-    char name[41]; 
+    char name[21]; 
     int32_t list_id; 
     pb_size_t products_count;
-    Product products[9]; 
+    Product products[30]; 
     int32_t checksum; 
 } DeviceConfig;
 
@@ -25,8 +25,8 @@ extern "C" {
 #endif
 
 /* Initializer values for message structs */
-#define DeviceConfig_init_default                {"", 0, 0, {Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default}, 0}
-#define DeviceConfig_init_zero                   {"", 0, 0, {Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero}, 0}
+#define DeviceConfig_init_default                {"", 0, 0, {Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default, Product_init_default}, 0}
+#define DeviceConfig_init_zero                   {"", 0, 0, {Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero, Product_init_zero}, 0}
 
 /* Field tags (for use in manual encoding/decoding) */
 #define DeviceConfig_name_tag                    1
@@ -51,7 +51,7 @@ extern const pb_msgdesc_t DeviceConfig_msg;
 
 /* Maximum encoded size of messages (where known) */
 #if defined(Product_size)
-#define DeviceConfig_size                        (118 + 9*Product_size)
+#define DeviceConfig_size                        (224 + 30*Product_size)
 #endif
 
 #ifdef __cplusplus

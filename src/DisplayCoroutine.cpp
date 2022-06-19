@@ -1,5 +1,6 @@
 #include "DisplayCoroutine.h"
 #include <ArduinoLog.h>
+#include "InfoCoroutine.h"
 #include "KeypadCoroutine.h"
 #include "MainCoroutine.h"
 #include "ProductNumberCoroutine.h"
@@ -102,6 +103,7 @@ extern MainCoroutine mainCoroutine;
 extern TimeEntryCoroutine timeEntryCoroutine;
 extern KeypadCoroutine keypadCoroutine;
 extern ProductNumberCoroutine productNumberCoroutine;
+extern InfoCoroutine infoCoroutine;
 static hd44780_I2Cexp lcd(0x27);
 
 int DisplayCoroutine::runCoroutine() {
@@ -178,6 +180,9 @@ int DisplayCoroutine::runCoroutine() {
         break;
       case PRODUCT_NUMBER_ENTRY:
         show("Produktnummer", productNumberCoroutine.entry);
+        break;
+      case DEBUG_INFO:
+        show(infoCoroutine.line1, infoCoroutine.line2);
         break;
       default:
         show("Home");

@@ -1,1 +1,1 @@
-Product.name max_length:40;
+Product.name max_length:30;

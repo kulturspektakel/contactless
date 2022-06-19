@@ -30,12 +30,15 @@ int MainCoroutine::runCoroutine() {
   while (true) {
     COROUTINE_AWAIT(keypadCoroutine.currentKey);
 
+    bool tripplePress = isTripplePress();
     bool isDigit =
         keypadCoroutine.currentKey >= '0' && keypadCoroutine.currentKey <= '9';
 
     if (keypadCoroutine.currentKey == 'D' && mode == TOP_UP && !balance) {
       mode = CASH_OUT;
-    } else if (keypadCoroutine.currentKey == 'D' && mode != CASH_OUT &&
+    } else if (keypadCoroutine.currentKey == 'D' &&
+               (mode == TOP_UP || mode == CHARGE_MANUAL ||
+                mode == CHARGE_LIST) &&
                balance) {
       // reset
       resetBalance();
@@ -67,11 +70,18 @@ int MainCoroutine::runCoroutine() {
       mode = CHARGE_WITHOUT_CARD;
     } else if (mode == CHARGE_LIST && keypadCoroutine.currentKey == '#') {
       mode = PRODUCT_NUMBER_ENTRY;
+    } else if (mode == CHARGE_MANUAL && keypadCoroutine.currentKey == '#') {
+      defaultMode();
     } else if (mode == PRODUCT_NUMBER_ENTRY && !isDigit) {
       defaultMode();
       productNumberCoroutine.reset();
     } else if (mode == CASH_OUT) {
       mode = TOP_UP;
+    } else if (tripplePress && keypadCoroutine.currentKey == 'C') {
+      mode = DEBUG_INFO;
+    } else if (tripplePress && keypadCoroutine.currentKey == '*' &&
+               mode == CHARGE_LIST) {
+      mode = CHARGE_MANUAL;
     } else {
       // do nothing
       continue;
@@ -90,7 +100,7 @@ void MainCoroutine::resetBalance() {
   displayCoroutine.requiresUpdate = true;
 }
 
-void MainCoroutine::addProduct(uint8_t index) {
+bool MainCoroutine::addProduct(uint8_t index) {
   if (index < sizeof(configCoroutine.config.products) /
                   sizeof(*configCoroutine.config.products) &&
       configCoroutine.config.products[index].price > 0) {
@@ -98,7 +108,33 @@ void MainCoroutine::addProduct(uint8_t index) {
     logCoroutine.addProduct(index);
     displayCoroutine.show(configCoroutine.config.products[index].name, nullptr,
                           -2000, configCoroutine.config.products[index].price);
+    return true;
+  } else {
+    return false;
   }
+}
+
+bool MainCoroutine::isTripplePress() {
+  if (keypadCoroutine.currentKey == trippleChar) {
+    if (trippleTimings[1] == 0 && trippleTimings[0] > millis() - 500) {
+      trippleTimings[1] = millis();
+    } else if (trippleTimings[1] != 0 && trippleTimings[1] > millis() - 500) {
+      resetTripplePress();
+      Log.infoln("[Main] Tripple press triggered");
+      return true;
+    } else {
+      resetTripplePress();
+    }
+  } else {
+    resetTripplePress();
+  }
+  return false;
+}
+
+void MainCoroutine::resetTripplePress() {
+  trippleTimings[0] = millis();
+  trippleTimings[1] = 0;
+  trippleChar = keypadCoroutine.currentKey;
 }
 
 void MainCoroutine::defaultMode() {

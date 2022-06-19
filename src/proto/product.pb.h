@@ -11,7 +11,7 @@
 
 /* Struct definitions */
 typedef struct _Product { 
-    char name[41]; 
+    char name[31]; 
     int32_t price; 
 } Product;
 
@@ -41,7 +41,7 @@ extern const pb_msgdesc_t Product_msg;
 #define Product_fields &Product_msg
 
 /* Maximum encoded size of messages (where known) */
-#define Product_size                             53
+#define Product_size                             43
 
 #ifdef __cplusplus
 } /* extern "C" */

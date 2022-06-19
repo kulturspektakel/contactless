@@ -7,7 +7,6 @@
 #include <ESP8266WiFi.h>
 #include <Hash.h>
 #include <SPI.h>
-#include "ChargeManualCoroutine.h"
 #include "ChargeWithoutCatdCoroutine.h"
 #include "ConfigCoroutine.h"
 #include "Constants.h"
@@ -30,7 +29,6 @@ MainCoroutine mainCoroutine;
 KeypadCoroutine keypadCoroutine;
 TimeEntryCoroutine timeEntryCoroutine;
 LogCoroutine logCoroutine;
-ChargeManualCoroutine chargeManualCoroutine;
 RFIDCoroutine rFIDCoroutine;
 InfoCoroutine infoCoroutine;
 ModeChangerCoroutine modeChangerCoroutine;
@@ -64,7 +62,6 @@ void loop() {
   mainCoroutine.runCoroutine();
   timeEntryCoroutine.runCoroutine();
   logCoroutine.runCoroutine();
-  chargeManualCoroutine.runCoroutine();
   infoCoroutine.runCoroutine();
   modeChangerCoroutine.runCoroutine();
   softwareUpdateCoroutine.runCoroutine();

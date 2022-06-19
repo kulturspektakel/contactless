@@ -16,6 +16,7 @@ enum Mode {
   SOFTWARE_UPDATE,
   CHARGE_WITHOUT_CARD,
   PRODUCT_NUMBER_ENTRY,
+  DEBUG_INFO,
 };
 
 struct Balance_t {
@@ -33,14 +34,17 @@ typedef struct Balance_t Balance;
 
 class MainCoroutine : public Coroutine {
  private:
-  unsigned long lastModeChange = 0;
+  char trippleChar = '\0';
+  unsigned long trippleTimings[2];
+  void resetTripplePress();
+  bool isTripplePress();
 
  public:
   int runCoroutine() override;
   void resetBalance();
   void changeMode();
   void defaultMode();
-  void addProduct(uint8_t index);
+  bool addProduct(uint8_t index);
   Mode mode = TIME_ENTRY;
   Balance balance = Balance_default;
 };
