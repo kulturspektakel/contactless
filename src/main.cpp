@@ -1,8 +1,6 @@
 // Need to set ENABLE_DEDICATED_SPI 0 in
 // .platformio/packages/framework-arduinoespressif8266/libraries/ESP8266SdFat/src/SdFatConfig.h
 
-#define BASE64_URL  // https://github.com/Densaugeo/base64_arduino/pull/9
-
 #include <AceRoutine.h>
 #include <Arduino.h>
 #include <ArduinoLog.h>
@@ -19,6 +17,7 @@
 #include "LogCoroutine.h"
 #include "MainCoroutine.h"
 #include "ModeChangerCoroutine.h"
+#include "ProductNumberCoroutine.h"
 #include "RFIDCoroutine.h"
 #include "SoftwareUpdateCoroutine.h"
 #include "TimeEntryCoroutine.h"
@@ -37,6 +36,7 @@ InfoCoroutine infoCoroutine;
 ModeChangerCoroutine modeChangerCoroutine;
 SoftwareUpdateCoroutine softwareUpdateCoroutine;
 ChargeWithoutCatdCoroutine chargeWithoutCatdCoroutine;
+ProductNumberCoroutine productNumberCoroutine;
 
 char deviceID[9];
 char deviceToken[48];
@@ -69,4 +69,5 @@ void loop() {
   modeChangerCoroutine.runCoroutine();
   softwareUpdateCoroutine.runCoroutine();
   chargeWithoutCatdCoroutine.runCoroutine();
+  productNumberCoroutine.runCoroutine();
 }

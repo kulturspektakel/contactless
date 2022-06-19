@@ -15,6 +15,7 @@ enum Mode {
   INITIALIZE_CARD,
   SOFTWARE_UPDATE,
   CHARGE_WITHOUT_CARD,
+  PRODUCT_NUMBER_ENTRY,
 };
 
 struct Balance_t {
@@ -39,6 +40,7 @@ class MainCoroutine : public Coroutine {
   void resetBalance();
   void changeMode();
   void defaultMode();
+  void addProduct(uint8_t index);
   Mode mode = TIME_ENTRY;
   Balance balance = Balance_default;
 };

@@ -2,6 +2,7 @@
 #include <ArduinoLog.h>
 #include "KeypadCoroutine.h"
 #include "MainCoroutine.h"
+#include "ProductNumberCoroutine.h"
 #include "TimeEntryCoroutine.h"
 
 extern const int TOKEN_VALUE;
@@ -100,6 +101,7 @@ static byte LOWER_CASE_SHARP_S[8] = {
 extern MainCoroutine mainCoroutine;
 extern TimeEntryCoroutine timeEntryCoroutine;
 extern KeypadCoroutine keypadCoroutine;
+extern ProductNumberCoroutine productNumberCoroutine;
 static hd44780_I2Cexp lcd(0x27);
 
 int DisplayCoroutine::runCoroutine() {
@@ -173,6 +175,9 @@ int DisplayCoroutine::runCoroutine() {
         break;
       case CHARGE_WITHOUT_CARD:
         show("1) Crew  2) Bar", "3) Gutschein");
+        break;
+      case PRODUCT_NUMBER_ENTRY:
+        show("Produktnummer", productNumberCoroutine.entry);
         break;
       default:
         show("Home");

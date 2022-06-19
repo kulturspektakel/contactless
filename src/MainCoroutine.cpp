@@ -7,12 +7,14 @@
 #include "DisplayCoroutine.h"
 #include "KeypadCoroutine.h"
 #include "LogCoroutine.h"
+#include "ProductNumberCoroutine.h"
 #include "proto/logMessage.pb.h"
 #include "proto/product.pb.h"
 
 extern DisplayCoroutine displayCoroutine;
 extern KeypadCoroutine keypadCoroutine;
 extern ConfigCoroutine configCoroutine;
+extern ProductNumberCoroutine productNumberCoroutine;
 extern LogCoroutine logCoroutine;
 extern bool string16(pb_istream_t* stream,
                      const pb_field_t* field,
@@ -59,16 +61,15 @@ int MainCoroutine::runCoroutine() {
                                    .products[keypadCoroutine.currentKey - '1']
                                    .price <
                    10000) {
-      int index = keypadCoroutine.currentKey - '1';
-      // add product
-      balance.total += configCoroutine.config.products[index].price;
-      logCoroutine.addProduct(index);
-      displayCoroutine.show(configCoroutine.config.products[index].name,
-                            nullptr, -2000,
-                            configCoroutine.config.products[index].price);
+      addProduct(keypadCoroutine.currentKey - '1');
     } else if (keypadCoroutine.currentKey == '*' && balance &&
                (mode == CHARGE_LIST || mode == CHARGE_MANUAL)) {
       mode = CHARGE_WITHOUT_CARD;
+    } else if (mode == CHARGE_LIST && keypadCoroutine.currentKey == '#') {
+      mode = PRODUCT_NUMBER_ENTRY;
+    } else if (mode == PRODUCT_NUMBER_ENTRY && !isDigit) {
+      defaultMode();
+      productNumberCoroutine.reset();
     } else if (mode == CASH_OUT) {
       mode = TOP_UP;
     } else {
@@ -89,7 +90,19 @@ void MainCoroutine::resetBalance() {
   displayCoroutine.requiresUpdate = true;
 }
 
+void MainCoroutine::addProduct(uint8_t index) {
+  if (index < sizeof(configCoroutine.config.products) /
+                  sizeof(*configCoroutine.config.products) &&
+      configCoroutine.config.products[index].price > 0) {
+    balance.total += configCoroutine.config.products[index].price;
+    logCoroutine.addProduct(index);
+    displayCoroutine.show(configCoroutine.config.products[index].name, nullptr,
+                          -2000, configCoroutine.config.products[index].price);
+  }
+}
+
 void MainCoroutine::defaultMode() {
   mode =
       configCoroutine.config.products_count > 0 ? CHARGE_LIST : CHARGE_MANUAL;
+  displayCoroutine.requiresUpdate = true;
 }
