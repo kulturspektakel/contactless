@@ -69,7 +69,7 @@ int MainCoroutine::runCoroutine() {
                (mode == CHARGE_LIST || mode == CHARGE_MANUAL)) {
       mode = CHARGE_WITHOUT_CARD;
     } else if (mode == CHARGE_LIST && keypadCoroutine.currentKey == '#') {
-      mode = PRODUCT_NUMBER_ENTRY;
+      mode = tripplePress ? CHARGE_MANUAL : PRODUCT_NUMBER_ENTRY;
     } else if (mode == CHARGE_MANUAL && keypadCoroutine.currentKey == '#') {
       defaultMode();
     } else if (mode == PRODUCT_NUMBER_ENTRY && !isDigit) {
@@ -77,11 +77,8 @@ int MainCoroutine::runCoroutine() {
       productNumberCoroutine.reset();
     } else if (mode == CASH_OUT) {
       mode = TOP_UP;
-    } else if (tripplePress && keypadCoroutine.currentKey == 'C') {
+    } else if (tripplePress && keypadCoroutine.currentKey == '*' && !balance) {
       mode = DEBUG_INFO;
-    } else if (tripplePress && keypadCoroutine.currentKey == '*' &&
-               mode == CHARGE_LIST) {
-      mode = CHARGE_MANUAL;
     } else {
       // do nothing
       continue;

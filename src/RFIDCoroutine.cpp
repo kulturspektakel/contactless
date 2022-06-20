@@ -57,7 +57,7 @@ int RFIDCoroutine::runCoroutine() {
       case CHARGE_LIST:
       case TOP_UP: {
         if (!readBalance()) {
-          displayCoroutine.show("Karte", "nicht lesbar");
+          displayCoroutine.show("Karte", "nicht lesbar", -2000);
           continue;
         }
 
@@ -184,7 +184,6 @@ int RFIDCoroutine::runCoroutine() {
           continue;
         }
         hasToWriteLog = true;
-        mainCoroutine.mode = TOP_UP;
         displayCoroutine.show("Auszahlen", "R\6ckgabe +", 0,
                               cardValueBefore.total, cardValueBefore.deposit);
         break;
@@ -200,6 +199,9 @@ int RFIDCoroutine::runCoroutine() {
     if (hasToWriteLog) {
       // delaying writing to log until card is gone
       logCoroutine.writeLog(LogMessage_Order_PaymentMethod_KULT_CARD);
+    }
+    if (mainCoroutine.mode == CASH_OUT) {
+      mainCoroutine.mode = TOP_UP;
     }
     unsigned long messageShownFor = millis() - messageStart;
     // always display message for at least 2 seconds
