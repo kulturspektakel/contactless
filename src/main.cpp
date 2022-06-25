@@ -7,6 +7,7 @@
 #include <ESP8266WiFi.h>
 #include <Hash.h>
 #include <SPI.h>
+#include "BuzzerCoroutine.h"
 #include "ChargeWithoutCatdCoroutine.h"
 #include "ConfigCoroutine.h"
 #include "Constants.h"
@@ -31,6 +32,7 @@ TimeEntryCoroutine timeEntryCoroutine;
 LogCoroutine logCoroutine;
 RFIDCoroutine rFIDCoroutine;
 InfoCoroutine infoCoroutine;
+BuzzerCoroutine buzzerCoroutine;
 ModeChangerCoroutine modeChangerCoroutine;
 SoftwareUpdateCoroutine softwareUpdateCoroutine;
 ChargeWithoutCatdCoroutine chargeWithoutCatdCoroutine;
@@ -45,11 +47,8 @@ void setup() {
 
   randomSeed(ESP.getCycleCount());
 
-#ifndef DISABLE_LOGGING
   Serial.begin(9600);
   Log.begin(LOG_LEVEL_VERBOSE, &Serial);
-#endif
-
   SPI.begin();
 }
 
@@ -67,4 +66,5 @@ void loop() {
   softwareUpdateCoroutine.runCoroutine();
   chargeWithoutCatdCoroutine.runCoroutine();
   productNumberCoroutine.runCoroutine();
+  buzzerCoroutine.runCoroutine();
 }

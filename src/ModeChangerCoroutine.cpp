@@ -16,12 +16,11 @@ int ModeChangerCoroutine::runCoroutine() {
   COROUTINE_LOOP() {
     COROUTINE_AWAIT(isModeChanger() && lastModeChange < millis() - 1500);
     if (mainCoroutine.mode == TOP_UP) {
-      mainCoroutine.mode = configCoroutine.config.products_count > 0
-                               ? CHARGE_LIST
-                               : CHARGE_MANUAL;
+      mainCoroutine.canTopUp = false;
     } else {
-      mainCoroutine.mode = TOP_UP;
+      mainCoroutine.canTopUp = true;
     }
+    mainCoroutine.defaultMode();
     mainCoroutine.balance.reset();
     displayCoroutine.requiresUpdate = true;
     lastModeChange = millis();

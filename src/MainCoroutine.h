@@ -40,9 +40,9 @@ class MainCoroutine : public Coroutine {
   bool isTripplePress();
 
  public:
+  bool canTopUp = false;
   int runCoroutine() override;
   void resetBalance();
-  void changeMode();
   void defaultMode();
   bool addProduct(uint8_t index);
   Mode mode = TIME_ENTRY;

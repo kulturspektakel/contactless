@@ -1,12 +1,14 @@
 #include "RFIDCoroutine.h"
 #include <ArduinoLog.h>
 #include <Hash.h>
+#include "BuzzerCoroutine.h"
 #include "ConfigCoroutine.h"
 #include "DisplayCoroutine.h"
 #include "LogCoroutine.h"
 #include "ModeChangerCoroutine.h"
 #include "base64.hpp"
 
+extern BuzzerCoroutine buzzerCoroutine;
 extern MainCoroutine mainCoroutine;
 extern DisplayCoroutine displayCoroutine;
 extern ConfigCoroutine configCoroutine;
@@ -105,11 +107,27 @@ int RFIDCoroutine::runCoroutine() {
               // clang-format on
           };
 
+          bool failed = false;
           for (int i = 0; i < 6; i++) {
-            mfrc522.MIFARE_Ultralight_Write(i + 3, writeData[i], 4);
+            if (mfrc522.MIFARE_Ultralight_Write(i + 3, writeData[i], 4) !=
+                MFRC522::STATUS_OK) {
+              Log.errorln("[RFID] Writing payload failed: %d", i);
+              displayCoroutine.show("Initialisierung", "fehlgeschlagen", -2000);
+              buzzerCoroutine.beep(ERROR);
+              failed = true;
+              break;
+            }
+          }
+          if (failed) {
+            continue;
           }
 
-          writeBalance(Balance_default, false);
+          if (!writeBalance(Balance_default, false)) {
+            Log.errorln("[RFID] Writing balance failed");
+            displayCoroutine.show("Initialisierung", "fehlgeschlagen", -2000);
+            buzzerCoroutine.beep(ERROR);
+            failed = true;
+          }
 
           // write password and PACK
           unsigned char password[4];
@@ -117,17 +135,42 @@ int RFIDCoroutine::runCoroutine() {
           calculatePassword(password, pack);
 
           size_t lastPage = 0x13;
-          mfrc522.MIFARE_Ultralight_Write(lastPage, pack, 4);          // PACK
-          mfrc522.MIFARE_Ultralight_Write(lastPage - 1, password, 4);  // PWD
+          // PACK
+          if (mfrc522.MIFARE_Ultralight_Write(lastPage, pack, 4) !=
+              MFRC522::STATUS_OK) {
+            Log.errorln("[RFID] Writing PACK failed");
+            displayCoroutine.show("Initialisierung", "fehlgeschlagen", -2000);
+            buzzerCoroutine.beep(ERROR);
+            continue;
+          }
+          // PWD
+          if (mfrc522.MIFARE_Ultralight_Write(lastPage - 1, password, 4) !=
+              MFRC522::STATUS_OK) {
+            Log.errorln("[RFID] Writing password failed");
+            displayCoroutine.show("Initialisierung", "fehlgeschlagen", -2000);
+            buzzerCoroutine.beep(ERROR);
+            continue;
+          }
 
           unsigned char buffer[] = {0x04 /* strong modulation */, 0x00, 0x00,
                                     0x04 /* lock from page 4 */};
-          mfrc522.MIFARE_Ultralight_Write(lastPage - 3, buffer, 4);  // CFG0
 
-          // if (!readBalance() || cardValueBefore != Balance_default) {
-          //   // Write was not successful
-          //   continue;
-          // }
+          // CFG0
+          if (mfrc522.MIFARE_Ultralight_Write(lastPage - 3, buffer, 4) !=
+              MFRC522::STATUS_OK) {
+            Log.errorln("[RFID] Writing CFG0 failed");
+            displayCoroutine.show("Initialisierung", "fehlgeschlagen", -2000);
+            buzzerCoroutine.beep(ERROR);
+            continue;
+          }
+
+          if (!readBalance() || cardValueBefore != Balance_default) {
+            // Write was not successful
+            Log.errorln("[RFID] Validation failed");
+            displayCoroutine.show("Initialisierung", "fehlgeschlagen", -2000);
+            buzzerCoroutine.beep(ERROR);
+            continue;
+          }
 
         } else if (mfrc522.PICC_GetType(mfrc522.uid.sak) ==
                    mfrc522.PICC_TYPE_MIFARE_1K) {
@@ -189,20 +232,20 @@ int RFIDCoroutine::runCoroutine() {
         break;
       }
     }
+    buzzerCoroutine.beep();
 
     // wait until card is gone
     unsigned char size = 18;
     unsigned char target[16];
     while (mfrc522.MIFARE_Read(6, target, &size) == MFRC522::STATUS_OK) {
+      COROUTINE_AWAIT(100);
     }
 
     if (hasToWriteLog) {
       // delaying writing to log until card is gone
       logCoroutine.writeLog(LogMessage_Order_PaymentMethod_KULT_CARD);
     }
-    if (mainCoroutine.mode == CASH_OUT) {
-      mainCoroutine.mode = TOP_UP;
-    }
+    mainCoroutine.defaultMode();
     unsigned long messageShownFor = millis() - messageStart;
     // always display message for at least 2 seconds
     displayCoroutine.clearMessageIn(
@@ -223,6 +266,7 @@ boolean RFIDCoroutine::authenticateAndWrite(int block,
   }
   Log.errorln("[RFID] Card not writable");
   displayCoroutine.show("Karte nicht", "schreibbar", 2000);
+  buzzerCoroutine.beep(ERROR);
   return false;
 }
 
@@ -241,8 +285,8 @@ boolean RFIDCoroutine::readBalance() {
 
   if (mfrc522.PICC_GetType(mfrc522.uid.sak) == mfrc522.PICC_TYPE_MIFARE_UL) {
     // // read counter
-    unsigned char command[] = {0x39, 0x02, 0x08,
-                               0x5c};  // Read Counter 02 + CRC
+    unsigned char command[] = {0x39, 0x00, 0x1A,
+                               0x7F};  // Read Counter 00 + CRC
     byte backData[8];                  // needs to be at least 8 bytes
     byte backLen = sizeof(backData);
     if (mfrc522.PCD_TransceiveData(command, sizeof(command), backData,
@@ -262,6 +306,7 @@ boolean RFIDCoroutine::readBalance() {
     if (mfrc522.MIFARE_Read(9, payload, &size) != MFRC522::STATUS_OK ||
         mfrc522.MIFARE_Read(13, payload + 16, &size) != MFRC522::STATUS_OK) {
       Log.errorln("[RFID] Reading payload failed: %d", ultralightCounter);
+      buzzerCoroutine.beep(ERROR);
       return false;
     }
 
@@ -274,6 +319,7 @@ boolean RFIDCoroutine::readBalance() {
     if (counterFromPayload != ultralightCounter) {
       Log.errorln("[RFID] Counter from hash %d did not match card counter %d",
                   counterFromPayload, ultralightCounter);
+      buzzerCoroutine.beep(ERROR);
       return false;
     }
     balance = {
@@ -285,6 +331,7 @@ boolean RFIDCoroutine::readBalance() {
     calculateSignatureUltralight(signatureBuffer, balance, counterFromPayload);
     if (memcmp(signatureBuffer, &decodedPayload[12], 5)) {
       Log.errorln("Signature did not match");
+      buzzerCoroutine.beep(ERROR);
       return false;
     }
   } else {
@@ -301,6 +348,7 @@ boolean RFIDCoroutine::readBalance() {
     if (status != MFRC522::STATUS_OK) {
       Log.errorln("[RFID] Card not readable");
       displayCoroutine.show("Karte nicht", "lesbar", 2000);
+      buzzerCoroutine.beep(ERROR);
       return false;
     }
 
@@ -315,6 +363,7 @@ boolean RFIDCoroutine::readBalance() {
     calculateHash(hash, balance);
     for (int i = 0; i < 10; i++) {
       if (hash[i] != buffer[i + 5]) {
+        buzzerCoroutine.beep(ERROR);
         return false;
       }
     }
@@ -379,6 +428,7 @@ boolean RFIDCoroutine::writeBalance(Balance balance, bool needsAuthentication) {
       if (MFRC522::STATUS_OK != mfrc522.PCD_NTAG216_AUTH(password, packRead) ||
           memcmp(packRead, pack, 2) != 0) {
         Log.errorln("[RFID] Authentication failed: %x:%x", pack[0], pack[1]);
+        buzzerCoroutine.beep(ERROR);
         return false;
       }
     }
@@ -402,15 +452,17 @@ boolean RFIDCoroutine::writeBalance(Balance balance, bool needsAuthentication) {
     for (unsigned int i = 0; i < base64len / 4; i++) {
       if (mfrc522.MIFARE_Ultralight_Write(i + 9, &writeData[4 * i], 4) !=
           MFRC522::STATUS_OK) {
+        buzzerCoroutine.beep(ERROR);
         return false;
       }
     }
 
-    unsigned char incrementCounter[] = {0xA5, 0x02, 0x01, 0x00,
-                                        0x00, 0x00};  // Increment counter 02
+    unsigned char incrementCounter[] = {0xA5, 0x00, 0x01, 0x00,
+                                        0x00, 0x00};  // Increment counter 00
     if (mfrc522.PCD_MIFARE_Transceive(
             incrementCounter, sizeof(incrementCounter)) != MFRC522::STATUS_OK) {
       Log.errorln("[RFID] Could not increment counter");
+      buzzerCoroutine.beep(ERROR);
       return false;
     }
   } else {

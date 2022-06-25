@@ -21,7 +21,12 @@ static const char* configFileName = "_config.cfg";
 int ConfigCoroutine::runCoroutine() {
   COROUTINE_BEGIN();
   rFIDCoroutine.resetReader();  // needed to free SPI
-  SD.begin(10);
+  if (!SD.begin(10)) {
+    displayCoroutine.show("Fehler:", "Keine SD-Karte", INT_MAX);
+    COROUTINE_YIELD();
+    while (true) {
+    }
+  }
   // SD.remove(configFileName);
   if (SD.exists(configFileName)) {
     Log.infoln("[Config] config file exists");

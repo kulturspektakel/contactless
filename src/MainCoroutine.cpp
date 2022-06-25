@@ -135,7 +135,11 @@ void MainCoroutine::resetTripplePress() {
 }
 
 void MainCoroutine::defaultMode() {
-  mode =
-      configCoroutine.config.products_count > 0 ? CHARGE_LIST : CHARGE_MANUAL;
+  if (canTopUp) {
+    mode = TOP_UP;
+  } else {
+    mode =
+        configCoroutine.config.products_count > 0 ? CHARGE_LIST : CHARGE_MANUAL;
+  }
   displayCoroutine.requiresUpdate = true;
 }
