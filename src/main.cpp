@@ -8,7 +8,7 @@
 #include <Hash.h>
 #include <SPI.h>
 #include "BuzzerCoroutine.h"
-#include "ChargeWithoutCatdCoroutine.h"
+#include "ChargeWithoutCardCoroutine.h"
 #include "ConfigCoroutine.h"
 #include "Constants.h"
 #include "DisplayCoroutine.h"
@@ -35,7 +35,7 @@ InfoCoroutine infoCoroutine;
 BuzzerCoroutine buzzerCoroutine;
 ModeChangerCoroutine modeChangerCoroutine;
 SoftwareUpdateCoroutine softwareUpdateCoroutine;
-ChargeWithoutCatdCoroutine chargeWithoutCatdCoroutine;
+ChargeWithoutCardCoroutine ChargeWithoutCardCoroutine;
 ProductNumberCoroutine productNumberCoroutine;
 
 char deviceID[9];
@@ -64,7 +64,7 @@ void loop() {
   infoCoroutine.runCoroutine();
   modeChangerCoroutine.runCoroutine();
   softwareUpdateCoroutine.runCoroutine();
-  chargeWithoutCatdCoroutine.runCoroutine();
+  ChargeWithoutCardCoroutine.runCoroutine();
   productNumberCoroutine.runCoroutine();
   buzzerCoroutine.runCoroutine();
 }

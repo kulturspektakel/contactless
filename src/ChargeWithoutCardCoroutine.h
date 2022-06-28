@@ -3,7 +3,7 @@
 
 using namespace ace_routine;
 
-class ChargeWithoutCatdCoroutine : public Coroutine {
+class ChargeWithoutCardCoroutine : public Coroutine {
  private:
   unsigned long starPress = 0;
 

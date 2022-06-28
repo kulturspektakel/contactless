@@ -1,6 +1,7 @@
-#include "ChargeWithoutCatdCoroutine.h"
+#include "ChargeWithoutCardCoroutine.h"
 
 #include <ArduinoLog.h>
+#include "BuzzerCoroutine.h"
 #include "DisplayCoroutine.h"
 #include "KeypadCoroutine.h"
 #include "LogCoroutine.h"
@@ -10,9 +11,11 @@ extern MainCoroutine mainCoroutine;
 extern DisplayCoroutine displayCoroutine;
 extern KeypadCoroutine keypadCoroutine;
 extern LogCoroutine logCoroutine;
+extern BuzzerCoroutine buzzerCoroutine;
+
 extern const char* MODE_CHANGER;
 
-int ChargeWithoutCatdCoroutine::runCoroutine() {
+int ChargeWithoutCardCoroutine::runCoroutine() {
   COROUTINE_LOOP() {
     COROUTINE_AWAIT(mainCoroutine.mode == CHARGE_WITHOUT_CARD);
     starPress = millis();
@@ -33,6 +36,7 @@ int ChargeWithoutCatdCoroutine::runCoroutine() {
         p = LogMessage_Order_PaymentMethod_VOUCHER;
         displayCoroutine.show("Gutschein", "abgerechnet", 1500);
       }
+      buzzerCoroutine.beep();
       logCoroutine.writeLog(p);
       mainCoroutine.resetBalance();
     }
