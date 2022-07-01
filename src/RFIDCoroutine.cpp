@@ -55,6 +55,15 @@ int RFIDCoroutine::runCoroutine() {
     messageStart = millis();
 
     switch (mainCoroutine.mode) {
+      case FIX_CARD:
+        if (readBalance(true /* skipSecurity */) &&
+            writeBalance(cardValueBefore)) {
+          buzzerCoroutine.beep();
+          displayCoroutine.show("Karte", "repariert", 2000);
+        } else {
+          displayCoroutine.show("Karte defekt", nullptr, 2000);
+        }
+        break;
       case CHARGE_MANUAL:
       case CHARGE_LIST:
       case TOP_UP: {
@@ -81,6 +90,7 @@ int RFIDCoroutine::runCoroutine() {
             displayCoroutine.show("Kartenlimit", "überschritten");
             break;
           } else if (!writeBalance(cardValueAfter)) {
+            displayCoroutine.show("Fehler", "beim schreiben", 2000);
             continue;
           }
           hasToWriteLog = true;
@@ -231,6 +241,8 @@ int RFIDCoroutine::runCoroutine() {
                               cardValueBefore.total, cardValueBefore.deposit);
         break;
       }
+      default:
+        continue;
     }
     buzzerCoroutine.beep();
 
@@ -280,11 +292,11 @@ void RFIDCoroutine::calculatePassword(byte* password, byte* pack) {
   memcpy(pack, &hash[14], 2);
 }
 
-boolean RFIDCoroutine::readBalance() {
+boolean RFIDCoroutine::readBalance(bool skipSecurity) {
   Balance balance;
 
   if (mfrc522.PICC_GetType(mfrc522.uid.sak) == mfrc522.PICC_TYPE_MIFARE_UL) {
-    // // read counter
+    // read counter
     unsigned char command[] = {0x39, 0x00, 0x1A,
                                0x7F};  // Read Counter 00 + CRC
     byte backData[8];                  // needs to be at least 8 bytes
@@ -316,7 +328,7 @@ boolean RFIDCoroutine::readBalance() {
     uint16_t counterFromPayload =
         *(reinterpret_cast<uint16_t*>(&decodedPayload[7]));
 
-    if (counterFromPayload != ultralightCounter) {
+    if (!skipSecurity && counterFromPayload != ultralightCounter) {
       Log.errorln("[RFID] Counter from hash %d did not match card counter %d",
                   counterFromPayload, ultralightCounter);
       buzzerCoroutine.beep(ERROR);
@@ -329,7 +341,7 @@ boolean RFIDCoroutine::readBalance() {
 
     unsigned char signatureBuffer[5];
     calculateSignatureUltralight(signatureBuffer, balance, counterFromPayload);
-    if (memcmp(signatureBuffer, &decodedPayload[12], 5)) {
+    if (!skipSecurity && memcmp(signatureBuffer, &decodedPayload[12], 5)) {
       Log.errorln("Signature did not match");
       buzzerCoroutine.beep(ERROR);
       return false;
@@ -450,6 +462,10 @@ boolean RFIDCoroutine::writeBalance(Balance balance, bool needsAuthentication) {
     writeData[base64len - 1] = 0xFE;  // override padding =
 
     for (unsigned int i = 0; i < base64len / 4; i++) {
+      if (mainCoroutine.mode != INITIALIZE_CARD && i < 2) {
+        // skip rewriting the ID
+        continue;
+      }
       if (mfrc522.MIFARE_Ultralight_Write(i + 9, &writeData[4 * i], 4) !=
           MFRC522::STATUS_OK) {
         buzzerCoroutine.beep(ERROR);

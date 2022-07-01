@@ -17,6 +17,7 @@ enum Mode {
   CHARGE_WITHOUT_CARD,
   PRODUCT_NUMBER_ENTRY,
   DEBUG_INFO,
+  FIX_CARD,
 };
 
 struct Balance_t {

@@ -72,6 +72,9 @@ int MainCoroutine::runCoroutine() {
       mode = tripplePress ? CHARGE_MANUAL : PRODUCT_NUMBER_ENTRY;
     } else if (mode == CHARGE_MANUAL && keypadCoroutine.currentKey == '#') {
       defaultMode();
+    } else if (tripplePress && keypadCoroutine.currentKey == '#' &&
+               mode == TOP_UP) {
+      mode = FIX_CARD;
     } else if (mode == PRODUCT_NUMBER_ENTRY && !isDigit) {
       defaultMode();
       productNumberCoroutine.reset();
@@ -79,6 +82,8 @@ int MainCoroutine::runCoroutine() {
       mode = TOP_UP;
     } else if (tripplePress && keypadCoroutine.currentKey == '*' && !balance) {
       mode = DEBUG_INFO;
+    } else if (mode == FIX_CARD) {
+      defaultMode();
     } else {
       // do nothing
       continue;

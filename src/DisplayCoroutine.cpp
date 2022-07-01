@@ -181,6 +181,9 @@ int DisplayCoroutine::runCoroutine() {
       case PRODUCT_NUMBER_ENTRY:
         show("Produktnummer", productNumberCoroutine.entry);
         break;
+      case FIX_CARD:
+        show("Karte", "reparieren?");
+        break;
       case DEBUG_INFO:
         show(infoCoroutine.line1, infoCoroutine.line2);
         break;

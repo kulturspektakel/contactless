@@ -17,7 +17,7 @@ class RFIDCoroutine : public Coroutine {
   unsigned int constructPayload(unsigned char* target,
                                 Balance balance,
                                 uint16_t counter);
-  boolean readBalance();
+  boolean readBalance(bool skipSecurity = false);
   boolean writeBalance(Balance balance, bool needsAuthentication = true);
   bool hasToWriteLog = false;
   unsigned long messageStart = 0;

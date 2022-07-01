@@ -70,8 +70,11 @@ int LogCoroutine::runCoroutine() {
         Log.infoln("[Log] upload finished: %s HTTP %d", file.name(),
                    request.responseHTTPcode());
 
-        // Update time
-        timeEntryCoroutine.dateFromHTTP(request.respHeaderValue("Date"));
+        // Update time, if we got an actual HTTP response
+        if (request.responseHTTPcode() > 0 &&
+            request.respHeaderExists("Date")) {
+          timeEntryCoroutine.dateFromHTTP(request.respHeaderValue("Date"));
+        }
 
         if (request.responseHTTPcode() == 201     // Successfully created
             || request.responseHTTPcode() == 400  // Invalid file
@@ -196,7 +199,8 @@ void LogCoroutine::writeLog(LogMessage_Order_PaymentMethod paymentMethod) {
     pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(logMessage));
     pb_encode(&stream, LogMessage_fields, &logMessage);
     logFile.write(buffer, stream.bytes_written);
-    Log.infoln("[Log] Written logfile %s", filename);
+    Log.infoln("[Log] Written logfile %s for counter %d", filename,
+               rFIDCoroutine.ultralightCounter);
     logsToUpload++;
   } else {
     Log.errorln("[Log] Could not create logfile %s", filename);
