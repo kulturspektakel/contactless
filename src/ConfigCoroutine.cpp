@@ -14,6 +14,7 @@ extern DisplayCoroutine displayCoroutine;
 extern RFIDCoroutine rFIDCoroutine;
 extern char deviceID[9];
 extern char deviceToken[48];
+extern const int BUILD_NUMBER;
 
 static asyncHTTPrequest request;
 static const char* configFileName = "_config.cfg";
@@ -57,13 +58,14 @@ int ConfigCoroutine::runCoroutine() {
 
   request.open("GET", "http://api.kulturspektakel.de:51180/$$$/config");
   request.setReqHeader("x-ESP8266-STA-MAC", WiFi.macAddress().c_str());
+  request.setReqHeader("x-ESP8266-Version", BUILD_NUMBER);
   request.setReqHeader("Authorization", deviceToken);
   request.send();
 
   COROUTINE_AWAIT(request.readyState() == 4);
 
   Log.infoln("[Config] Received response HTTP %d", request.responseHTTPcode());
-  if (request.responseHTTPcode() > 0) {
+  if (request.responseHTTPcode() > 0 && request.respHeaderExists("Date")) {
     timeEntryCoroutine.dateFromHTTP(request.respHeaderValue("Date"));
   }
 

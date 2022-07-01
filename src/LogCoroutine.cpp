@@ -16,6 +16,7 @@ extern MainCoroutine mainCoroutine;
 extern TimeEntryCoroutine timeEntryCoroutine;
 extern char deviceID[9];
 extern char deviceToken[48];
+extern const int BUILD_NUMBER;
 
 static const char charset[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 static asyncHTTPrequest request;
@@ -63,6 +64,7 @@ int LogCoroutine::runCoroutine() {
         file.read(data, len);
         request.open("POST", "http://api.kulturspektakel.de:51180/$$$/log");
         request.setReqHeader("x-ESP8266-STA-MAC", WiFi.macAddress().c_str());
+        request.setReqHeader("x-ESP8266-Version", BUILD_NUMBER);
         request.setReqHeader("Authorization", deviceToken);
         request.send(data, len);
 

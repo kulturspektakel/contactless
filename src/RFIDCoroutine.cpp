@@ -6,6 +6,7 @@
 #include "DisplayCoroutine.h"
 #include "LogCoroutine.h"
 #include "ModeChangerCoroutine.h"
+#define BASE64_URL
 #include "base64.hpp"
 
 extern BuzzerCoroutine buzzerCoroutine;
@@ -33,6 +34,7 @@ int RFIDCoroutine::runCoroutine() {
     COROUTINE_YIELD();
 
     // Reset reader, so a new card can be read
+    cardId[0] = '\0';
     resetReader();
 
     COROUTINE_AWAIT(mfrc522.PICC_IsNewCardPresent() &&
@@ -56,13 +58,23 @@ int RFIDCoroutine::runCoroutine() {
 
     switch (mainCoroutine.mode) {
       case FIX_CARD:
-        if (readBalance(true /* skipSecurity */) &&
-            writeBalance(cardValueBefore)) {
-          buzzerCoroutine.beep();
-          displayCoroutine.show("Karte", "repariert", 2000);
+        if (readBalance(true /* skipSecurity */)) {
+          if (ultralightCounter < UINT16_MAX && writeBalance(cardValueBefore)) {
+            buzzerCoroutine.beep();
+            displayCoroutine.show("Karte", "repariert", 3000);
+          } else {
+            char line2[17];
+            snprintf(line2, 17, "%.2f / %d Pfand",
+                     ((double)cardValueBefore.total) / 100,
+                     cardValueBefore.deposit);
+            displayCoroutine.show("Karte defekt:", line2, 3000);
+          }
         } else {
-          displayCoroutine.show("Karte defekt", nullptr, 2000);
+          displayCoroutine.show("Karte defekt", nullptr, 3000);
         }
+        COROUTINE_DELAY(2500);
+        mainCoroutine.defaultMode();
+        continue;
         break;
       case CHARGE_MANUAL:
       case CHARGE_LIST:
@@ -229,6 +241,7 @@ int RFIDCoroutine::runCoroutine() {
       }
       case CASH_OUT: {
         if (!readBalance()) {
+          displayCoroutine.show("Karte nicht", "lesbar", 2000);
           continue;
         }
         cardValueAfter.deposit = 0;
@@ -317,7 +330,7 @@ boolean RFIDCoroutine::readBalance(bool skipSecurity) {
 
     if (mfrc522.MIFARE_Read(9, payload, &size) != MFRC522::STATUS_OK ||
         mfrc522.MIFARE_Read(13, payload + 16, &size) != MFRC522::STATUS_OK) {
-      Log.errorln("[RFID] Reading payload failed: %d", ultralightCounter);
+      Log.errorln("[RFID] Reading payload failed");
       buzzerCoroutine.beep(ERROR);
       return false;
     }
@@ -359,7 +372,6 @@ boolean RFIDCoroutine::readBalance(bool skipSecurity) {
 
     if (status != MFRC522::STATUS_OK) {
       Log.errorln("[RFID] Card not readable");
-      displayCoroutine.show("Karte nicht", "lesbar", 2000);
       buzzerCoroutine.beep(ERROR);
       return false;
     }
@@ -501,5 +513,4 @@ void RFIDCoroutine::resetReader() {
   Log.infoln("[RFID] resetReader");
   mfrc522.PICC_HaltA();
   mfrc522.PCD_StopCrypto1();
-  cardId[0] = '\0';
 }

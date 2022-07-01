@@ -40,16 +40,10 @@ void update_error(int err) {
 int SoftwareUpdateCoroutine::runCoroutine() {
   COROUTINE_BEGIN();
 
-  if (BUILD_NUMBER == 0) {
-    Log.infoln("[SoftwareUpdate] Updates disabled in debug mode");
-    COROUTINE_END();
-  }
-
   COROUTINE_AWAIT(WiFi.status() == WL_CONNECTED);
 
   Log.infoln("[SoftwareUpdate] Check for updates");
   ESPhttpUpdate.setAuthorization(deviceToken);
-
   ESPhttpUpdate.rebootOnUpdate(true);
   ESPhttpUpdate.onStart(update_started);
   ESPhttpUpdate.onProgress(update_progress);
