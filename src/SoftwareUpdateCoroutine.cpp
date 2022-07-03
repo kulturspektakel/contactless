@@ -41,6 +41,7 @@ int SoftwareUpdateCoroutine::runCoroutine() {
   COROUTINE_BEGIN();
 
   COROUTINE_AWAIT(WiFi.status() == WL_CONNECTED);
+  COROUTINE_DELAY_SECONDS(7);  // wait for config
 
   Log.infoln("[SoftwareUpdate] Check for updates");
   ESPhttpUpdate.setAuthorization(deviceToken);

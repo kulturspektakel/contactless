@@ -107,9 +107,19 @@ bool MainCoroutine::addProduct(uint8_t index) {
                   sizeof(*configCoroutine.config.products) &&
       configCoroutine.config.products[index].price > 0) {
     balance.total += configCoroutine.config.products[index].price;
-    logCoroutine.addProduct(index);
-    displayCoroutine.show(configCoroutine.config.products[index].name, nullptr,
-                          -2000, configCoroutine.config.products[index].price);
+    int amount = logCoroutine.addProduct(index);
+    if (amount > 1) {
+      char line1[27];
+      snprintf(line1, sizeof(line1), "%dx %s", amount,
+               configCoroutine.config.products[index].name);
+      displayCoroutine.show(
+          line1, nullptr, -2000,
+          configCoroutine.config.products[index].price * amount);
+    } else {
+      displayCoroutine.show(configCoroutine.config.products[index].name,
+                            nullptr, -2000,
+                            configCoroutine.config.products[index].price);
+    }
     return true;
   } else {
     return false;

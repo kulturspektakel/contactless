@@ -17,6 +17,6 @@ class LogCoroutine : public Coroutine {
   int logsToUpload = 0;
   int runCoroutine() override;
   LogMessage logMessage = LogMessage_init_zero;
-  void addProduct(int i);
+  int addProduct(int i);
   void writeLog(LogMessage_Order_PaymentMethod paymentMethod);
 };

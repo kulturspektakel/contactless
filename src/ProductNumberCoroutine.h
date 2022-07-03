@@ -10,5 +10,5 @@ class ProductNumberCoroutine : public Coroutine {
 
  public:
   int runCoroutine() override;
-  char entry[PRODUCT_NUMBER_LENGTH + 1];
+  char entry[PRODUCT_NUMBER_LENGTH + 2];
 };

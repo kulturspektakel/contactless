@@ -15,6 +15,7 @@ int ProductNumberCoroutine::runCoroutine() {
   COROUTINE_BEGIN();
   while (true) {
     entry[0] = '#';
+    entry[3] = '\0';
     pointer = 1;
     for (uint8_t i = pointer; i <= PRODUCT_NUMBER_LENGTH; i++) {
       entry[i] = '_';

@@ -100,29 +100,32 @@ boolean LogCoroutine::isLogFile() {
          strcmp(".log", &file.name()[8]) == 0;
 }
 
-void LogCoroutine::addProduct(int i) {
+int LogCoroutine::addProduct(int i) {
   if (logMessage.which__order == 0) {
     LogMessage_Order o = LogMessage_Order_init_zero;
     logMessage._order.order = o;
     logMessage.which__order = LogMessage_order_tag;
   }
 
+  logMessage._order.order.cart_items_count++;
   for (int j = 0; j < logMessage._order.order.cart_items_count; j++) {
     if (strcmp(logMessage._order.order.cart_items[j].product.name,
                configCoroutine.config.products[i].name) == 0) {
-      logMessage._order.order.cart_items[i].amount++;
-      return;
+      return ++logMessage._order.order.cart_items[j].amount;
     }
   }
 
   // add to cart
-  logMessage._order.order.cart_items[logMessage._order.order.cart_items_count]
+  logMessage._order.order
+      .cart_items[logMessage._order.order.cart_items_count - 1]
       .amount = 1;
-  logMessage._order.order.cart_items[logMessage._order.order.cart_items_count]
+  logMessage._order.order
+      .cart_items[logMessage._order.order.cart_items_count - 1]
       .has_product = true;
-  logMessage._order.order.cart_items[logMessage._order.order.cart_items_count]
+  logMessage._order.order
+      .cart_items[logMessage._order.order.cart_items_count - 1]
       .product = configCoroutine.config.products[i];
-  logMessage._order.order.cart_items_count++;
+  return 1;
 }
 
 void LogCoroutine::writeLog(LogMessage_Order_PaymentMethod paymentMethod) {
