@@ -31,15 +31,18 @@ int LogCoroutine::runCoroutine() {
       break;
     }
     if (isLogFile()) {
-      logsToUpload++;
+      hasFilesToUpload = true;
     }
     file.close();
+    if (hasFilesToUpload) {
+      break;
+    }
   }
   dir.close();
-  Log.infoln("[Log] %d files to upload", logsToUpload);
+  Log.infoln("[Log] has files to upload %d", hasFilesToUpload);
 
   while (true) {
-    COROUTINE_AWAIT(WiFi.status() == WL_CONNECTED && logsToUpload > 0);
+    COROUTINE_AWAIT(WiFi.status() == WL_CONNECTED && hasFilesToUpload);
     rFIDCoroutine.resetReader();  // needed to free SPI
     dir = SD.open("/", FILE_READ);
     while (true) {
@@ -57,7 +60,6 @@ int LogCoroutine::runCoroutine() {
         if (len > LogMessage_size) {
           Log.error("[Log] %s was too large, deleting it", file.name());
           SD.remove(file.name());
-          logsToUpload--;
           continue;
         }
 
@@ -84,12 +86,12 @@ int LogCoroutine::runCoroutine() {
         ) {
           rFIDCoroutine.resetReader();  // needed to free SPI
           SD.remove(file.name());
-          logsToUpload--;
         } else {
-          COROUTINE_DELAY_SECONDS(5 * 60);
+          COROUTINE_DELAY_SECONDS(15);
         }
       }
     }
+    hasFilesToUpload = false;
     dir.close();
   }
   COROUTINE_END();
@@ -206,7 +208,7 @@ void LogCoroutine::writeLog(LogMessage_Order_PaymentMethod paymentMethod) {
     logFile.write(buffer, stream.bytes_written);
     Log.infoln("[Log] Written logfile %s for counter %d", filename,
                rFIDCoroutine.ultralightCounter);
-    logsToUpload++;
+    hasFilesToUpload = true;
   } else {
     Log.errorln("[Log] Could not create logfile %s", filename);
   }

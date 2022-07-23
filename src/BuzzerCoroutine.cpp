@@ -2,10 +2,9 @@
 
 #include <ArduinoLog.h>
 
-const uint8_t BUZZER_PIN = 0;
+extern const uint8_t BUZZER_PIN = 0;
 
 int BuzzerCoroutine::runCoroutine() {
-  pinMode(BUZZER_PIN, OUTPUT);
   COROUTINE_LOOP() {
     // turn off
     lastTime = 0;

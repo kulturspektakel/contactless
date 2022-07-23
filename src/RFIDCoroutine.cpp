@@ -79,7 +79,7 @@ int RFIDCoroutine::runCoroutine() {
       case CHARGE_MANUAL:
       case CHARGE_LIST:
       case TOP_UP: {
-        if (!readBalance()) {
+        if (!readBalance(mainCoroutine.mode == TOP_UP)) {
           displayCoroutine.show("Karte", "nicht lesbar", -2000);
           continue;
         }
@@ -270,12 +270,12 @@ int RFIDCoroutine::runCoroutine() {
       // delaying writing to log until card is gone
       logCoroutine.writeLog(LogMessage_Order_PaymentMethod_KULT_CARD);
     }
+    mainCoroutine.resetBalance();
     mainCoroutine.defaultMode();
     unsigned long messageShownFor = millis() - messageStart;
     // always display message for at least 2 seconds
     displayCoroutine.clearMessageIn(
         messageShownFor < 2000 ? 2000 - messageShownFor : 0);
-    mainCoroutine.resetBalance();
   }
 
   COROUTINE_END();
@@ -356,6 +356,12 @@ boolean RFIDCoroutine::readBalance(bool skipSecurity) {
     calculateSignatureUltralight(signatureBuffer, balance, counterFromPayload);
     if (!skipSecurity && memcmp(signatureBuffer, &decodedPayload[12], 5)) {
       Log.errorln("Signature did not match");
+      buzzerCoroutine.beep(ERROR);
+      return false;
+    }
+
+    if (balance.total > 9999 || balance.deposit > 9) {
+      Log.errorln("Balance over limit");
       buzzerCoroutine.beep(ERROR);
       return false;
     }

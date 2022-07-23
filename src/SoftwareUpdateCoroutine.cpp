@@ -34,7 +34,7 @@ void update_error(int err) {
   Log.infoln("[SoftwareUpdate] HTTP update fatal error code %d\n", err);
   char error[17];
   sprintf(error, "Fehler: %d", err);
-  displayCoroutine.show("Software-Update", error);
+  displayCoroutine.show("Software-Update", error, -2000);
 }
 
 int SoftwareUpdateCoroutine::runCoroutine() {

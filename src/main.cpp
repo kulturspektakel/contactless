@@ -19,7 +19,7 @@
 #include "ModeChangerCoroutine.h"
 #include "ProductNumberCoroutine.h"
 #include "RFIDCoroutine.h"
-#include "SoftwareUpdateCoroutine.h"
+// #include "SoftwareUpdateCoroutine.h"
 #include "TimeEntryCoroutine.h"
 #include "WiFiCoroutine.h"
 
@@ -34,12 +34,13 @@ RFIDCoroutine rFIDCoroutine;
 InfoCoroutine infoCoroutine;
 BuzzerCoroutine buzzerCoroutine;
 ModeChangerCoroutine modeChangerCoroutine;
-SoftwareUpdateCoroutine softwareUpdateCoroutine;
+// SoftwareUpdateCoroutine softwareUpdateCoroutine;
 ChargeWithoutCardCoroutine ChargeWithoutCardCoroutine;
 ProductNumberCoroutine productNumberCoroutine;
 
 char deviceID[9];
 char deviceToken[48];
+extern const uint8_t BUZZER_PIN;
 
 void setup() {
   snprintf(deviceID, 9, WiFi.macAddress().substring(9).c_str());
@@ -50,6 +51,8 @@ void setup() {
   Serial.begin(9600);
   Log.begin(LOG_LEVEL_VERBOSE, &Serial);
   SPI.begin();
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);
 }
 
 void loop() {
@@ -63,7 +66,7 @@ void loop() {
   logCoroutine.runCoroutine();
   infoCoroutine.runCoroutine();
   modeChangerCoroutine.runCoroutine();
-  softwareUpdateCoroutine.runCoroutine();
+  // softwareUpdateCoroutine.runCoroutine();
   ChargeWithoutCardCoroutine.runCoroutine();
   productNumberCoroutine.runCoroutine();
   buzzerCoroutine.runCoroutine();

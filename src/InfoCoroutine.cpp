@@ -41,10 +41,9 @@ int InfoCoroutine::runCoroutine() {
     displayCoroutine.requiresUpdate = true;
 
     COROUTINE_DELAY(2000);
-
-    snprintf(line1, 17, "%d Transaktion%s", logCoroutine.logsToUpload,
-             logCoroutine.logsToUpload == 1 ? "" : "en");
-    snprintf(line2, 17, "zum Upload");
+    snprintf(line1, 17, "Transaktionen");
+    snprintf(line2, 17, "zum Upload: %c",
+             logCoroutine.hasFilesToUpload ? 'j' : 'n');
     displayCoroutine.requiresUpdate = true;
 
     COROUTINE_DELAY(2000);
