@@ -103,30 +103,26 @@ boolean LogCoroutine::isLogFile() {
 }
 
 int LogCoroutine::addProduct(int i) {
-  if (logMessage.which__order == 0) {
+  if (!logMessage.has_order) {
     LogMessage_Order o = LogMessage_Order_init_zero;
-    logMessage._order.order = o;
-    logMessage.which__order = LogMessage_order_tag;
+    logMessage.order = o;
+    logMessage.has_order = true;
   }
 
-  logMessage._order.order.cart_items_count++;
-  for (int j = 0; j < logMessage._order.order.cart_items_count; j++) {
-    if (strcmp(logMessage._order.order.cart_items[j].product.name,
+  logMessage.order.cart_items_count++;
+  for (int j = 0; j < logMessage.order.cart_items_count; j++) {
+    if (strcmp(logMessage.order.cart_items[j].product.name,
                configCoroutine.config.products[i].name) == 0) {
-      return ++logMessage._order.order.cart_items[j].amount;
+      return ++logMessage.order.cart_items[j].amount;
     }
   }
 
   // add to cart
-  logMessage._order.order
-      .cart_items[logMessage._order.order.cart_items_count - 1]
-      .amount = 1;
-  logMessage._order.order
-      .cart_items[logMessage._order.order.cart_items_count - 1]
+  logMessage.order.cart_items[logMessage.order.cart_items_count - 1].amount = 1;
+  logMessage.order.cart_items[logMessage.order.cart_items_count - 1]
       .has_product = true;
-  logMessage._order.order
-      .cart_items[logMessage._order.order.cart_items_count - 1]
-      .product = configCoroutine.config.products[i];
+  logMessage.order.cart_items[logMessage.order.cart_items_count - 1].product =
+      configCoroutine.config.products[i];
   return 1;
 }
 
@@ -141,33 +137,33 @@ void LogCoroutine::writeLog(LogMessage_Order_PaymentMethod paymentMethod) {
   }
   logMessage.client_id[sizeof(logMessage.client_id) - 1] = '\0';
 
-  if (logMessage.which__order != 0) {
-    logMessage._order.order.payment_method = paymentMethod;
+  if (logMessage.has_order) {
+    logMessage.order.payment_method = paymentMethod;
     if (configCoroutine.config.list_id > 0) {
-      logMessage._order.order._list_id.list_id = configCoroutine.config.list_id;
-      logMessage._order.order.which__list_id = LogMessage_Order_list_id_tag;
+      logMessage.order.list_id = configCoroutine.config.list_id;
+      logMessage.order.has_list_id = true;
     }
   }
 
   if (paymentMethod == LogMessage_Order_PaymentMethod_KULT_CARD) {
-    logMessage.which__card_transaction = LogMessage_card_transaction_tag;
+    logMessage.has_card_transaction = true;
 
     LogMessage_CardTransaction transaction =
         LogMessage_CardTransaction_init_zero;
-    logMessage._card_transaction.card_transaction = transaction;
+    logMessage.card_transaction = transaction;
 
     switch (mainCoroutine.mode) {
       case CASH_OUT:
-        logMessage._card_transaction.card_transaction.transaction_type =
+        logMessage.card_transaction.transaction_type =
             LogMessage_CardTransaction_TransactionType_CASHOUT;
         break;
       case CHARGE_LIST:
       case CHARGE_MANUAL:
-        logMessage._card_transaction.card_transaction.transaction_type =
+        logMessage.card_transaction.transaction_type =
             LogMessage_CardTransaction_TransactionType_CHARGE;
         break;
       case TOP_UP:
-        logMessage._card_transaction.card_transaction.transaction_type =
+        logMessage.card_transaction.transaction_type =
             LogMessage_CardTransaction_TransactionType_TOP_UP;
         break;
       default: {
@@ -175,23 +171,20 @@ void LogCoroutine::writeLog(LogMessage_Order_PaymentMethod paymentMethod) {
         return;
       }
     }
-    strncpy(logMessage._card_transaction.card_transaction.card_id,
-            rFIDCoroutine.cardId,
-            sizeof(logMessage._card_transaction.card_transaction.card_id));
-    logMessage._card_transaction.card_transaction.balance_before =
+    strncpy(logMessage.card_transaction.card_id, rFIDCoroutine.cardId,
+            sizeof(logMessage.card_transaction.card_id));
+    logMessage.card_transaction.balance_before =
         rFIDCoroutine.cardValueBefore.total;
-    logMessage._card_transaction.card_transaction.deposit_before =
+    logMessage.card_transaction.deposit_before =
         rFIDCoroutine.cardValueBefore.deposit;
-    logMessage._card_transaction.card_transaction.balance_after =
+    logMessage.card_transaction.balance_after =
         rFIDCoroutine.cardValueAfter.total;
-    logMessage._card_transaction.card_transaction.deposit_after =
+    logMessage.card_transaction.deposit_after =
         rFIDCoroutine.cardValueAfter.deposit;
 
     if (rFIDCoroutine.ultralightCounter != 0) {
-      logMessage._card_transaction.card_transaction._counter.counter =
-          rFIDCoroutine.ultralightCounter;
-      logMessage._card_transaction.card_transaction.which__counter =
-          LogMessage_CardTransaction_counter_tag;
+      logMessage.card_transaction.counter = rFIDCoroutine.ultralightCounter;
+      logMessage.card_transaction.has_counter = true;
     }
   }
 

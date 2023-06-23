@@ -97,8 +97,8 @@ int RFIDCoroutine::runCoroutine() {
           } else if (cardValueAfter.total < 0) {
             displayCoroutine.show("Nicht genug", "Guthaben");
             break;
-          } else if (cardValueAfter.total > 9999 ||
-                     cardValueAfter.deposit > 9) {
+          } else if ((cardValueAfter.total +
+                      (cardValueAfter.deposit * TOKEN_VALUE)) > 9999) {
             displayCoroutine.show("Kartenlimit", "überschritten");
             break;
           } else if (!writeBalance(cardValueAfter)) {
