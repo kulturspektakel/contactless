@@ -14,7 +14,7 @@ class LogCoroutine : public Coroutine {
   boolean isLogFile();
 
  public:
-  bool hasFilesToUpload = false;
+  int filesToUpload = 0;
   int runCoroutine() override;
   LogMessage logMessage = LogMessage_init_zero;
   int addProduct(int i);

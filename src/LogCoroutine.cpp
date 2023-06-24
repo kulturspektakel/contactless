@@ -8,8 +8,6 @@
 #include <pb_encode.h>
 #include "proto/product.pb.h"
 
-using namespace sdfat;
-
 extern ConfigCoroutine configCoroutine;
 extern RFIDCoroutine rFIDCoroutine;
 extern MainCoroutine mainCoroutine;
@@ -23,7 +21,7 @@ static asyncHTTPrequest request;
 
 int LogCoroutine::runCoroutine() {
   COROUTINE_BEGIN()
-  // rFIDCoroutine.resetReader();  // needed to free SPI
+
   dir = SD.open("/", FILE_READ);
   while (true) {
     file = dir.openNextFile();
@@ -31,18 +29,15 @@ int LogCoroutine::runCoroutine() {
       break;
     }
     if (isLogFile()) {
-      hasFilesToUpload = true;
+      filesToUpload++;
     }
     file.close();
-    if (hasFilesToUpload) {
-      break;
-    }
   }
   dir.close();
-  Log.infoln("[Log] has files to upload %d", hasFilesToUpload);
+  Log.infoln("[Log] has files to upload %d", filesToUpload);
 
   while (true) {
-    COROUTINE_AWAIT(WiFi.status() == WL_CONNECTED && hasFilesToUpload);
+    COROUTINE_AWAIT(WiFi.status() == WL_CONNECTED && filesToUpload > 0);
     rFIDCoroutine.resetReader();  // needed to free SPI
     dir = SD.open("/", FILE_READ);
     while (true) {
@@ -85,13 +80,20 @@ int LogCoroutine::runCoroutine() {
             || request.responseHTTPcode() == 409  // Already uploaded
         ) {
           rFIDCoroutine.resetReader();  // needed to free SPI
-          SD.remove(file.name());
+          if (SD.remove(filename)) {
+            filesToUpload--;
+          } else {
+            Log.errorln("[Log] %s could not be deleted", file.name());
+          }
         } else {
-          COROUTINE_DELAY_SECONDS(15);
+          COROUTINE_DELAY_SECONDS(5);
+          Log.errorln("[Log] %s could not be uploaded, retrying later",
+                      file.name());
+          rFIDCoroutine.resetReader();  // needed to free SPI, otherwise loop
+                                        // doesn't continue
         }
       }
     }
-    hasFilesToUpload = false;
     dir.close();
   }
   COROUTINE_END();
@@ -201,7 +203,7 @@ void LogCoroutine::writeLog(LogMessage_Order_PaymentMethod paymentMethod) {
     logFile.write(buffer, stream.bytes_written);
     Log.infoln("[Log] Written logfile %s for counter %d", filename,
                rFIDCoroutine.ultralightCounter);
-    hasFilesToUpload = true;
+    filesToUpload++;
   } else {
     Log.errorln("[Log] Could not create logfile %s", filename);
   }

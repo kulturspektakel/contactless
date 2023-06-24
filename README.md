@@ -1,0 +1,159 @@
+# Development
+
+## USB interface
+
+To flash the device via USB you need to install the CP210x USB to UART Bridge VCP Drivers. They can be downloaded from [Silicon Labs](https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers?tab=downloads).
+
+## Secrets
+
+Create a file called `platformio_private.ini` in the root directory containgin the secrets.
+
+```
+[env]
+build_flags =
+  -DENV_WIFI_SSID=\"WiFi Name\"
+  -DENV_WIFI_PASSWORD=\"Pa$$w0rd\"
+  -DENV_KEY_B=0xFF,0xFF,0xFF,0xFF,0xFF,0xFF
+  -DENV_MODE_CHANGER=\"FFFFFFFF,DEADBEEF\"
+  -DENV_SALT=\"tHiSiStHeSaLt\"
+```
+
+# APIs
+
+## Request
+
+- `x-ESP8266-STA-MAC` MAC-address of the device
+- `x-ESP8266-Version` Build number (0 for dev builds)
+- `Authorization: Bearer <token>`: `sha1(deviceID + <salt>)`
+  - Needed for all requests
+  - DeviceID is last 8 characters of MAC-address (e.g. `AA:BB:CC`)
+
+## Endpoints
+
+All endpoints use `http` rather than `https`, as the devices don't support SSL.
+
+### GET http://api.kulturspektakel.de:51180/$$$/config
+
+- Response status code: 200 with protobuf message `DeviceConfig`
+- Response status code 204: no config for device available. Deletes current config.
+
+### POST http://api.kulturspektakel.de:51180/$$$/log
+
+- Request body: Protobuf message `LogMessage`
+- HTTP status codes which trigger the device to delete the log file:
+  - 201: Successfully uploaded
+  - 400: Invalid file
+  - 409: Already uploaded
+  - all other status codes keep the file on the device and retry at a later point
+
+### GET http://api.kulturspektakel.de:51180/$$$/update
+
+- HTTP response 304: no updated available
+
+# Hardware
+
+## SD cards
+
+Format SD cards via `diskutil eraseDisk FAT32 UNTITLED MBRFormat /dev/disk2`
+
+## Ultralight EV1 memory structure
+
+### Glossary
+
+- cardID: 7 bytes
+- counter: 2 bytes Monotonic counter using MIFARE Ultralight EV1 counters, incremented with each write operation on the card to prevent replay attacks. Allowing a maximum of 65,535 writes, before a card becomes invalid. More details in [AN11340 MIFARE Ultralight EV1 features and hints (section 4)](https://www.nxp.com/docs/en/application-note/AN11340.pdf).
+- deposit: 1 byte. Number of deposit tokens
+- balance: 2 bytes. The amount of money stored on the card in cents. A maximum balance of 65,535 (= 655.35 Euro) is possible, however further limite in software.
+- salt: A predefined, secret key that is used to create secure hashes
+- signature: 5 bytes. Created from cardID, counter, deposit, balance and salt to prevent manipulation
+
+https://crew.kulturspektakel.de/admin/contactless/card-token
+
+### NDEF
+
+```
+E1 10 06 00: // page 0x03 OTP data for NDEF
+03 29 D1 01: // page 0x04:
+25 55 04 6B: // page 0x05:    k
+75 6C 74 2E: // page 0x06: ult.
+63 61 73 68: // page 0x07: cash
+2F 24 24 2F: // page 0x08: /$$/
+// TODO
+```
+
+### Signature
+
+To prevent data manipulation, even when a card password is compromised, a card’s data is signed, allowing its verification. The signature is the first 5 bytes of the SHA-1 sum of the card’s ID (7 bytes), counter value (2 bytes), deposit (1 byte), balance (2 bytes) and salt.
+
+The example uses the following values:
+
+- Balance: `100` (=1.00 Euro)
+- Deposit: `2`
+- Counter: `3`
+
+```
+sha1(00:01:02:03:04:05:06:03:00:02:64:00:4B:55:4C:54)
+     └──────cardID──────┘ └cnt┘ └┘ └bal┘ └──salt───┘
+
+0B:C9:87:69:DB:D7:08:DD:BB:65:0D:1D:0C:06:36:86:DC:90:0C:4D
+└──signature─┘
+```
+
+### Payload and URL
+
+The payload is the [URL-safe base64](https://datatracker.ietf.org/doc/html/rfc4648#section-5) value of cardID (7 bytes), counter (2 bytes), deposit (1 byte), balance (2 bytes) and signature (5 bytes). No padding is added to the base64 string. The 17 bytes input results in a 23 character long base64 string (4 \* (17 / 3)).
+The example uses the values from above.
+
+```
+base64url(00:01:02:03:04:05:06:03:00:02:64:00:0B:C9:87:69:DB)
+          └──────cardID──────┘ └cnt┘ └┘ └bal┘ └──signature─┘
+AAECAwQFBgMAAmQAC8mHads
+```
+
+The payload is added to a URL in the format of `https://kult.cash/$$/AAECAwQFBgMAAmQAC8mHads` which is written as NDEF record to the card.
+
+## Ultralight EV1 read/write cycle
+
+### Initialization
+
+1. Read ID
+2. Set OTP to NDEF
+3. Write NDEF message (balance = 0, deposit = 0, counter = 0)
+4. Set password and PACK (see below) // TODO
+5. Lock card against write access // TODO
+
+### Reading
+
+1. Read ID
+2. Read payload (counter, balance, deposit, signature)
+3. Calculate signature and compare with signature from payload
+4. Read counter 0 (`0x39 0x00`) and compare with counter from payload
+
+### Writing
+
+1. All steps from reading
+2. Authenticate
+   1. Calculate password/PACK (see below)
+   2. Authenticate with password: Command `0x1B`
+   3. check PACK returned from authentication matches calculated PACK
+3. Write new payload with counter valued incremented by 1
+4. Increment counter 0 by 1: `0xA5 0x00 0x01 0x00 0x00 0x00`
+
+### Password and PACK
+
+The password and PACK is individual for each card and can be generated by calculating the SHA-1 of the cardID (7 bytes) and salt. The password is the last 4 bytes of the SHA1, the PACK is the previous 2 bytes before the password.
+
+The example uses the following values:
+
+- CardID: `00:01:02:03:04:05:06`
+- Salt: `KULT` (as ASCII values)
+
+```
+sha1(00:01:02:03:04:05:06:4B:55:4C:54);
+     └──────cardID──────┘ └──salt───┘
+
+C9:24:D1:25:71:6E:ED:F8:17:4B:10:AA:71:D7:3A:B6:94:57:57:34
+                                          └PAK┘ └─password┘
+```
+
+This procedure follows roughly NXP’s recommendation [AN11340 MIFARE Ultralight EV1 features and hints (section 5.1)](https://www.nxp.com/docs/en/application-note/AN11340.pdf) on password and PACK diversification, meaning it's unique for each card.

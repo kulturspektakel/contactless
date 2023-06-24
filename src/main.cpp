@@ -19,7 +19,6 @@
 #include "ModeChangerCoroutine.h"
 #include "ProductNumberCoroutine.h"
 #include "RFIDCoroutine.h"
-// #include "SoftwareUpdateCoroutine.h"
 #include "TimeEntryCoroutine.h"
 #include "WiFiCoroutine.h"
 
@@ -66,7 +65,6 @@ void loop() {
   logCoroutine.runCoroutine();
   infoCoroutine.runCoroutine();
   modeChangerCoroutine.runCoroutine();
-  // softwareUpdateCoroutine.runCoroutine();
   ChargeWithoutCardCoroutine.runCoroutine();
   productNumberCoroutine.runCoroutine();
   buzzerCoroutine.runCoroutine();

@@ -81,8 +81,8 @@ int ConfigCoroutine::runCoroutine() {
 
     if (config.checksum != oldChecksum) {
       rFIDCoroutine.resetReader();  // needed to free SPI
-      configFile = SD.open(configFileName, sdfat::O_READ | sdfat::O_WRITE |
-                                               sdfat::O_CREAT | sdfat::O_TRUNC);
+      configFile =
+          SD.open(configFileName, O_READ | O_WRITE | O_CREAT | O_TRUNC);
 
       if (configFile.availableForWrite()) {
         int written = configFile.write(buffer, len);
