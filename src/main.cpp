@@ -33,7 +33,6 @@ RFIDCoroutine rFIDCoroutine;
 InfoCoroutine infoCoroutine;
 BuzzerCoroutine buzzerCoroutine;
 ModeChangerCoroutine modeChangerCoroutine;
-// SoftwareUpdateCoroutine softwareUpdateCoroutine;
 ChargeWithoutCardCoroutine ChargeWithoutCardCoroutine;
 ProductNumberCoroutine productNumberCoroutine;
 
