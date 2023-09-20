@@ -1,0 +1,6 @@
+BasedOnStyle: Chromium
+AlignAfterOpenBracket: BlockIndent
+BinPackArguments: false
+BinPackParameters: false
+ColumnLimit: 100
+PenaltyReturnTypeOnItsOwnLine: 1000000
