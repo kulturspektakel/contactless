@@ -1,6 +1,4 @@
 [submodule "esp-idf-rc522"]
 	path = esp-idf-rc522
 	url = https://github.com/abobija/esp-idf-rc522
-[submodule "components/nanopb/nanopb"]
-	path = components/nanopb/nanopb
-	url = https://github.com/nanopb/nanopb.git
+
