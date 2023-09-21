@@ -3,6 +3,7 @@
 #include "esp_log.h"
 #include "event_system.h"
 #include "http_event_handler.h"
+#include "pb_decode.h"
 
 ESP_EVENT_DECLARE_BASE(USER_EVENT_BASE);
 
