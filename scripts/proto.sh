@@ -9,7 +9,7 @@ echo "Downloading nanopb..."
 curl -sO "https://jpa.kapsi.fi/nanopb/download/$NANOPB.tar.gz"
 echo "Extracting nanopb..."
 tar -xf "$NANOPB.tar.gz"
-cd "$SCRIPT_DIR/../proto"
+cd "$SCRIPT_DIR/../components/nanopb"
 for file in *.proto; do
     [ -f "$file" ] || break
     echo "Generator for $file"

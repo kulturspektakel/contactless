@@ -1,4 +1,0 @@
-key,type,encoding,value
-device_config,namespace,,
-wifi_ssid,data,string,"PikiTiki"
-wifi_password,data,string,"qwertz1234asd"

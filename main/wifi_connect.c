@@ -3,18 +3,15 @@
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_wifi.h"
-#include "event_system.h"
+#include "event_group.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
 
-ESP_EVENT_DECLARE_BASE(USER_EVENT_BASE);
-
 static const char* TAG = "wifi_connect";
-wifi_connectivity_t wifi_connectivity_status = Disconnected;
 
 static void connect_to_wifi() {
-  wifi_connectivity_status = Connecting;
+  xEventGroupSetBits(event_group, WIFI_CONNECTING);
   esp_wifi_connect();
 }
 
@@ -27,12 +24,13 @@ static void event_handler(
   if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
     connect_to_wifi();
   } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-    wifi_connectivity_status = Disconnected;
+    xEventGroupClearBits(event_group, WIFI_CONNECTED);
+    // notify task
+    xTaskNotifyGive(arg);
   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-    wifi_connectivity_status = Connected;
-    esp_event_post(USER_EVENT_BASE, WIFI_CONNECTED, NULL, 0, portMAX_DELAY);
+    xEventGroupSetBits(event_group, WIFI_CONNECTED);
+    xEventGroupClearBits(event_group, WIFI_CONNECTING);
   }
-  xTaskNotifyGive(arg);
 }
 
 void wifi_connect(void* params) {
@@ -70,17 +68,16 @@ void wifi_connect(void* params) {
   esp_wifi_set_mode(WIFI_MODE_STA);
   esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
   esp_wifi_start();
+  xEventGroupSetBits(event_group, WIFI_CONNECTING);
 
   ESP_LOGI(
       TAG, "initialized with ssid=%s password=%s", wifi_config.sta.ssid, wifi_config.sta.password
   );
 
   while (1) {
+    // reconnect if disconnected
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    ESP_LOGI(TAG, "state changed: %d", wifi_connectivity_status);
-    if (wifi_connectivity_status == Disconnected) {
-      vTaskDelay(10000 / portTICK_PERIOD_MS);
-      connect_to_wifi();
-    }
+    vTaskDelay(10000 / portTICK_PERIOD_MS);
+    connect_to_wifi();
   }
 }
