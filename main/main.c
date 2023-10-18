@@ -7,6 +7,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "local_config.h"
+#include "log_uploader.h"
 #include "nvs_flash.h"
 #include "wifi_connect.h"
 
@@ -27,4 +28,5 @@ void app_main(void) {
   xTaskCreate(&wifi_connect, "wifi_connect", 4096, NULL, 5, NULL);
   xTaskCreate(&local_config, "local_config", 4096, NULL, 5, NULL);
   xTaskCreate(&fetch_config, "fetch_config", 16096, NULL, 5, NULL);
+  xTaskCreate(&log_uploader, "log_uploader", 4096, NULL, 5, NULL);
 }

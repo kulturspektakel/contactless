@@ -1,3 +1,12 @@
-file(GLOB SRCS "*.c")
-idf_component_register(SRCS "main.c" "fetch_config.c" "local_config.c" "wifi_connect.c" "${srcs}"
-    INCLUDE_DIRS ".")
+set(srcs
+    "device_id.c"
+    "fetch_config.c"
+    "http_auth_headers.c"
+    "local_config.c"
+    "log_uploader.c"
+    "logger.c"
+    "main.c"
+    "wifi_connect.c"
+)
+
+idf_component_register(SRCS "${srcs}" INCLUDE_DIRS ".")

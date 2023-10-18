@@ -10,21 +10,18 @@
 
 static const char* TAG = "local_config";
 DeviceConfig active_config = DeviceConfig_init_default;
+int32_t all_lists_checksum = -1;
 
 bool pb_from_file_stream(pb_istream_t* stream, uint8_t* buffer, size_t count) {
   FILE* file = (FILE*)stream->state;
-  if (buffer == NULL) {
-    while (count > 0 && fgetc(file) != EOF) {
-      count--;
-    }
-    return count == 0;
-  }
-
-  if (feof(file)) {
+  int ret = fread(buffer, count, 1, file);
+  if (ret < 0) {
+    return false;
+  } else if (ret == 0) {
     stream->bytes_left = 0;
+    return false;
   }
-
-  return (fread(buffer, 1, count, file) == count);
+  return true;
 }
 
 int32_t read_product_list_id() {
@@ -71,10 +68,17 @@ void local_config(void* params) {
         all_lists.product_list.funcs.decode = load_active_product_list;
         all_lists.product_list.arg = &product_list_id;
       }
-      pb_decode(&file_stream, AllLists_fields, &all_lists);
-      ESP_LOGI(TAG, "checksummm: %ld", all_lists.checksum);
+      if (pb_decode(&file_stream, AllLists_fields, &all_lists)) {
+        all_lists_checksum = all_lists.checksum;
+        pb_release(AllLists_fields, &all_lists);
+      } else {
+        ESP_LOGE(TAG, "failed to decode protobuf: %s", file_stream.errmsg);
+      }
       fclose(config_file);
+    } else {
+      ESP_LOGE(TAG, "failed to open config file");
     }
+    xEventGroupClearBits(event_group, LOCAL_CONFIG_UPDATED);
     xEventGroupSetBits(event_group, LOCAL_CONFIG_LOADED);
     xEventGroupWaitBits(event_group, LOCAL_CONFIG_UPDATED, pdTRUE, pdTRUE, portMAX_DELAY);
   }
