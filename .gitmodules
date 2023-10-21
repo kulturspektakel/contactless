@@ -1,3 +1,6 @@
 [submodule "components/nanopb/nanopb"]
 	path = components/nanopb/nanopb
 	url = https://github.com/nanopb/nanopb.git
+[submodule "components/u8g2"]
+	path = components/u8g2
+	url = https://github.com/olikraus/u8g2.git

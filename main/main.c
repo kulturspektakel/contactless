@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include "display.h"
 #include "esp_event.h"
 #include "esp_littlefs.h"
 #include "esp_log.h"
@@ -6,6 +7,7 @@
 #include "fetch_config.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "keypad.h"
 #include "local_config.h"
 #include "log_uploader.h"
 #include "nvs_flash.h"
@@ -29,4 +31,6 @@ void app_main(void) {
   xTaskCreate(&local_config, "local_config", 4096, NULL, 5, NULL);
   xTaskCreate(&fetch_config, "fetch_config", 16096, NULL, 5, NULL);
   xTaskCreate(&log_uploader, "log_uploader", 4096, NULL, 5, NULL);
+  xTaskCreate(&display, "display", 4096, NULL, 5, NULL);
+  xTaskCreate(&keypad, "keypad", 4096, NULL, 5, NULL);
 }
