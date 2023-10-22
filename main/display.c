@@ -54,10 +54,10 @@ void wifi_strength(u8g2_t* u8g2, bool needs_update) {
 }
 
 void pending_uploads(u8g2_t* u8g2) {
-  u8g2_SetFont(&u8g2, u8g2_font_tiny5_tr);
+  u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
   char pending[4];
-  sprintf(pending, "%d", 999);
-  u8g2_DrawStr(&u8g2, 100, 5, pending);
+  sprintf(pending, "%3d", 1);
+  u8g2_DrawStr(u8g2, 100, 5, pending);
 }
 
 void display(void* params) {
@@ -89,6 +89,10 @@ void display(void* params) {
     pending_uploads(&u8g2);
     u8g2_SetFont(&u8g2, u8g2_font_tiny5_tr);
     u8g2_DrawStr(&u8g2, 10, 5, "23:37 AB");
+
+    u8g2_SetFont(&u8g2, u8g2_font_m2icon_5_tf);
+    u8g2_DrawStr(&u8g2, 0, 15, "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+    u8g2_DrawStr(&u8g2, 0, 25, "abcdefghijklmnopqrstuvwxyz");
 
     u8g2_SendBuffer(&u8g2);
     if (c > 1000) {
