@@ -2,6 +2,8 @@
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "log_uploader.h"
+#include "time.h"
 #include "u8g2.h"
 #include "u8g2_esp32_hal.h"
 
@@ -56,8 +58,23 @@ void wifi_strength(u8g2_t* u8g2, bool needs_update) {
 void pending_uploads(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
   char pending[4];
-  sprintf(pending, "%3d", 1);
-  u8g2_DrawStr(u8g2, 100, 5, pending);
+  sprintf(pending, "%3d", log_count);
+  // render right aligned
+  u8g2_uint_t w = u8g2_GetStrWidth(u8g2, pending);
+  u8g2_DrawStr(u8g2, 112 - w, 5, pending);
+  u8g2_SetFont(u8g2, u8g2_font_m2icon_5_tf);
+  u8g2_DrawStr(u8g2, 110 - w, 5, "B");
+}
+
+void time_display(u8g2_t* u8g2) {
+  u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
+  time_t now;
+  struct tm timeinfo;
+  time(&now);
+  localtime_r(&now, &timeinfo);
+  char time_buffer[6];
+  strftime(time_buffer, sizeof(time_buffer), "%H:%M", &timeinfo);
+  u8g2_DrawStr(u8g2, 10, 5, time_buffer);
 }
 
 void display(void* params) {
@@ -84,15 +101,11 @@ void display(void* params) {
   int c = 0;
   while (1) {
     u8g2_ClearBuffer(&u8g2);
+
     battery(&u8g2, c++);
     wifi_strength(&u8g2, c == 10);
     pending_uploads(&u8g2);
-    u8g2_SetFont(&u8g2, u8g2_font_tiny5_tr);
-    u8g2_DrawStr(&u8g2, 10, 5, "23:37 AB");
-
-    u8g2_SetFont(&u8g2, u8g2_font_m2icon_5_tf);
-    u8g2_DrawStr(&u8g2, 0, 15, "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
-    u8g2_DrawStr(&u8g2, 0, 25, "abcdefghijklmnopqrstuvwxyz");
+    time_display(&u8g2);
 
     u8g2_SendBuffer(&u8g2);
     if (c > 1000) {

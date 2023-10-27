@@ -11,6 +11,7 @@
 #include "local_config.h"
 #include "log_uploader.h"
 #include "nvs_flash.h"
+#include "time_sync.h"
 #include "wifi_connect.h"
 
 EventGroupHandle_t event_group;
@@ -33,4 +34,5 @@ void app_main(void) {
   xTaskCreate(&log_uploader, "log_uploader", 4096, NULL, 5, NULL);
   xTaskCreate(&display, "display", 4096, NULL, 5, NULL);
   xTaskCreate(&keypad, "keypad", 4096, NULL, 5, NULL);
+  xTaskCreate(&time_sync, "time_sync", 4096, NULL, 5, NULL);
 }
