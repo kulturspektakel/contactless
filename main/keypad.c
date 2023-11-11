@@ -15,7 +15,7 @@ const char KEYPAD[] = {
     '*', '0', '#', 'D'
     // clang-format on
 };
-static const int KEYPAD_PINS[8] = {2, 4, 16, 17, 5, 18, 19, 21};
+static const int KEYPAD_PINS[8] = {15, 2, 4, 16, 17, 5, 18, 19};
 
 int64_t time_old_isr = 0;
 QueueHandle_t keypad_queue;
@@ -44,17 +44,17 @@ static void IRAM_ATTR gpio_interrupt_handler(void* args) {
   int r = (int)(args);
   int64_t time_now_isr = esp_timer_get_time();
 
-  // if (time_now_isr - time_old_isr >= 100000) {
-  turnon_cols();
-  for (int c = 4; c < 8; c++) {
-    if (!gpio_get_level(KEYPAD_PINS[c])) {
-      xQueueSendFromISR(keypad_queue, &KEYPAD[r * 4 + c - 4], NULL);
-      break;
+  if (time_now_isr - time_old_isr >= 100000) {
+    turnon_cols();
+    for (int c = 4; c < 8; c++) {
+      if (!gpio_get_level(KEYPAD_PINS[c])) {
+        xQueueSendFromISR(keypad_queue, &KEYPAD[r * 4 + c - 4], NULL);
+        break;
+      }
     }
+    turnon_rows();
   }
-  turnon_rows();
-  // }
-  // time_old_isr = time_now_isr;
+  time_old_isr = time_now_isr;
 }
 
 void keypad(void* params) {

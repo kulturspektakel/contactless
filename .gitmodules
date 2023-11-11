@@ -4,3 +4,6 @@
 [submodule "components/u8g2"]
 	path = components/u8g2
 	url = https://github.com/olikraus/u8g2.git
+[submodule "components/esp-idf-lib"]
+	path = components/esp-idf-lib
+	url = https://github.com/UncleRus/esp-idf-lib.git
