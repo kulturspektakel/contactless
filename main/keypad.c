@@ -5,8 +5,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "state_machine.h"
 
-static const char* TAG = "display";
+static const char* TAG = "keypad";
 const char KEYPAD[] = {
     // clang-format off
     '1', '2', '3', 'A',
@@ -16,8 +17,6 @@ const char KEYPAD[] = {
     // clang-format on
 };
 static const int KEYPAD_PINS[8] = {15, 2, 4, 16, 17, 5, 18, 19};
-
-int64_t time_old_isr = 0;
 QueueHandle_t keypad_queue;
 
 void turnon_rows() {
@@ -41,10 +40,11 @@ void turnon_cols() {
 }
 
 static void IRAM_ATTR gpio_interrupt_handler(void* args) {
+  static int64_t time_old_isr = 0;
   int r = (int)(args);
   int64_t time_now_isr = esp_timer_get_time();
 
-  if (time_now_isr - time_old_isr >= 100000) {
+  if (time_now_isr - time_old_isr >= 50000) {  // 50ms debounce
     turnon_cols();
     for (int c = 4; c < 8; c++) {
       if (!gpio_get_level(KEYPAD_PINS[c])) {
@@ -81,8 +81,24 @@ void keypad(void* params) {
   turnon_rows();
 
   char key;
+  char prev_key = '\0';
+  uint8_t count = 0;
+  int64_t prev_key_time = 0;
+
   while (true) {
     xQueueReceive(keypad_queue, &key, portMAX_DELAY);
-    ESP_LOGI(TAG, "Keypressed %c", key);
+    if (key == prev_key && esp_timer_get_time() - prev_key_time < 500000) {
+      count++;
+      if (count == 2) {
+        // tripple click detected
+        xQueueSend(state_events, &key, portMAX_DELAY);
+        count = 0;
+      }
+    } else {
+      count = 0;
+    }
+    prev_key = key;
+    prev_key_time = esp_timer_get_time();
+    ESP_LOGI(TAG, "keypress %c", key);
   }
 }

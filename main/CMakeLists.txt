@@ -8,6 +8,7 @@ set(srcs
     "logger.c"
     "keypad.c"
     "main.c"
+    "state_machine.c"
     "wifi_connect.c"
     "u8g2_esp32_hal.c"
     "time_sync.c"
