@@ -35,6 +35,10 @@ void select_product(int product) {
     return;
   }
   Product p = active_config.products[product - 1];
+  if (current_state.cart.total + p.price > 9999) {
+    return;
+  }
+  current_state.cart.total += p.price;
 }
 
 void update_deposit(bool up) {
