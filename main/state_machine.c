@@ -1,37 +1,71 @@
 #include "state_machine.h"
 #include "esp_log.h"
 #include "event_group.h"
+#include "local_config.h"
 
 static const char* TAG = "state_machine";
-static bool is_privileged = false;
 
 QueueHandle_t state_events;
 state_t current_state = {
     .mode = MAIN_STARTING_UP,
     .is_privileged = false,
+    .cart =
+        {
+            .deposit = 0,
+            .total = 0,
+            .products = {},
+        },
 };
 
 mode_type default_mode() {
   return current_state.is_privileged ? PRIVILEGED_TOPUP : CHARGE_LIST;
 }
 
-void reset_transaction() {}
-void select_product(int product) {}
-void update_deposit() {}
-void remove_digit() {}
-void add_digit(int d) {}
+void reset_cart() {
+  current_state.cart.deposit = 0;
+  current_state.cart.total = 0;
+  for (int i = 0; i < 9; i++) {
+    Product p = Product_init_zero;
+    current_state.cart.products[i] = p;
+  }
+}
+
+void select_product(int product) {
+  if (active_config.products_count > product) {
+    return;
+  }
+  Product p = active_config.products[product - 1];
+}
+
+void update_deposit(bool up) {
+  if (up && current_state.cart.deposit < 9) {
+    current_state.cart.deposit += 1;
+  } else if (!up && current_state.cart.deposit > -9) {
+    current_state.cart.deposit -= 1;
+  }
+}
+
+void remove_digit() {
+  current_state.cart.deposit /= 10;
+}
+
+void add_digit(int d) {
+  if (current_state.cart.total < 1000) {
+    current_state.cart.deposit = current_state.cart.deposit * 10 + d;
+  }
+}
 
 mode_type token_detected(event_t event) {
-  reset_transaction();
-  is_privileged = true;
+  reset_cart();
+  current_state.is_privileged = true;
   return PRIVILEGED_TOPUP;
 }
 
 mode_type card_detected(event_t event) {
-  if (false /* transaction is not 0*/) {
-    return WRITE_CARD;
+  if (current_state.cart.total == 0 && current_state.cart.deposit == 0) {
+    return current_state.mode;
   }
-  return current_state.mode;
+  return WRITE_CARD;
 }
 
 mode_type charge_list_two_digit(event_t event) {
@@ -66,13 +100,13 @@ mode_type charge_list(event_t event) {
       select_product(event - KEY_1 + 1);
       break;
     case KEY_A:
-      update_deposit();
+      update_deposit(true);
       break;
     case KEY_B:
-      update_deposit();
+      update_deposit(false);
       break;
     case KEY_D:
-      reset_transaction();
+      reset_cart();
       break;
     default:
       break;
@@ -116,13 +150,13 @@ mode_type charge_manual(event_t event) {
       break;
 
     case KEY_A:
-      update_deposit();
+      update_deposit(true);
       break;
     case KEY_B:
-      update_deposit();
+      update_deposit(false);
       break;
     case KEY_D:
-      reset_transaction();
+      reset_cart();
       break;
 
     default:
@@ -155,11 +189,11 @@ mode_type privileged_topup(event_t event) {
       remove_digit();
       break;
     case KEY_D:
-      reset_transaction();
+      reset_cart();
       break;
     case TOKEN_DETECTED:
-      reset_transaction();
-      is_privileged = false;
+      reset_cart();
+      current_state.is_privileged = false;
       return CHARGE_LIST;
     case CARD_DETECTED:
       return charge_list(event);
@@ -224,7 +258,9 @@ void state_machine(void* params) {
     mode_type previous_mode = current_state.mode;
     current_state.mode = process_event(event);
     if (previous_mode != current_state.mode) {
-      ESP_LOGI(TAG, "State changed from %d to %d", previous_mode, current_state.mode);
+      ESP_LOGI(
+          TAG, "Event %d changed state from %d to %d", event, previous_mode, current_state.mode
+      );
     }
   }
 }

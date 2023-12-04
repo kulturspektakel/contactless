@@ -2,6 +2,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "product.pb.h"
 
 typedef enum {
   KEY_0,
@@ -45,9 +46,15 @@ typedef enum {
 } mode_type;
 
 typedef struct {
+  int deposit;
+  int total;
+  Product products[9];
+} cart_t;
+
+typedef struct {
   mode_type mode;
   bool is_privileged;
-  // Transaction transaction;
+  cart_t cart;
 } state_t;
 
 extern QueueHandle_t state_events;

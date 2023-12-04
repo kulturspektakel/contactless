@@ -50,10 +50,11 @@ void fetch_config(void* params) {
   ESP_LOGI(TAG, "start fetching config");
 
   esp_http_client_config_t config = {
-      .host = "api.kulturspektakel.de",
+      .host = "api2.kulturspektakel.de",
       .transport_type = HTTP_TRANSPORT_OVER_SSL,
       .path = "/$$$/lists",
       .event_handler = _http_event_handler,
+      .timeout_ms = 30000,
   };
 
   esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -64,6 +65,7 @@ void fetch_config(void* params) {
   esp_err_t err = esp_http_client_perform(client);
 
   if (err != ESP_OK) {
+    // TODO: maybe retry? (e.g. timeout)
     ESP_LOGE(TAG, "HTTP request failed: %s", esp_err_to_name(err));
     esp_http_client_cleanup(client);
     return vTaskDelete(NULL);
