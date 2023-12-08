@@ -21,6 +21,7 @@ typedef enum {
   KEY_B,
   KEY_C,
   KEY_D,
+  KEY_TRIPPLE_HASH,
   CARD_DETECTED,
   TOKEN_DETECTED,
   TIMEOUT,
@@ -49,12 +50,14 @@ typedef struct {
   int deposit;
   int total;
   Product products[9];
+  int product_count;
 } cart_t;
 
 typedef struct {
   mode_type mode;
   bool is_privileged;
   cart_t cart;
+  int first_digit;
 } state_t;
 
 extern QueueHandle_t state_events;

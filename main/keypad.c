@@ -87,6 +87,7 @@ void keypad(void* params) {
 
   while (true) {
     xQueueReceive(keypad_queue, &key, portMAX_DELAY);
+    xQueueSend(state_events, &key, portMAX_DELAY);
     if (key == prev_key && esp_timer_get_time() - prev_key_time < 500000) {
       count++;
       if (count == 2) {

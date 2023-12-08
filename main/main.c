@@ -36,5 +36,5 @@ void app_main(void) {
   xTaskCreate(&display, "display", 4096, NULL, 5, NULL);
   xTaskCreate(&keypad, "keypad", 4096, NULL, 5, NULL);
   xTaskCreate(&state_machine, "state_machine", 4096, NULL, 5, NULL);
-  // xTaskCreate(&time_sync, "time_sync", 4096, NULL, 5, NULL);
+  xTaskCreate(&time_sync, "time_sync", 4096, NULL, 5, NULL);
 }

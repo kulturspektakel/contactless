@@ -9,11 +9,13 @@ QueueHandle_t state_events;
 state_t current_state = {
     .mode = MAIN_STARTING_UP,
     .is_privileged = false,
+    .first_digit = -1,
     .cart =
         {
             .deposit = 0,
             .total = 0,
             .products = {},
+            .product_count = 0,
         },
 };
 
@@ -24,14 +26,14 @@ mode_type default_mode() {
 void reset_cart() {
   current_state.cart.deposit = 0;
   current_state.cart.total = 0;
-  for (int i = 0; i < 9; i++) {
-    Product p = Product_init_zero;
-    current_state.cart.products[i] = p;
-  }
+  current_state.cart.product_count = 0;
 }
 
 void select_product(int product) {
   if (active_config.products_count > product) {
+    return;
+  }
+  if (current_state.cart.product_count >= 9) {
     return;
   }
   Product p = active_config.products[product - 1];
@@ -39,13 +41,15 @@ void select_product(int product) {
     return;
   }
   current_state.cart.total += p.price;
+  current_state.cart.products[current_state.cart.product_count] = p;
+  current_state.cart.product_count++;
 }
 
 void update_deposit(bool up) {
   if (up && current_state.cart.deposit < 9) {
-    current_state.cart.deposit += 1;
+    current_state.cart.deposit++;
   } else if (!up && current_state.cart.deposit > -9) {
-    current_state.cart.deposit -= 1;
+    current_state.cart.deposit--;
   }
 }
 
@@ -57,6 +61,16 @@ void add_digit(int d) {
   if (current_state.cart.total < 1000) {
     current_state.cart.deposit = current_state.cart.deposit * 10 + d;
   }
+}
+
+mode_type two_digit_number_pressed(int d) {
+  if (current_state.first_digit == -1) {
+    current_state.first_digit = d;
+    return CHARGE_LIST_TWO_DIGIT;
+  }
+  select_product(10 * current_state.first_digit + d);
+  current_state.first_digit = -1;
+  return CHARGE_LIST;
 }
 
 mode_type token_detected(event_t event) {
@@ -73,19 +87,35 @@ mode_type card_detected(event_t event) {
 }
 
 mode_type charge_list_two_digit(event_t event) {
-  return current_state.mode;
+  switch (event) {
+    case KEY_0:
+    case KEY_1:
+    case KEY_2:
+    case KEY_3:
+    case KEY_4:
+    case KEY_5:
+    case KEY_6:
+    case KEY_7:
+    case KEY_8:
+    case KEY_9:
+      return two_digit_number_pressed(event - KEY_0);
+    case KEY_HASH:
+    case KEY_C:
+    case KEY_D:
+      return CHARGE_LIST;
+    default:
+      break;
+  }
+  return CHARGE_LIST_TWO_DIGIT;
 }
 mode_type charge_without_card(event_t event) {
-  return current_state.mode;
+  return CHARGE_WITHOUT_CARD;
 }
 
 mode_type charge_list(event_t event) {
   switch (event) {
-    // change state
     case KEY_HASH:
-      return charge_list_two_digit(event);
-    case KEY_STAR:
-      return charge_without_card(event);
+      return CHARGE_LIST_TWO_DIGIT;
     case TOKEN_DETECTED:
       return token_detected(event);
     case CARD_DETECTED:
@@ -121,7 +151,11 @@ mode_type charge_list(event_t event) {
 mode_type main_starting_up(event_t event) {
   switch (event) {
     case STARTUP_COMPLETED:
+      // log
+      ESP_LOGI(TAG, "startup completed");
       return default_mode();
+
+    // stay in same state
     default:
       break;
   }
@@ -152,7 +186,6 @@ mode_type charge_manual(event_t event) {
     case KEY_C:
       remove_digit();
       break;
-
     case KEY_A:
       update_deposit(true);
       break;
@@ -162,7 +195,6 @@ mode_type charge_manual(event_t event) {
     case KEY_D:
       reset_cart();
       break;
-
     default:
       break;
   }
@@ -171,6 +203,14 @@ mode_type charge_manual(event_t event) {
 
 mode_type privileged_topup(event_t event) {
   switch (event) {
+    case TOKEN_DETECTED:
+      reset_cart();
+      current_state.is_privileged = false;
+      return CHARGE_LIST;
+    case CARD_DETECTED:
+      return WRITE_CARD;
+
+    // stay in same state
     case KEY_0:
     case KEY_1:
     case KEY_2:
@@ -184,10 +224,10 @@ mode_type privileged_topup(event_t event) {
       add_digit(event - KEY_0);
       break;
     case KEY_A:
-      update_deposit();
+      update_deposit(true);
       break;
     case KEY_B:
-      update_deposit();
+      update_deposit(false);
       break;
     case KEY_C:
       remove_digit();
@@ -195,12 +235,6 @@ mode_type privileged_topup(event_t event) {
     case KEY_D:
       reset_cart();
       break;
-    case TOKEN_DETECTED:
-      reset_cart();
-      current_state.is_privileged = false;
-      return CHARGE_LIST;
-    case CARD_DETECTED:
-      return charge_list(event);
     default:
       break;
   }
@@ -211,6 +245,8 @@ mode_type main_menu(event_t event) {
   switch (event) {
     case KEY_D:
       return default_mode();
+
+    // stay in same state
     default:
       break;
   }
@@ -254,7 +290,7 @@ void state_machine(void* params) {
   ESP_LOGI(TAG, "waiting for startup to complete");
 
   xEventGroupWaitBits(event_group, LOCAL_CONFIG_LOADED | TIME_SET, pdFALSE, pdTRUE, portMAX_DELAY);
-  xQueueSend(state_events, STARTUP_COMPLETED, portMAX_DELAY);
+  xQueueSend(state_events, (void*)&(event_t){STARTUP_COMPLETED}, portMAX_DELAY);
 
   event_t event;
   while (true) {

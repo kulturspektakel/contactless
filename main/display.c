@@ -3,13 +3,29 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "log_uploader.h"
+#include "state_machine.h"
 #include "time.h"
 #include "u8g2.h"
 #include "u8g2_esp32_hal.h"
 
 static const char* TAG = "display";
+#define logo_width 34
+#define logo_height 34
+static const uint8_t logo_bits[] = {
+    0xFF, 0xFF, 0xFF, 0xFF, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0x03, 0xFF,
+    0xFF, 0xFF, 0xFF, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0x03, 0xFF, 0xFF,
+    0xFF, 0xFF, 0x03, 0xFF, 0xC0, 0x07, 0xF8, 0x03, 0xFF, 0xC0, 0x03, 0xFC, 0x03, 0xFF, 0xC0, 0x01,
+    0xFE, 0x03, 0xFF, 0xC0, 0x00, 0xFF, 0x03, 0xFF, 0x40, 0x80, 0xFF, 0x03, 0xFF, 0x00, 0xC0, 0xFF,
+    0x03, 0xFF, 0x00, 0xE0, 0xFF, 0x03, 0xFF, 0x00, 0xF0, 0xFF, 0x03, 0xFF, 0x00, 0xF8, 0xFF, 0x03,
+    0xFF, 0x00, 0xFC, 0xFF, 0x03, 0xFF, 0x00, 0xFC, 0xFF, 0x03, 0xFF, 0x00, 0xF8, 0xFF, 0x03, 0xFF,
+    0x00, 0xF0, 0xFF, 0x03, 0xFF, 0x00, 0xE0, 0xFF, 0x03, 0xFF, 0x00, 0xC0, 0xFF, 0x03, 0xFF, 0x40,
+    0x80, 0xFF, 0x03, 0xFF, 0xC0, 0x00, 0xFF, 0x03, 0xFF, 0xC0, 0x01, 0xFE, 0x03, 0xFF, 0xC0, 0x03,
+    0xFC, 0x03, 0xFF, 0xC0, 0x07, 0xF8, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0x03, 0xFF, 0xFF, 0xFF, 0xFF,
+    0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0x03,
+    0xFF, 0xFF, 0xFF, 0xFF, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0x03,
+};
 
-void battery(u8g2_t* u8g2, int current) {
+static void battery(u8g2_t* u8g2, int current) {
   int y = 0;
   int h = 4;
   int w = 10;
@@ -27,7 +43,7 @@ void battery(u8g2_t* u8g2, int current) {
   u8g2_DrawBox(u8g2, x + 1, y + 1, bar_width, h - 1);
 }
 
-void wifi_strength(u8g2_t* u8g2, bool needs_update) {
+static void wifi_strength(u8g2_t* u8g2, bool needs_update) {
   static int8_t rssi;
   int x = 0;
   int y = 4;
@@ -55,7 +71,7 @@ void wifi_strength(u8g2_t* u8g2, bool needs_update) {
   }
 }
 
-void pending_uploads(u8g2_t* u8g2) {
+static void pending_uploads(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
   char pending[4];
   sprintf(pending, "%3d", log_count);
@@ -66,7 +82,7 @@ void pending_uploads(u8g2_t* u8g2) {
   u8g2_DrawStr(u8g2, 110 - w, 5, "B");
 }
 
-void time_display(u8g2_t* u8g2) {
+static void time_display(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
   time_t now;
   struct tm timeinfo;
@@ -77,9 +93,54 @@ void time_display(u8g2_t* u8g2) {
   u8g2_DrawStr(u8g2, 10, 5, time_buffer);
 }
 
+static void keypad_legend_letter(u8g2_t* u8g2, char* letter, char* text, int offset) {
+  u8g2_SetDrawColor(u8g2, 0);
+  u8g2_DrawRBox(u8g2, offset + 1, 55, 8, 7, 1);
+  u8g2_SetDrawColor(u8g2, 1);
+  u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
+  u8g2_DrawStr(u8g2, offset + 3, 61, letter);
+  u8g2_SetDrawColor(u8g2, 0);
+  u8g2_DrawStr(u8g2, offset + 11, 61, text);
+  u8g2_SetDrawColor(u8g2, 1);
+}
+
+static void keypad_legend(u8g2_t* u8g2) {
+  u8g2_DrawBox(u8g2, 0, 54, 128, 9);
+  keypad_legend_letter(u8g2, "A", "Up", 0);
+  keypad_legend_letter(u8g2, "B", "Dn", 26);
+  keypad_legend_letter(u8g2, "*", "OK", 52);
+  keypad_legend_letter(u8g2, "D", "Abbrechen", 78);
+}
+
+static void status_bar(u8g2_t* u8g2) {
+  battery(u8g2, 1);
+  wifi_strength(u8g2, true);
+  pending_uploads(u8g2);
+  time_display(u8g2);
+}
+
+static void boot_screen(u8g2_t* u8g2) {
+  u8g2_DrawXBM(u8g2, 47, 15, logo_width, logo_height, &logo_bits);
+}
+
+static void charge_list(u8g2_t* u8g2) {
+  u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+  char buffer[50];
+  sprintf(buffer, "Summe %5.2f", ((double)current_state.cart.total) / 100);
+  u8g2_DrawStr(u8g2, 0, 20, buffer);
+
+  double depositValue = current_state.cart.deposit * 2;  // TODO deposit value from config
+  if (current_state.cart.deposit < 0) {
+    sprintf(buffer, "%d Rückgabe %5.2f", current_state.cart.deposit, depositValue);
+  } else {
+    sprintf(buffer, "%d Pfänd %5.2f", current_state.cart.deposit, depositValue);
+  }
+  u8g2_DrawStr(u8g2, 0, 40, buffer);
+}
+
 void display(void* params) {
   // 2 second delay to allow other tasks to start
-  vTaskDelay(2000 / portTICK_PERIOD_MS);
+  vTaskDelay(200 / portTICK_PERIOD_MS);
 
   u8g2_esp32_hal_t u8g2_esp32_hal = {
       .clk = 14,
@@ -98,18 +159,27 @@ void display(void* params) {
   u8g2_InitDisplay(&u8g2);
   u8g2_SetPowerSave(&u8g2, 0);
 
-  int c = 0;
   while (1) {
     u8g2_ClearBuffer(&u8g2);
 
-    battery(&u8g2, c++);
-    wifi_strength(&u8g2, c == 10);
-    pending_uploads(&u8g2);
-    time_display(&u8g2);
+    switch (current_state.mode) {
+      case MAIN_STARTING_UP:
+        boot_screen(&u8g2);
+        break;
+      case CHARGE_LIST:
+        status_bar(&u8g2);
+        charge_list(&u8g2);
+        break;
+      case MAIN_MENU:
+        status_bar(&u8g2);
+        keypad_legend(&u8g2);
+        break;
+      default:
+        break;
+    }
 
     u8g2_SendBuffer(&u8g2);
-    if (c > 1000) {
-      c = 0;
-    }
+    // TODO use event group to wait for state change
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
 }
