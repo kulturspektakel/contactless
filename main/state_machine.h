@@ -2,7 +2,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
-#include "product.pb.h"
+#include "logmessage.pb.h"
 
 typedef enum {
   KEY_0,
@@ -49,8 +49,8 @@ typedef enum {
 typedef struct {
   int deposit;
   int total;
-  Product products[9];
-  int product_count;
+  LogMessage_Order_CartItem items[9];
+  int item_count;
 } cart_t;
 
 typedef struct {

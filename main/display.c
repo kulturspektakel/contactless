@@ -123,19 +123,44 @@ static void boot_screen(u8g2_t* u8g2) {
   u8g2_DrawXBM(u8g2, 47, 15, logo_width, logo_height, &logo_bits);
 }
 
+static void draw_amount(u8g2_t* u8g2, int amount, int y) {
+  char amount_str[7];
+  snprintf(amount_str, sizeof(amount_str), "%5.2f", ((float)amount) / 100);
+  u8g2_uint_t w = u8g2_GetStrWidth(u8g2, amount_str);
+  u8g2_DrawStr(u8g2, 128 - w, y, amount_str);
+}
+
 static void charge_list(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-  char buffer[50];
-  sprintf(buffer, "Summe %5.2f", ((double)current_state.cart.total) / 100);
-  u8g2_DrawStr(u8g2, 0, 20, buffer);
 
-  double depositValue = current_state.cart.deposit * 2;  // TODO deposit value from config
-  if (current_state.cart.deposit < 0) {
-    sprintf(buffer, "%d Rückgabe %5.2f", current_state.cart.deposit, depositValue);
-  } else {
-    sprintf(buffer, "%d Pfänd %5.2f", current_state.cart.deposit, depositValue);
+  for (int i = 0; i < current_state.cart.item_count; i++) {
+    char product[13];
+    snprintf(
+        product,
+        sizeof(product),
+        "%ld %.10s",
+        current_state.cart.items[i].amount,
+        current_state.cart.items[i].product.name
+    );
+    u8g2_DrawStr(u8g2, 0, 17 + (i * 10), product);
+    draw_amount(
+        u8g2,
+        current_state.cart.items[i].amount * current_state.cart.items[i].product.price,
+        17 + (i * 10)
+    );
   }
-  u8g2_DrawStr(u8g2, 0, 40, buffer);
+
+  char deposit[21];
+  if (current_state.cart.deposit < 0) {
+    snprintf(deposit, sizeof(deposit), "%d Rückgabe", current_state.cart.deposit * -1);
+  } else {
+    snprintf(deposit, sizeof(deposit), "%d Pfand", current_state.cart.deposit);
+  }
+  u8g2_DrawStr(u8g2, 0, 51, deposit);
+  draw_amount(u8g2, current_state.cart.deposit * 200, 51);
+  u8g2_DrawHLine(u8g2, 0, 53, 128);
+  u8g2_DrawStr(u8g2, 0, 63, "Summe");
+  draw_amount(u8g2, current_state.cart.total + (current_state.cart.deposit * 200), 63);
 }
 
 void display(void* params) {

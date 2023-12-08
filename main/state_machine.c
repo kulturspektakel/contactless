@@ -13,9 +13,30 @@ state_t current_state = {
     .cart =
         {
             .deposit = 0,
-            .total = 0,
-            .products = {},
-            .product_count = 0,
+            .total = 800,
+            .items =
+                {{.amount = 1,
+                  .has_product = true,
+                  .product =
+                      {
+                          .name = "Helles",
+                          .price = 350,
+                      }},
+                 {.amount = 2,
+                  .has_product = true,
+                  .product =
+                      {
+                          .name = "Spezi",
+                          .price = 300,
+                      }},
+                 {.amount = 1,
+                  .has_product = true,
+                  .product =
+                      {
+                          .name = "Wasser",
+                          .price = 150,
+                      }}},
+            .item_count = 3,
         },
 };
 
@@ -26,14 +47,14 @@ mode_type default_mode() {
 void reset_cart() {
   current_state.cart.deposit = 0;
   current_state.cart.total = 0;
-  current_state.cart.product_count = 0;
+  current_state.cart.item_count = 0;
 }
 
 void select_product(int product) {
   if (active_config.products_count > product) {
     return;
   }
-  if (current_state.cart.product_count >= 9) {
+  if (current_state.cart.item_count >= 9) {
     return;
   }
   Product p = active_config.products[product - 1];
@@ -41,8 +62,22 @@ void select_product(int product) {
     return;
   }
   current_state.cart.total += p.price;
-  current_state.cart.products[current_state.cart.product_count] = p;
-  current_state.cart.product_count++;
+
+  for (int i = 0; i < current_state.cart.item_count; i++) {
+    if (current_state.cart.items[i].has_product &&
+        strcmp(current_state.cart.items[i].product.name, p.name) == 0) {
+      current_state.cart.items[i].amount++;
+      return;
+    }
+  }
+
+  LogMessage_Order_CartItem item = {
+      .amount = 1,
+      .has_product = true,
+      .product = p,
+  };
+  current_state.cart.items[current_state.cart.item_count] = item;
+  current_state.cart.item_count++;
 }
 
 void update_deposit(bool up) {
