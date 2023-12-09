@@ -95,17 +95,17 @@ static void time_display(u8g2_t* u8g2) {
 
 static void keypad_legend_letter(u8g2_t* u8g2, char* letter, char* text, int offset) {
   u8g2_SetDrawColor(u8g2, 0);
-  u8g2_DrawRBox(u8g2, offset + 1, 55, 8, 7, 1);
+  u8g2_DrawRBox(u8g2, offset + 1, 56, 8, 7, 1);
   u8g2_SetDrawColor(u8g2, 1);
   u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
-  u8g2_DrawStr(u8g2, offset + 3, 61, letter);
+  u8g2_DrawStr(u8g2, offset + 3, 62, letter);
   u8g2_SetDrawColor(u8g2, 0);
-  u8g2_DrawStr(u8g2, offset + 11, 61, text);
+  u8g2_DrawStr(u8g2, offset + 11, 62, text);
   u8g2_SetDrawColor(u8g2, 1);
 }
 
 static void keypad_legend(u8g2_t* u8g2) {
-  u8g2_DrawBox(u8g2, 0, 54, 128, 9);
+  u8g2_DrawBox(u8g2, 0, 55, 128, 9);
   keypad_legend_letter(u8g2, "A", "Up", 0);
   keypad_legend_letter(u8g2, "B", "Dn", 26);
   keypad_legend_letter(u8g2, "*", "OK", 52);
@@ -133,8 +133,21 @@ static void draw_amount(u8g2_t* u8g2, int amount, int y) {
 static void charge_list(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
 
-  for (int i = 0; i < current_state.cart.item_count; i++) {
+  for (int i = 0; i < current_state.cart.item_count && i < 3; i++) {
     char product[13];
+    if (i == 2 && current_state.cart.item_count > 3) {
+      int sum = 0;
+      int amount = 0;
+      for (int j = 2; j < current_state.cart.item_count; j++) {
+        sum += current_state.cart.items[j].amount * current_state.cart.items[j].product.price;
+        amount += current_state.cart.items[j].amount;
+      }
+      snprintf(product, sizeof(product), "+%d weitere", amount);
+      u8g2_DrawStr(u8g2, 0, 17 + (i * 10), product);
+      draw_amount(u8g2, sum, 17 + (i * 10));
+      break;
+    }
+
     snprintf(
         product,
         sizeof(product),
@@ -161,6 +174,71 @@ static void charge_list(u8g2_t* u8g2) {
   u8g2_DrawHLine(u8g2, 0, 53, 128);
   u8g2_DrawStr(u8g2, 0, 63, "Summe");
   draw_amount(u8g2, current_state.cart.total + (current_state.cart.deposit * 200), 63);
+}
+
+static void main_menu(u8g2_t* u8g2) {
+  u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+  const int number_of_items = 26;
+  static int active_item = 1;
+  active_item = (active_item + 1) % number_of_items;
+  char items[26][19] = {
+      "Ausschank",
+      "Burger",
+      "Café",
+      "Churros",
+      "Cocktail",
+      "Craft Beer",
+      "Crêpes",
+      "Eis",
+      "Falafel",
+      "Flammkuchen",
+      "Frittiererei",
+      "Frühschoppen",
+      "Grill",
+      "Hot Dog",
+      "Infobude",
+      "Irish Pub",
+      "Nachos",
+      "Panini",
+      "Partnervermittlung",
+      "Pizza",
+      "Spieße",
+      "Waffel",
+      "Wein",
+      "Weißbierbar",
+      "Weißbiergarten",
+      "Wraps",
+  };
+
+  for (int i = 0; i < 3; i++) {
+    int offset = active_item - 1;
+    if (active_item == 0) {
+      offset = 0;
+    } else if (active_item == number_of_items - 1) {
+      offset = number_of_items - 3;
+    }
+
+    u8g2_DrawStr(u8g2, 4, 18 + (i * 15), items[offset + i]);
+    if (offset + i == active_item) {
+      u8g2_DrawRFrame(u8g2, 0, 8 + (i * 15), 120, 15, 3);
+      u8g2_DrawHLine(u8g2, 2, 21 + (i * 15), 116);
+      u8g2_DrawVLine(u8g2, 118, 9 + (i * 15), 13);
+    }
+  }
+
+  // scrollbar
+  for (int i = 7; i < 53; i = i + 3) {
+    u8g2_DrawPixel(u8g2, 124, i);
+  }
+  u8g2_DrawBox(u8g2, 123, 7 + ((float)active_item / (float)number_of_items) * 45, 3, 4);
+}
+
+static void write_card(u8g2_t* u8g2) {
+  u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+  u8g2_DrawStr(u8g2, 0, 17, "Bitte Karte");
+  u8g2_DrawStr(u8g2, 0, 27, "auflegen");
+  u8g2_DrawStr(u8g2, 0, 37, "zum Aufladen");
+  u8g2_DrawStr(u8g2, 0, 47, "oder Abbrechen");
 }
 
 void display(void* params) {
@@ -197,7 +275,12 @@ void display(void* params) {
         break;
       case MAIN_MENU:
         status_bar(&u8g2);
+        main_menu(&u8g2);
         keypad_legend(&u8g2);
+        break;
+      case WRITE_CARD:
+        status_bar(&u8g2);
+        write_card(&u8g2);
         break;
       default:
         break;

@@ -13,7 +13,7 @@ state_t current_state = {
     .cart =
         {
             .deposit = 0,
-            .total = 800,
+            .total = -1000,
             .items =
                 {{.amount = 1,
                   .has_product = true,
@@ -35,8 +35,15 @@ state_t current_state = {
                       {
                           .name = "Wasser",
                           .price = 150,
+                      }},
+                 {.amount = 1,
+                  .has_product = true,
+                  .product =
+                      {
+                          .name = "Eis",
+                          .price = 100,
                       }}},
-            .item_count = 3,
+            .item_count = 4,
         },
 };
 
@@ -186,8 +193,7 @@ mode_type charge_list(event_t event) {
 mode_type main_starting_up(event_t event) {
   switch (event) {
     case STARTUP_COMPLETED:
-      // log
-      ESP_LOGI(TAG, "startup completed");
+      return MAIN_MENU;  // TODO remove
       return default_mode();
 
     // stay in same state
