@@ -67,9 +67,9 @@ static bool load_available_product_lists(
   menu_item_t menu_item;
   menu_item.list_id = product_list.list_id;
   strcpy(menu_item.name, product_list.name);
-  kvec_t(menu_item_t) array = *(kvec_t(menu_item_t))arg;
-  ESP_LOGI(TAG, "Adding product list: %s", product_list.name);
-  kv_push(menu_item_t, array, menu_item);
+
+  kvec_t(menu_item_t)* items = (kvec_t(menu_item_t)*)*arg;
+  kv_push(menu_item_t, *items, menu_item);
 
   pb_release(DeviceConfig_fields, &product_list);
   return true;
@@ -103,12 +103,9 @@ static AllLists read_local_config(pb_callback_t callback) {
 void initialize_main_menu() {
   kvec_t(menu_item_t) array;
   kv_init(array);
-  menu_item_t menu_item = {.list_id = 1337, .name = "TEST"};
-  kv_push(menu_item_t, array, menu_item);
-
   pb_callback_t callback = {.funcs.decode = load_available_product_lists, .arg = &array};
   read_local_config(callback);
-  ESP_LOGI(TAG, "loaded: %d %d", array.m, array.n);
+  ESP_LOGI(TAG, "Loading available product lists %d", array.n);
 }
 
 void local_config(void* params) {
