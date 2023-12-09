@@ -5,6 +5,7 @@
 #include "event_group.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "kvec.h"
 #include "nvs_flash.h"
 #include "pb_decode.h"
 
@@ -52,32 +53,73 @@ static bool load_active_product_list(pb_istream_t* stream, const pb_field_t* fie
   return true;
 }
 
+static bool load_available_product_lists(
+    pb_istream_t* stream,
+    const pb_field_t* field,
+    void** arg
+) {
+  DeviceConfig product_list = DeviceConfig_init_default;
+  if (!pb_decode(stream, DeviceConfig_fields, &product_list)) {
+    ESP_LOGE(TAG, "failed to decode product list");
+    return false;
+  }
+
+  menu_item_t menu_item;
+  menu_item.list_id = product_list.list_id;
+  strcpy(menu_item.name, product_list.name);
+  kvec_t(menu_item_t) array = *(kvec_t(menu_item_t))arg;
+  ESP_LOGI(TAG, "Adding product list: %s", product_list.name);
+  kv_push(menu_item_t, array, menu_item);
+
+  pb_release(DeviceConfig_fields, &product_list);
+  return true;
+}
+
+static AllLists read_local_config(pb_callback_t callback) {
+  FILE* config_file = fopen("/littlefs/config.cfg", "r");
+  AllLists all_lists = AllLists_init_default;
+  if (config_file != NULL) {
+    pb_istream_t file_stream = {
+        .callback = pb_from_file_stream,
+        .state = config_file,
+        .bytes_left = SIZE_MAX,
+    };
+
+    all_lists.product_list = callback;
+
+    if (pb_decode(&file_stream, AllLists_fields, &all_lists)) {
+      all_lists_checksum = all_lists.checksum;
+      pb_release(AllLists_fields, &all_lists);
+    } else {
+      ESP_LOGE(TAG, "failed to decode protobuf: %s", file_stream.errmsg);
+    }
+    fclose(config_file);
+  } else {
+    ESP_LOGE(TAG, "failed to open config file");
+  }
+  return all_lists;
+}
+
+void initialize_main_menu() {
+  kvec_t(menu_item_t) array;
+  kv_init(array);
+  menu_item_t menu_item = {.list_id = 1337, .name = "TEST"};
+  kv_push(menu_item_t, array, menu_item);
+
+  pb_callback_t callback = {.funcs.decode = load_available_product_lists, .arg = &array};
+  read_local_config(callback);
+  ESP_LOGI(TAG, "loaded: %d %d", array.m, array.n);
+}
+
 void local_config(void* params) {
   while (1) {
     int32_t product_list_id = read_product_list_id();
-    FILE* config_file = fopen("/littlefs/config.cfg", "r");
-    if (config_file != NULL) {
-      pb_istream_t file_stream = {
-          .callback = pb_from_file_stream,
-          .state = config_file,
-          .bytes_left = SIZE_MAX,
-      };
+    pb_callback_t callback = {.funcs.decode = load_active_product_list, .arg = &product_list_id};
+    AllLists all_lists = read_local_config(callback);
+    all_lists_checksum = all_lists.checksum;
 
-      AllLists all_lists = AllLists_init_default;
-      if (product_list_id > 0) {
-        all_lists.product_list.funcs.decode = load_active_product_list;
-        all_lists.product_list.arg = &product_list_id;
-      }
-      if (pb_decode(&file_stream, AllLists_fields, &all_lists)) {
-        all_lists_checksum = all_lists.checksum;
-        pb_release(AllLists_fields, &all_lists);
-      } else {
-        ESP_LOGE(TAG, "failed to decode protobuf: %s", file_stream.errmsg);
-      }
-      fclose(config_file);
-    } else {
-      ESP_LOGE(TAG, "failed to open config file");
-    }
+    initialize_main_menu();
+
     xEventGroupClearBits(event_group, LOCAL_CONFIG_UPDATED);
     xEventGroupSetBits(event_group, LOCAL_CONFIG_LOADED);
     xEventGroupWaitBits(event_group, LOCAL_CONFIG_UPDATED, pdTRUE, pdTRUE, portMAX_DELAY);
