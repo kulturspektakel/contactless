@@ -54,10 +54,22 @@ typedef struct {
 } cart_t;
 
 typedef struct {
+  char name[21];
+  int32_t list_id;
+} menu_item_t;
+
+typedef struct {
+  menu_item_t* items;
+  size_t count;
+  int active_item;
+} menu_items_t;
+
+typedef struct {
   mode_type mode;
   bool is_privileged;
   cart_t cart;
-  int first_digit;
+  int product_list_first_digit;
+  menu_items_t main_menu;
 } state_t;
 
 extern QueueHandle_t state_events;

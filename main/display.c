@@ -178,48 +178,16 @@ static void charge_list(u8g2_t* u8g2) {
 
 static void main_menu(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-  const int number_of_items = 26;
-  static int active_item = 1;
-  active_item = (active_item + 1) % number_of_items;
-  char items[26][19] = {
-      "Ausschank",
-      "Burger",
-      "Café",
-      "Churros",
-      "Cocktail",
-      "Craft Beer",
-      "Crêpes",
-      "Eis",
-      "Falafel",
-      "Flammkuchen",
-      "Frittiererei",
-      "Frühschoppen",
-      "Grill",
-      "Hot Dog",
-      "Infobude",
-      "Irish Pub",
-      "Nachos",
-      "Panini",
-      "Partnervermittlung",
-      "Pizza",
-      "Spieße",
-      "Waffel",
-      "Wein",
-      "Weißbierbar",
-      "Weißbiergarten",
-      "Wraps",
-  };
-
   for (int i = 0; i < 3; i++) {
-    int offset = active_item - 1;
-    if (active_item == 0) {
+    int offset = current_state.main_menu.active_item - 1;
+    if (current_state.main_menu.active_item == 0) {
       offset = 0;
-    } else if (active_item == number_of_items - 1) {
-      offset = number_of_items - 3;
+    } else if (current_state.main_menu.active_item == current_state.main_menu.count - 1) {
+      offset = current_state.main_menu.count - 3;
     }
 
-    u8g2_DrawStr(u8g2, 4, 18 + (i * 15), items[offset + i]);
-    if (offset + i == active_item) {
+    u8g2_DrawStr(u8g2, 4, 18 + (i * 15), current_state.main_menu.items[offset + i].name);
+    if (offset + i == current_state.main_menu.active_item) {
       u8g2_DrawRFrame(u8g2, 0, 8 + (i * 15), 120, 15, 3);
       u8g2_DrawHLine(u8g2, 2, 21 + (i * 15), 116);
       u8g2_DrawVLine(u8g2, 118, 9 + (i * 15), 13);
@@ -230,7 +198,13 @@ static void main_menu(u8g2_t* u8g2) {
   for (int i = 7; i < 53; i = i + 3) {
     u8g2_DrawPixel(u8g2, 124, i);
   }
-  u8g2_DrawBox(u8g2, 123, 7 + ((float)active_item / (float)number_of_items) * 45, 3, 4);
+  u8g2_DrawBox(
+      u8g2,
+      123,
+      7 + ((float)current_state.main_menu.active_item / (float)current_state.main_menu.count) * 45,
+      3,
+      4
+  );
 }
 
 static void write_card(u8g2_t* u8g2) {

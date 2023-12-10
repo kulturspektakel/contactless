@@ -9,7 +9,8 @@ QueueHandle_t state_events;
 state_t current_state = {
     .mode = MAIN_STARTING_UP,
     .is_privileged = false,
-    .first_digit = -1,
+    .product_list_first_digit = -1,
+    .main_menu = {.count = 0},
     .cart =
         {
             .deposit = 0,
@@ -106,12 +107,12 @@ void add_digit(int d) {
 }
 
 mode_type two_digit_number_pressed(int d) {
-  if (current_state.first_digit == -1) {
-    current_state.first_digit = d;
+  if (current_state.product_list_first_digit == -1) {
+    current_state.product_list_first_digit = d;
     return CHARGE_LIST_TWO_DIGIT;
   }
-  select_product(10 * current_state.first_digit + d);
-  current_state.first_digit = -1;
+  select_product(10 * current_state.product_list_first_digit + d);
+  current_state.product_list_first_digit = -1;
   return CHARGE_LIST;
 }
 
@@ -193,6 +194,7 @@ mode_type charge_list(event_t event) {
 mode_type main_starting_up(event_t event) {
   switch (event) {
     case STARTUP_COMPLETED:
+      current_state.main_menu = initialize_main_menu();
       return MAIN_MENU;  // TODO remove
       return default_mode();
 

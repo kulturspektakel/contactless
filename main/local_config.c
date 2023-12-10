@@ -5,11 +5,11 @@
 #include "event_group.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "kvec.h"
 #include "nvs_flash.h"
 #include "pb_decode.h"
 
 static const char* TAG = "local_config";
+static int32_t lists_count = 0;
 DeviceConfig active_config = DeviceConfig_init_default;
 int32_t all_lists_checksum = -1;
 
@@ -49,27 +49,27 @@ static bool load_active_product_list(pb_istream_t* stream, const pb_field_t* fie
     ESP_LOGI(TAG, "Loaded product list: %s", product_list.name);
     active_config = product_list;
   }
+  lists_count++;
   pb_release(DeviceConfig_fields, &product_list);
   return true;
 }
 
-static bool load_available_product_lists(
-    pb_istream_t* stream,
-    const pb_field_t* field,
-    void** arg
-) {
+static bool load_menu_items(pb_istream_t* stream, const pb_field_t* field, void** arg) {
   DeviceConfig product_list = DeviceConfig_init_default;
   if (!pb_decode(stream, DeviceConfig_fields, &product_list)) {
     ESP_LOGE(TAG, "failed to decode product list");
     return false;
   }
 
-  menu_item_t menu_item;
-  menu_item.list_id = product_list.list_id;
-  strcpy(menu_item.name, product_list.name);
+  menu_item_t item = {0};
+  item.list_id = product_list.list_id;
+  snprintf(item.name, sizeof(item.name), "%s", product_list.name);
 
-  kvec_t(menu_item_t)* items = (kvec_t(menu_item_t)*)*arg;
-  kv_push(menu_item_t, *items, menu_item);
+  menu_items_t* args = *(menu_items_t**)arg;
+  args->items[args->count++] = item;
+  if (product_list.list_id == active_config.list_id) {
+    args->active_item = args->count - 1;
+  }
 
   pb_release(DeviceConfig_fields, &product_list);
   return true;
@@ -100,12 +100,14 @@ static AllLists read_local_config(pb_callback_t callback) {
   return all_lists;
 }
 
-void initialize_main_menu() {
-  kvec_t(menu_item_t) array;
-  kv_init(array);
-  pb_callback_t callback = {.funcs.decode = load_available_product_lists, .arg = &array};
-  read_local_config(callback);
-  ESP_LOGI(TAG, "Loading available product lists %d", array.n);
+menu_items_t initialize_main_menu() {
+  menu_items_t args = {
+      .count = 0,
+      .items = (menu_item_t*)malloc(lists_count * sizeof(menu_item_t)),
+      .active_item = 0,
+  };
+  read_local_config((pb_callback_t){.funcs.decode = load_menu_items, .arg = &args});
+  return args;
 }
 
 void local_config(void* params) {
@@ -114,8 +116,6 @@ void local_config(void* params) {
     pb_callback_t callback = {.funcs.decode = load_active_product_list, .arg = &product_list_id};
     AllLists all_lists = read_local_config(callback);
     all_lists_checksum = all_lists.checksum;
-
-    initialize_main_menu();
 
     xEventGroupClearBits(event_group, LOCAL_CONFIG_UPDATED);
     xEventGroupSetBits(event_group, LOCAL_CONFIG_LOADED);
