@@ -157,6 +157,11 @@ mode_type charge_without_card(event_t event) {
 
 mode_type charge_list(event_t event) {
   switch (event) {
+    case KEY_TRIPPLE_HASH:
+      current_state.main_menu = initialize_main_menu();
+      return MAIN_MENU;
+    case KEY_STAR:
+      return CHARGE_WITHOUT_CARD;
     case KEY_HASH:
       return CHARGE_LIST_TWO_DIGIT;
     case TOKEN_DETECTED:
@@ -194,8 +199,6 @@ mode_type charge_list(event_t event) {
 mode_type main_starting_up(event_t event) {
   switch (event) {
     case STARTUP_COMPLETED:
-      current_state.main_menu = initialize_main_menu();
-      return MAIN_MENU;  // TODO remove
       return default_mode();
 
     // stay in same state
@@ -287,6 +290,8 @@ mode_type privileged_topup(event_t event) {
 mode_type main_menu(event_t event) {
   switch (event) {
     case KEY_D:
+      current_state.main_menu.count = 0;
+      free(current_state.main_menu.items);
       return default_mode();
 
     // stay in same state
