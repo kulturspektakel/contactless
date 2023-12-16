@@ -1,41 +1,40 @@
 #include "rfid.h"
 #include <esp_log.h>
-#include "rc522.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "mfrc522.h"
 
 static const char* TAG = "rfid";
-static rc522_handle_t scanner;
+static mfrc522_handle_t handle;
 
-static void rc522_handler(void* arg, esp_event_base_t base, int32_t event_id, void* event_data) {
-  rc522_event_data_t* data = (rc522_event_data_t*)event_data;
-  ESP_LOGI(TAG, "Tag scanned (sn: )");
+// static void rc522_handler(void* arg, esp_event_base_t base, int32_t event_id, void* event_data) {
+//   rc522_event_data_t* data = (rc522_event_data_t*)event_data;
 
-  //   switch (event_id) {
-  //     case RC522_EVENT_TAG_SCANNED: {
-  //       rc522_tag_t* tag = (rc522_tag_t*)data->ptr;
-  //       ESP_LOGI(TAG, "Tag scanned (sn: %" PRIu64 ")", tag->serial_number);
-  //     } break;
-  //   }
-}
+//   if (event_id != RC522_EVENT_TAG_SCANNED) {
+//     // there are no other events, lol
+//     ESP_LOGE(TAG, "Unknown event id: %ld", event_id);
+//     return;
+//   }
+
+//   rc522_tag_t* tag = (rc522_tag_t*)data->ptr;
+//   ESP_LOGI(TAG, "Tag scanned (sn: %" PRIu64 ")", tag->serial_number);
+// }
 
 void rfid(void* params) {
-  rc522_config_t config = {
-      .transport = RC522_TRANSPORT_SPI,
+  mfrc522_config_t config = {
       .spi.host = VSPI_HOST,
-      .spi.miso_gpio = 21,
-      .spi.mosi_gpio = 19,
+      .spi.miso_gpio = 19,
+      .spi.mosi_gpio = 23,
       .spi.sck_gpio = 18,
-      .spi.sda_gpio = 22,
+      .spi.sda_gpio = 5,
+      // IRQ = 17
   };
-  // IRQ = 17
 
-  gpio_set_direction(config.spi.miso_gpio, GPIO_MODE_INPUT);
-  gpio_set_direction(config.spi.mosi_gpio, GPIO_MODE_OUTPUT);
-  gpio_set_direction(config.spi.sck_gpio, GPIO_MODE_OUTPUT);
-  gpio_set_direction(config.spi.sda_gpio, GPIO_MODE_OUTPUT);
+  MFRC522Ptr_t mfrc = MFRC522_Init();
+  PCD_Init(mfrc, spi0);
 
-  rc522_create(&config, &scanner);
-  rc522_register_events(scanner, RC522_EVENT_ANY, rc522_handler, NULL);
-  rc522_start(scanner);
+  ESP_LOGI(TAG, "Start scanning for tags");
+
   while (1) {
     vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
