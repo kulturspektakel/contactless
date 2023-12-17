@@ -5,9 +5,13 @@
  */
 
 #include "mfrc522.h"
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 // ADT object allocation counter
 static int MFRC_Instance_Counter = 0;
+static char* TAG = "mfrc522";
 
 /**
  * Set up the data structures of an MFRC522 ADT object and return a pointer
@@ -46,10 +50,8 @@ void PCD_WriteRegister(MFRC522Ptr_t mfrc, uint8_t reg, uint8_t value) {
   uint8_t msg[2];
   msg[0] = 0x00 | reg;
   msg[1] = value;
-
-  cs_select(mfrc->_chipSelectPin);
-  spi_write_blocking(mfrc->spi, msg, 2);
-  cs_deselect(mfrc->_chipSelectPin);
+  spi_transaction_t transaction = {.tx_buffer = &msg, .length = 2 * 8};
+  ESP_ERROR_CHECK(spi_device_polling_transmit(mfrc->spi, &transaction));
 }
 
 /**
@@ -70,9 +72,11 @@ void PCD_WriteNRegister(
     msg[i + 1] = values[i];
   }
 
-  cs_select(mfrc->_chipSelectPin);
-  spi_write_blocking(mfrc->spi, msg, count + 1);
-  cs_deselect(mfrc->_chipSelectPin);
+  // cs_select(mfrc->_chipSelectPin);
+  // spi_write_blocking(mfrc->spi, msg, count + 1);
+  spi_transaction_t transaction = {.tx_buffer = &msg, .length = (count + 1) * 8};
+  ESP_ERROR_CHECK(spi_device_polling_transmit(mfrc->spi, &transaction));
+  // cs_deselect(mfrc->_chipSelectPin);
 }
 
 /**
@@ -83,13 +87,14 @@ uint8_t PCD_ReadRegister(
     MFRC522Ptr_t mfrc,
     uint8_t reg  ///< The register to read from. One of the PCD_Register enums
 ) {
-  uint8_t buf = 0;
   const uint8_t msg = 0x80 | reg;
 
-  cs_select(mfrc->_chipSelectPin);
-  spi_write_blocking(mfrc->spi, &msg, 1);
-  spi_read_blocking(mfrc->spi, 0, &buf, 1);
-  cs_deselect(mfrc->_chipSelectPin);
+  spi_transaction_t transaction = {.tx_buffer = &msg, .length = 1 * 8};
+  spi_device_polling_transmit(mfrc->spi, &transaction);
+
+  uint8_t buf = 0;
+  spi_transaction_t transaction2 = {.rx_buffer = &buf, .length = 1 * 8, .rxlength = 1 * 8};
+  spi_device_polling_transmit(mfrc->spi, &transaction2);
   return buf;
 }
 
@@ -104,10 +109,9 @@ void PCD_ReadNRegister(
     uint8_t* values,  ///< uint8_t array to store the values in.
     uint8_t rxAlign   ///< Only bit positions rxAlign..7 in values[0] are updated.
 ) {
-  uint8_t buf = 0;
   const uint8_t msg = 0x80 | reg;
 
-  cs_select(mfrc->_chipSelectPin);
+  // cs_select(mfrc->_chipSelectPin);
 
   // uint8_t i;
   // for(i = 0; i < count; i++) {
@@ -122,7 +126,7 @@ void PCD_ReadNRegister(
     values[i] = PCD_ReadRegister(mfrc, msg);
   }
 
-  cs_deselect(mfrc->_chipSelectPin);
+  // cs_deselect(mfrc->_chipSelectPin);
 }
 
 /**
@@ -210,62 +214,59 @@ StatusCode PCD_CalculateCRC(
 /**
  * Initializes the MFRC522 chip.
  */
-void PCD_Init(MFRC522Ptr_t mfrc, spi_inst_t* spi) {
-  mfrc->spi = spi0;
-  // gpio_put(RESET_PIN, 0);
-  // sleep_ms(1000);
-  // vTaskDelay(1000 / portTICK_PERIOD_MS);
-  // gpio_put(RESET_PIN, 1);
-  // sleep_ms(50);
-  // vTaskDelay(50 / portTICK_PERIOD_MS);
+void PCD_Init(MFRC522Ptr_t mfrc, mfrc522_config_t* spi_config) {
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
 
-  gpio_init(cs_pin);
-  gpio_set_dir(cs_pin, GPIO_OUT);
-  gpio_put(cs_pin, 1);
+  spi_device_interface_config_t devcfg = {
+      .clock_speed_hz = spi_config->clock_speed_hz,
+      .mode = 0,
+      .spics_io_num = spi_config->sda_gpio,
+      .queue_size = 7,
+      .flags = spi_config->device_flags,
+  };
 
-  spi_init(spi0, 1000000);
+  spi_bus_config_t buscfg = {
+      .miso_io_num = spi_config->miso_gpio,
+      .mosi_io_num = spi_config->mosi_gpio,
+      .sclk_io_num = spi_config->sck_gpio,
+      .quadwp_io_num = -1,
+      .quadhd_io_num = -1,
+  };
 
-  spi_set_format(spi0, 8, 0, 0, SPI_MSB_FIRST);
-
-  gpio_set_function(sck_pin, GPIO_FUNC_SPI);
-  gpio_set_function(mosi_pin, GPIO_FUNC_SPI);
-  gpio_set_function(miso_pin, GPIO_FUNC_SPI);
+  ESP_ERROR_CHECK(spi_bus_initialize(spi_config->host, &buscfg, 0));
+  ESP_ERROR_CHECK(spi_bus_add_device(spi_config->host, &devcfg, &mfrc->spi));
 
   PCD_WriteRegister(mfrc, CommandReg, PCD_SoftReset);
+  PCD_Reset(mfrc);
+
+  // Reset baud rates
+  PCD_WriteRegister(mfrc, TxModeReg, 0x00);
+  PCD_WriteRegister(mfrc, RxModeReg, 0x00);
+  // Reset ModWidthReg
+  PCD_WriteRegister(mfrc, ModWidthReg, 0x26);
 
   // When communicating with a PICC we need a timeout if something goes wrong.
-  // f_timer = 13.56 MHz / (2*TPreScaler+1) where TPreScaler =
-  // [TPrescaler_Hi:TPrescaler_Lo].
-  // TPrescaler_Hi are the four low bits in TModeReg. TPrescaler_Lo is
-  // TPrescalerReg.
-  PCD_WriteRegister(mfrc, TModeReg, 0x80);  // TAuto=1; timer starts
-                                            // automatically at the end of the
-                                            // transmission in all
-                                            // communication modes at all
-                                            // speeds
+  // f_timer = 13.56 MHz / (2*TPreScaler+1) where TPreScaler = [TPrescaler_Hi:TPrescaler_Lo].
+  // TPrescaler_Hi are the four low bits in TModeReg. TPrescaler_Lo is TPrescalerReg.
+  PCD_WriteRegister(mfrc, TModeReg, 0x80);  // TAuto=1; timer starts automatically at the end of the
+                                            // transmission in all communication modes at all speeds
   PCD_WriteRegister(
-      mfrc,
-      TPrescalerReg,
-      0xA9
-  );  // TPreScaler = TModeReg[3..0]:TPrescalerReg, ie
-      // 0x0A9 = 169 => f_timer=40kHz, ie a timer period
-      // of 25�s.
+      mfrc, TPrescalerReg, 0xA9
+  );  // TPreScaler = TModeReg[3..0]:TPrescalerReg, ie 0x0A9 =
+      // 169 => f_timer=40kHz, ie a timer period of 25μs.
   PCD_WriteRegister(
-      mfrc,
-      TReloadRegH,
-      0x03
+      mfrc, TReloadRegH, 0x03
   );  // Reload timer with 0x3E8 = 1000, ie 25ms before timeout.
   PCD_WriteRegister(mfrc, TReloadRegL, 0xE8);
 
-  PCD_WriteRegister(mfrc, TxASKReg, 0x40);  // Default 0x00. Force a 100 % ASK
-                                            // modulation independent of the
-                                            // ModGsPReg register setting
-  PCD_WriteRegister(mfrc, ModeReg, 0x3D);   // Default 0x3F. Set the preset
-                                            // value for the CRC coprocessor for
-                                            // the CalcCRC command to 0x6363
-                                            // (ISO 14443-3 part 6.2.4)
-  PCD_AntennaOn(mfrc);                      // Enable the antenna driver pins TX1 and TX2 (they
-                                            // were disabled by the reset)
+  PCD_WriteRegister(
+      mfrc, TxASKReg, 0x40
+  );  // Default 0x00. Force a 100 % ASK modulation independent of the ModGsPReg register setting
+  PCD_WriteRegister(
+      mfrc, ModeReg, 0x3D
+  );  // Default 0x3F. Set the preset value for the CRC coprocessor
+      // for the CalcCRC command to 0x6363 (ISO 14443-3 part 6.2.4)
+  PCD_AntennaOn(mfrc);
 }  // End PCD_Init()
 
 /**
@@ -280,14 +281,14 @@ void PCD_Reset(MFRC522Ptr_t mfrc) {
   // 4 of CommandReg)
   // Section 8.8.2 in the datasheet says the oscillator start-up time is the
   // start up time of the crystal + 37,74�s. Let us be generous: 50ms.
-  // SysTick_Init();
-  // sleep_ms(50);
-  vTaskDelay(50 / portTICK_PERIOD_MS);
+
+  uint8_t count = 0;
+  do {
+    vTaskDelay(50 / portTICK_PERIOD_MS);
+  } while ((PCD_ReadRegister(mfrc, CommandReg) & (1 << 4)) && (++count) < 3);
   // Wait for the PowerDown bit in CommandReg to be cleared
-  while (PCD_ReadRegister(mfrc, CommandReg) & (1 << 4)) {
-    // PCD still restarting - unlikely after waiting 50ms, but better safe
-    // than sorry.
-  }
+  // PCD still restarting - unlikely after waiting 50ms, but better safe
+  // than sorry.
 }  // End PCD_Reset()
 
 /**
@@ -339,76 +340,75 @@ void PCD_SetAntennaGain(MFRC522Ptr_t mfrc, uint8_t mask) {
  * Returns 0 if test is ok. Check what version of MFRC522 and put the buffer values in
  * SELF_TEST_BYTES[]
  */
-uint8_t PCD_SelfTest(MFRC522Ptr_t mfrc) {
-  // Perform a soft reset
-  PCD_WriteRegister(mfrc, CommandReg, PCD_SoftReset);
-  // sleep_ms(50);  // Allow the chip to reset
-  vTaskDelay(50 / portTICK_PERIOD_MS);
-  // printf("Soft reset complete\n\r");
+esp_err_t PCD_SelfTest(MFRC522Ptr_t mfrc) {
+  // This follows directly the steps outlined in 16.1.1
+  // 1. Perform a soft reset.
+  PCD_Reset(mfrc);
 
-  // Clear the internal buffer by writing 25 bytes of 00h (and implement the config command)??.
+  // 2. Clear the internal buffer by writing 25 bytes of 00h
   PCD_WriteRegister(
-      mfrc, FIFOLevelReg, 0x80
-  );  // FIFOLevel indicates nbr of bytes in FIFO buffer. MSB = 1 -> Flush
-
+      // FIFOLevel indicates nbr of bytes in FIFO buffer. MSB = 1 -> Flush
+      mfrc,
+      FIFOLevelReg,
+      0x80
+  );
   for (int i = 0; i < 25; i++) {
     PCD_WriteRegister(mfrc, FIFODataReg, 0x00);
   }
-  PCD_WriteRegister(
-      mfrc, CommandReg, PCD_Mem
-  );  // Transfer the 25 bytes from FIFO to internal buffer
-  // printf("Clearing of internal buffer complete\n\r");
+  // Transfer the 25 bytes from FIFO to internal buffer
+  PCD_WriteRegister(mfrc, CommandReg, PCD_Mem);
 
-  // Enable the self test by writing 09h to the AutoTestReg register.
+  // 3. Enable self-test
   PCD_WriteRegister(mfrc, AutoTestReg, PCD_EnableSelfTest);
-  // printf("Self test enable complete\n\r");
 
-  // Write 00h to the FIFO buffer.
+  // 4. Write 00h to FIFO buffer
   PCD_WriteRegister(mfrc, FIFODataReg, 0x00);
-  // printf("Written 0x00 to FIFO buffer\n\r");
 
-  // Start the self test with the CalcCRC command.
+  // 5. Start self-test by issuing the CalcCRC command
   PCD_WriteRegister(mfrc, CommandReg, PCD_CalcCRC);
-  // printf("Started self test with the CRC command\n\r");
 
-  // The self test is initiated. Wait for completion
-  bool self_test_complete = false;
-  while (!self_test_complete) {
-    uint8_t buf = PCD_ReadRegister(mfrc, FIFOLevelReg);
-    // printf("%x\n\r", buf);
-    if (buf >= 64) {
-      self_test_complete = true;
+  // 6. Wait for self-test to complete
+  uint8_t n;
+  for (uint8_t i = 0; i < 0xFF; i++) {
+    // The datasheet does not specify exact completion condition except
+    // that FIFO buffer should contain 64 bytes.
+    // While selftest is initiated by CalcCRC command
+    // it behaves differently from normal CRC computation,
+    // so one can't reliably use DivIrqReg to check for completion.
+    // It is reported that some devices does not trigger CRCIRq flag
+    // during selftest.
+    n = PCD_ReadRegister(mfrc, FIFOLevelReg);
+    if (n >= 64) {
+      break;
     }
   }
-  // printf("Self test completed\n\r");
 
-  // Stop calculating CRC with idle command???
+  // Stop calculating CRC for new content in the FIFO.
+  PCD_WriteRegister(mfrc, CommandReg, PCD_Idle);
 
-  // When the self test has completed, the FIFO buffer contains the version bytes.
+  // 7. Read out resulting 64 bytes from the FIFO buffer.
   uint8_t result[64];
   for (int i = 0; i < 64; i++) {
     uint8_t buf = PCD_ReadRegister(mfrc, FIFODataReg);
     result[i] = buf;
   }
-  // printf("Bytes copied to result array\n\r");
+
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, result, 64, ESP_LOG_INFO);
 
   // Check if the received bytes correspond to the versions.
   PCD_WriteRegister(mfrc, AutoTestReg, 0x00);  // Disable self-test
-  // printf("Disabled self test\n\r");
 
-  /*printf("Self test result:\n\r");
-  for (uint8_t i = 0; i < 64; i++) {
-      printf("%x, ", result[i]);
-      if (i % 10 == 0) printf("\n\r");
-  } printf("\n\r"); */
+  // Determine firmware version (see section 9.3.4.8 in spec)
+  uint8_t version = PCD_ReadRegister(mfrc, VersionReg);
+  ESP_LOGI(TAG, "MFRC522 version: 0x%02x", version);
 
   for (uint8_t i = 0; i < 64; i++) {
     if (result[i] != SELF_TEST_BYTES[i]) {
-      return -1;
+      return ESP_FAIL;
     }
   }
 
-  return 0;
+  return ESP_OK;
 }
 
 /*******************************************************************************
@@ -485,7 +485,7 @@ StatusCode PCD_CommunicateWithPICC(
   //    rxAlign=0;
   //    checkCRC=false;
 
-  uint8_t n, _validBits;
+  uint8_t n, _validBits = 0;
   unsigned int i;
 
   // Prepare values for BitFramingReg
@@ -1602,409 +1602,6 @@ const char* PICC_GetTypeName(PICC_Type piccType  ///< One of the PICC_Type enums
 }  // End PICC_GetTypeName()
 
 /**
- * Dumps debug info about the connected PCD to Serial.
- * Shows all known firmware versions
- */
-void PCD_DumpVersionToSerial(MFRC522Ptr_t mfrc) {
-  char string[2];
-  // Get the MFRC522 firmware version
-  uint8_t v = PCD_ReadRegister(mfrc, VersionReg);
-  printf("Firmware Version: 0x");
-  // print the hexa value of a unsigned char
-  sprintf(string, "%02X", (char)v);
-  printf(string);
-  // Lookup which version
-  switch (v) {
-    case 0x88:
-      printf(" = (clone)\r\n");
-      break;
-    case 0x90:
-      printf(" = v0.0\r\n");
-      break;
-    case 0x91:
-      printf(" = v1.0\r\n");
-      break;
-    case 0x92:
-      printf(" = v2.0\r\n");
-      break;
-    default:
-      printf(" = (unknown)\r\n");
-  }
-  // When 0x00 or 0xFF is returned, communication probably failed
-  if ((v == 0x00) || (v == 0xFF))
-    printf(
-        "WARNING: Communication failure, is the MFRC522 properly "
-        "connected?\r\n"
-    );
-}  // End PCD_DumpVersionToSerial()
-
-/**
- * Dumps debug info about the selected PICC to Serial.
- * On success the PICC is halted after dumping the data.
- * For MIFARE Classic the factory default key of 0xFFFFFFFFFFFF is tried.
- */
-void PICC_DumpToSerial(
-    MFRC522Ptr_t mfrc,
-    Uid* uid  ///< Pointer to Uid struct
-              /// returned from a successful
-              /// PICC_Select().
-) {
-  MIFARE_Key key;
-
-  // Dump UID, SAK and Type
-  PICC_DumpDetailsToSerial(uid);
-
-  // Dump contents
-  PICC_Type piccType = PICC_GetType(uid->sak);
-  switch (piccType) {
-    case PICC_TYPE_MIFARE_MINI:
-    case PICC_TYPE_MIFARE_1K:
-    case PICC_TYPE_MIFARE_4K:
-      // All keys are set to FFFFFFFFFFFFh at chip delivery from the factory.
-      for (uint8_t i = 0; i < 6; i++) {
-        key.keybyte[i] = 0xFF;
-      }
-      PICC_DumpMifareClassicToSerial(mfrc, uid, piccType, &key);
-      break;
-
-    case PICC_TYPE_MIFARE_UL:
-      PICC_DumpMifareUltralightToSerial(mfrc);
-      break;
-
-    case PICC_TYPE_ISO_14443_4:
-    case PICC_TYPE_ISO_18092:
-    case PICC_TYPE_MIFARE_PLUS:
-    case PICC_TYPE_TNP3XXX:
-      printf("Dumping memory contents not implemented for that PICC type.\r\n");
-      break;
-
-    case PICC_TYPE_UNKNOWN:
-    case PICC_TYPE_NOT_COMPLETE:
-    default:
-      break;  // No memory dump here
-  }
-
-  printf("\r\n");
-  PICC_HaltA(mfrc);  // Already done if it was a MIFARE Classic PICC.
-}  // End PICC_DumpToSerial()
-
-/**
- * Dumps card info (UID,SAK,Type) about the selected PICC to Serial.
- */
-void PICC_DumpDetailsToSerial(Uid* uid  ///< Pointer to Uid struct returned from
-                                        /// a successful PICC_Select().
-) {
-  char string[2];
-  // UID
-  printf("Card UID:");
-  for (uint8_t i = 0; i < uid->size; i++) {
-    if (uid->uidByte[i] < 0x10)
-      printf(" 0");
-    else
-      printf(" ");
-
-    // print the hexa value of a unsigned char
-    sprintf(string, "%02X", (char)uid->uidByte[i]);
-    printf(string);
-  }
-  printf("\r\n");
-
-  // SAK
-  printf("Card SAK: ");
-  if (uid->sak < 0x10)
-    printf("0");
-
-  // print the hexa value of a unsigned char
-  sprintf(string, "%02X", (char)uid->sak);
-  printf(string);
-
-  // (suggested) PICC type
-  PICC_Type piccType = PICC_GetType(uid->sak);
-  printf(" PICC type: ");
-  printf(PICC_GetTypeName(piccType));
-}  // End PICC_DumpDetailsToSerial()
-
-/**
- * Dumps memory contents of a MIFARE Classic PICC.
- * On success the PICC is halted after dumping the data.
- */
-void PICC_DumpMifareClassicToSerial(
-    MFRC522Ptr_t mfrc,
-    Uid* uid,            ///< Pointer to Uid struct returned from a successful
-                         /// PICC_Select().
-    PICC_Type piccType,  ///< One of the PICC_Type enums.
-    MIFARE_Key* key      ///< Key A used for all sectors.
-) {
-  uint8_t no_of_sectors = 0;
-  switch (piccType) {
-    case PICC_TYPE_MIFARE_MINI:
-      // Has 5 sectors * 4 blocks/sector * 16 uint8_ts/block = 320 uint8_ts.
-      no_of_sectors = 5;
-      break;
-
-    case PICC_TYPE_MIFARE_1K:
-      // Has 16 sectors * 4 blocks/sector * 16 uint8_ts/block = 1024 uint8_ts.
-      no_of_sectors = 16;
-      break;
-
-    case PICC_TYPE_MIFARE_4K:
-      // Has (32 sectors * 4 blocks/sector + 8 sectors * 16 blocks/sector) *
-      // 16 uint8_ts/block = 4096 uint8_ts.
-      no_of_sectors = 40;
-      break;
-
-    default:  // Should not happen. Ignore.
-      break;
-  }
-
-  // Dump sectors, highest address first.
-  if (no_of_sectors) {
-    printf(
-        "Sector Block   0  1  2  3   4  5  6  7   8  9 10 11  12 13 "
-        "14 15  AccessBits\r\n"
-    );
-    for (int8_t i = no_of_sectors - 1; i >= 0; i--) {
-      PICC_DumpMifareClassicSectorToSerial(mfrc, uid, key, i);
-    }
-  }
-  PICC_HaltA(mfrc);  // Halt the PICC before stopping the encrypted session.
-  PCD_StopCrypto1(mfrc);
-}  // End PICC_DumpMifareClassicToSerial()
-
-/**
- * Dumps memory contents of a sector of a MIFARE Classic PICC.
- * Uses PCD_Authenticate(), MIFARE_Read() and PCD_StopCrypto1.
- * Always uses PICC_CMD_MF_AUTH_KEY_A because only Key A can always read the
- * sector trailer access bits.
- */
-void PICC_DumpMifareClassicSectorToSerial(
-    MFRC522Ptr_t mfrc,
-    Uid* uid,         ///< Pointer to Uid struct returned from a successful
-                      /// PICC_Select().
-    MIFARE_Key* key,  ///< Key A for the sector.
-    uint8_t sector    ///< The sector to dump, 0..39.
-) {
-  char string[2];
-  uint8_t acces_bit;
-  StatusCode status;
-  uint8_t firstBlock;    // Address of lowest address to dump actually last block
-                         // dumped)
-  uint8_t no_of_blocks;  // Number of blocks in sector
-  bool isSectorTrailer;  // Set to true while handling the "last" (ie highest
-                         // address) in the sector.
-
-  // The access bits are stored in a peculiar fashion.
-  // There are four groups:
-  //    g[3]  Access bits for the sector trailer, block 3 (for sectors 0-31)
-  // or block 15 (for sectors 32-39)
-  //    g[2]  Access bits for block 2 (for sectors 0-31) or blocks 10-14 (for
-  // sectors 32-39)
-  //    g[1]  Access bits for block 1 (for sectors 0-31) or blocks 5-9 (for
-  // sectors 32-39)
-  //    g[0]  Access bits for block 0 (for sectors 0-31) or blocks 0-4 (for
-  // sectors 32-39)
-  // Each group has access bits [C1 C2 C3]. In this code C1 is MSB and C3 is
-  // LSB.
-  // The four CX bits are stored together in a nible cx and an inverted nible
-  // cx_.
-  uint8_t c1, c2, c3;     // Nibbles
-  uint8_t c1_, c2_, c3_;  // Inverted nibbles
-  bool invertedError;     // True if one of the inverted nibbles did not match
-  uint8_t g[4];           // Access bits for each of the four groups.
-  uint8_t group;          // 0-3 - active group for access bits
-  bool firstInGroup;      // True for the first block dumped in the group
-
-  // Determine position and size of sector.
-  if (sector < 32) {  // Sectors 0..31 has 4 blocks each
-    no_of_blocks = 4;
-    firstBlock = sector * no_of_blocks;
-  } else if (sector < 40) {  // Sectors 32-39 has 16 blocks each
-    no_of_blocks = 16;
-    firstBlock = 128 + (sector - 32) * no_of_blocks;
-  } else {  // Illegal input, no MIFARE Classic PICC has more than 40 sectors.
-    return;
-  }
-
-  // Dump blocks, highest address first.
-  uint8_t uint8_tCount;
-  uint8_t buffer[18];
-  uint8_t blockAddr;
-  isSectorTrailer = true;
-  for (int8_t blockOffset = no_of_blocks - 1; blockOffset >= 0; blockOffset--) {
-    blockAddr = firstBlock + blockOffset;
-    // Sector number - only on first line
-    if (isSectorTrailer) {
-      if (sector < 10)
-        printf("   ");  // Pad with spaces
-      else
-        printf("  ");  // Pad with spaces
-      sprintf(string, "%u", sector);
-      printf(string);
-      printf("   ");
-    } else {
-      printf("       ");
-    }
-    // Block number
-    if (blockAddr < 10)
-      printf("   ");  // Pad with spaces
-    else {
-      if (blockAddr < 100)
-        printf("  ");  // Pad with spaces
-      else
-        printf(" ");  // Pad with spaces
-    }
-    sprintf(string, "%u", blockAddr);
-    printf(string);
-    printf("  ");
-    // Establish encrypted communications before reading the first block
-    if (isSectorTrailer) {
-      status = PCD_Authenticate(mfrc, PICC_CMD_MF_AUTH_KEY_A, firstBlock, key, uid);
-      if (status != STATUS_OK) {
-        printf("PCD_Authenticate() failed: ");
-        printf(GetStatusCodeName(status));
-        printf("\n");
-        return;
-      }
-    }
-    // Read block
-    uint8_tCount = sizeof(buffer);
-    status = MIFARE_Read(mfrc, blockAddr, buffer, &uint8_tCount);
-    if (status != STATUS_OK) {
-      printf("MIFARE_Read() failed: ");
-      printf(GetStatusCodeName(status));
-      continue;
-    }
-    // Dump data
-    for (uint8_t index = 0; index < 16; index++) {
-      if (buffer[index] < 0x10)
-        printf(" 0");
-      else
-        printf(" ");
-
-      // print the hexa value of a unsigned char
-      sprintf(string, "%02X", (char)buffer[index]);
-      printf(string);
-      if ((index % 4) == 3) {
-        printf(" ");
-      }
-    }
-    // Parse sector trailer data
-    if (isSectorTrailer) {
-      c1 = buffer[7] >> 4;
-      c2 = buffer[8] & 0xF;
-      c3 = buffer[8] >> 4;
-      c1_ = buffer[6] & 0xF;
-      c2_ = buffer[6] >> 4;
-      c3_ = buffer[7] & 0xF;
-      invertedError = (c1 != (~c1_ & 0xF)) || (c2 != (~c2_ & 0xF)) || (c3 != (~c3_ & 0xF));
-      g[0] = ((c1 & 1) << 2) | ((c2 & 1) << 1) | ((c3 & 1) << 0);
-      g[1] = ((c1 & 2) << 1) | ((c2 & 2) << 0) | ((c3 & 2) >> 1);
-      g[2] = ((c1 & 4) << 0) | ((c2 & 4) >> 1) | ((c3 & 4) >> 2);
-      g[3] = ((c1 & 8) >> 1) | ((c2 & 8) >> 2) | ((c3 & 8) >> 3);
-      isSectorTrailer = false;
-    }
-
-    // Which access group is this block in?
-    if (no_of_blocks == 4) {
-      group = blockOffset;
-      firstInGroup = true;
-    } else {
-      group = blockOffset / 5;
-      firstInGroup = (group == 3) || (group != (blockOffset + 1) / 5);
-    }
-
-    if (firstInGroup) {
-      // Print access bits
-      printf(" [ ");
-
-      acces_bit = (g[group] >> 2) & 1;
-      sprintf(string, "%u", acces_bit);
-      printf(string);
-      printf(" ");
-
-      acces_bit = (g[group] >> 1) & 1;
-      sprintf(string, "%u", acces_bit);
-      printf(string);
-      printf(" ");
-
-      acces_bit = (g[group] >> 0) & 1;
-      sprintf(string, "%u", acces_bit);
-      printf(string);
-
-      printf(" ] ");
-      if (invertedError) {
-        printf(" Inverted access bits did not match! ");
-      }
-    }
-
-    if (group != 3 && (g[group] == 1 || g[group] == 6)) {  // Not a sector trailer, a value block
-      long value = ((long)(buffer[3]) << 24) | ((long)(buffer[2]) << 16) |
-                   ((long)(buffer[1]) << 8) | (long)(buffer[0]);
-      printf(" Value=0x");
-
-      // print the hexa value of a unsigned char
-      sprintf(string, "%02X", (char)value);
-      printf(string);
-      printf(" Adr=0x");
-
-      // print the hexa value of a unsigned char
-      sprintf(string, "%02X", (char)buffer[12]);
-      printf(string);
-    }
-    printf("\r\n");
-  }
-
-  return;
-}  // End PICC_DumpMifareClassicSectorToSerial()
-
-/**
- * Dumps memory contents of a MIFARE Ultralight PICC.
- */
-void PICC_DumpMifareUltralightToSerial(MFRC522Ptr_t mfrc) {
-  char string[2];
-  StatusCode status;
-  uint8_t uint8_tCount;
-  uint8_t buffer[18];
-  uint8_t i;
-
-  printf("Page  0  1  2  3\r\n");
-  // Try the mpages of the original Ultralight. Ultralight C has more pages.
-  for (uint8_t page = 0; page < 16; page += 4) {  // Read returns data for 4 pages at a time.
-    // Read pages
-    uint8_tCount = sizeof(buffer);
-    status = MIFARE_Read(mfrc, page, buffer, &uint8_tCount);
-    if (status != STATUS_OK) {
-      printf("MIFARE_Read() failed: ");
-      printf(GetStatusCodeName(status));
-      break;
-    }
-    // Dump data
-    for (uint8_t offset = 0; offset < 4; offset++) {
-      i = page + offset;
-      if (i < 10)
-        printf("  ");  // Pad with spaces
-      else
-        printf(" ");  // Pad with spaces
-      sprintf(string, "%u", i);
-      printf(string);
-      printf("  ");
-      for (uint8_t index = 0; index < 4; index++) {
-        i = 4 * offset + index;
-        if (buffer[i] < 0x10)
-          printf(" 0");
-        else
-          printf(" ");
-
-        // print the hexa value of a unsigned char
-        sprintf(string, "%02X", (char)buffer[i]);
-        printf(string);
-      }
-      printf("\r\n");
-    }
-  }
-}  // End PICC_DumpMifareUltralightToSerial()
-
-/**
  * Calculates the bit pattern needed for the specified access bits. In the [C1
  * C2 C3] tuples C1 is MSB (=4) and C3 is LSB (=1).
  */
@@ -2043,7 +1640,6 @@ void MIFARE_SetAccessBits(
  *this function.
  */
 bool MIFARE_OpenUidBackdoor(MFRC522Ptr_t mfrc, bool logErrors) {
-  char string[2];
   // Magic sequence:
   // > 50 00 57 CD (HALT + CRC)
   // > 40 (7 bits only)
@@ -2064,26 +1660,23 @@ bool MIFARE_OpenUidBackdoor(MFRC522Ptr_t mfrc, bool logErrors) {
   );  // 40
   if (status != STATUS_OK) {
     if (logErrors) {
-      printf(
-          "Card did not respond to 0x40 after HALT command. Are you "
-          "sure it is a UID changeable one?\r\n"
+      ESP_LOGE(
+          TAG,
+          "Card did not respond to 0x40 after HALT command. Are you sure it is a UID changeable "
+          "one? %s",
+          GetStatusCodeName(status)
       );
-      printf("Error name: ");
-      printf(GetStatusCodeName(status));
     }
     return false;
   }
   if (received != 1 || response[0] != 0x0A) {
     if (logErrors) {
-      printf("Got bad response on backdoor 0x40 command: ");
-
-      // print the hexa value of a unsigned char
-      sprintf(string, "%02X", (char)response[0]);
-      printf(string);
-      printf(" (");
-      sprintf(string, "%u", validBits);
-      printf(string);
-      printf(" valid bits)\r\n");
+      ESP_LOGE(
+          TAG,
+          "Got bad response on backdoor 0x40 command: %02X (%u valid bits)",
+          (char)response[0],
+          validBits
+      );
     }
     return false;
   }
@@ -2095,26 +1688,22 @@ bool MIFARE_OpenUidBackdoor(MFRC522Ptr_t mfrc, bool logErrors) {
   );  // 43
   if (status != STATUS_OK) {
     if (logErrors) {
-      printf(
-          "Error in communication at command 0x43, after "
-          "successfully executing 0x40\r\n"
+      ESP_LOGE(
+          TAG,
+          "Error in communication at command 0x43, after successfully executing 0x40: %s",
+          GetStatusCodeName(status)
       );
-      printf("Error name: ");
-      printf(GetStatusCodeName(status));
     }
     return false;
   }
   if (received != 1 || response[0] != 0x0A) {
     if (logErrors) {
-      printf("Got bad response on backdoor 0x43 command: ");
-
-      // print the hexa value of a unsigned char
-      sprintf(string, "%02X", (char)response[0]);
-      printf(string);
-      printf(" (");
-      sprintf(string, "%u", validBits);
-      printf(string);
-      printf(" valid bits)\r\n");
+      ESP_LOGE(
+          TAG,
+          "Got bad response on backdoor 0x43 command: %02X (%u valid bits)",
+          (char)response[0],
+          validBits
+      );
     }
     return false;
   }
@@ -2141,7 +1730,7 @@ bool MIFARE_SetUid(MFRC522Ptr_t mfrc, uint8_t* newUid, uint8_t uidSize, bool log
   }
 
   // Authenticate for reading
-  MIFARE_Key key = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+  MIFARE_Key key = {.keybyte = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}};
   StatusCode status =
       PCD_Authenticate(mfrc, PICC_CMD_MF_AUTH_KEY_A, (uint8_t)1, &key, &(mfrc->uid));
   if (status != STATUS_OK) {
@@ -2290,14 +1879,14 @@ bool PICC_ReadCardSerial(MFRC522Ptr_t mfrc) {
   return (result == STATUS_OK);
 }  // End
 
-static inline void cs_select(const uint cs) {
-  asm volatile("nop \n nop \n nop");
-  gpio_put(cs, 0);  // Active low
-  asm volatile("nop \n nop \n nop");
-}
+// static inline void cs_select(const uint cs) {
+// asm volatile("nop \n nop \n nop");
+// gpio_put(cs, 0);  // Active low
+// asm volatile("nop \n nop \n nop");
+// }
 
-static inline void cs_deselect(const uint cs) {
-  asm volatile("nop \n nop \n nop");
-  gpio_put(cs, 1);
-  asm volatile("nop \n nop \n nop");
-}
+// static inline void cs_deselect(const uint cs) {
+// asm volatile("nop \n nop \n nop");
+// gpio_put(cs, 1);
+// asm volatile("nop \n nop \n nop");
+// }

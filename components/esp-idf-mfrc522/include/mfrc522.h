@@ -278,18 +278,22 @@ typedef struct {
   uint8_t keybyte[MF_KEY_SIZE];
 } MIFARE_Key;
 
-// A struct used to set GPIO pins of LPCXpresso4337
 typedef struct {
-  uint8_t port;
-  uint8_t pin;
-} io_port_t;
+  spi_host_device_t host;
+  int miso_gpio;
+  int mosi_gpio;
+  int sck_gpio;
+  int sda_gpio;
+  int clock_speed_hz;
+  uint32_t device_flags; /*<! Bitwise OR of SPI_DEVICE_* flags */
+} mfrc522_config_t;
 
 // A struct used to define a MFRC522 ADT object, useful when using more than one
 struct MFRC522_T {
   Uid uid;  // Used by PICC_ReadCardSerial().
   // Variables used in the SSP(SPI) peripheral of the board
-  spi_inst_t* spi;      // Select SSP0 or SSP1
-  uint _chipSelectPin;  // = {1, 8}; // As default example use GPIO1[8]= P1_5
+  spi_device_handle_t spi;  // Select SSP0 or SSP1
+  uint _chipSelectPin;      // = {1, 8}; // As default example use GPIO1[8]= P1_5
   uint8_t Tx_Buf[BUFFER_SIZE];
   uint8_t Rx_Buf[BUFFER_SIZE];
 };
@@ -321,20 +325,16 @@ void PCD_SetRegisterBitMask(MFRC522Ptr_t mfrc, uint8_t reg, uint8_t mask);
 void PCD_ClearRegisterBitMask(MFRC522Ptr_t mfrc, uint8_t reg, uint8_t mask);
 StatusCode PCD_CalculateCRC(MFRC522Ptr_t mfrc, uint8_t* data, uint8_t length, uint8_t* result);
 
-// Chip select for pi pico SPI
-static inline void cs_select(const uint cs);
-static inline void cs_deselect(const uint cs);
-
 /*******************************************************************************
  * Functions for manipulating the MFRC522
  *******************************************************************************/
-void PCD_Init(MFRC522Ptr_t mfrc, spi_inst_t* spi);
+void PCD_Init(MFRC522Ptr_t mfrc, mfrc522_config_t* spi_config);
 void PCD_Reset(MFRC522Ptr_t mfrc);
 void PCD_AntennaOn(MFRC522Ptr_t mfrc);
 void PCD_AntennaOff(MFRC522Ptr_t mfrc);
 uint8_t PCD_GetAntennaGain(MFRC522Ptr_t mfrc);
 void PCD_SetAntennaGain(MFRC522Ptr_t mfrc, uint8_t mask);
-uint8_t PCD_SelfTest(MFRC522Ptr_t mfrc);
+esp_err_t PCD_SelfTest(MFRC522Ptr_t mfrc);
 
 /*******************************************************************************
  * Functions for communicating with PICCs
@@ -411,24 +411,6 @@ StatusCode PCD_MIFARE_Transceive(
 const char* GetStatusCodeName(StatusCode code);
 const char* PICC_GetTypeName(PICC_Type type);
 StatusCode MIFARE_TwoStepHelper(MFRC522Ptr_t mfrc, uint8_t command, uint8_t blockAddr, long data);
-
-// Support functions for debugging
-void PCD_DumpVersionToSerial(MFRC522Ptr_t mfrc);
-void PICC_DumpToSerial(MFRC522Ptr_t mfrc, Uid* uid);
-void PICC_DumpDetailsToSerial(Uid* uid);
-void PICC_DumpMifareClassicToSerial(
-    MFRC522Ptr_t mfrc,
-    Uid* uid,
-    PICC_Type piccType,
-    MIFARE_Key* key
-);
-void PICC_DumpMifareClassicSectorToSerial(
-    MFRC522Ptr_t mfrc,
-    Uid* uid,
-    MIFARE_Key* key,
-    uint8_t sector
-);
-void PICC_DumpMifareUltralightToSerial(MFRC522Ptr_t mfrc);
 
 // Advanced functions for MIFARE
 void MIFARE_SetAccessBits(uint8_t* accessBitBuffer, uint8_t g0, uint8_t g1, uint8_t g2, uint8_t g3);

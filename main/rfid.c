@@ -5,7 +5,6 @@
 #include "mfrc522.h"
 
 static const char* TAG = "rfid";
-static mfrc522_handle_t handle;
 
 // static void rc522_handler(void* arg, esp_event_base_t base, int32_t event_id, void* event_data) {
 //   rc522_event_data_t* data = (rc522_event_data_t*)event_data;
@@ -22,20 +21,40 @@ static mfrc522_handle_t handle;
 
 void rfid(void* params) {
   mfrc522_config_t config = {
-      .spi.host = VSPI_HOST,
-      .spi.miso_gpio = 19,
-      .spi.mosi_gpio = 23,
-      .spi.sck_gpio = 18,
-      .spi.sda_gpio = 5,
+      .host = VSPI_HOST,
+      .miso_gpio = 19,
+      .mosi_gpio = 23,
+      .sck_gpio = 18,
+      .sda_gpio = 5,
+      .clock_speed_hz = 10000000,
       // IRQ = 17
   };
 
   MFRC522Ptr_t mfrc = MFRC522_Init();
-  PCD_Init(mfrc, spi0);
+  PCD_Init(mfrc, &config);
+
+  ESP_ERROR_CHECK_WITHOUT_ABORT(PCD_SelfTest(mfrc));
 
   ESP_LOGI(TAG, "Start scanning for tags");
 
   while (1) {
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+    if (PICC_IsNewCardPresent(mfrc)) {
+      ESP_LOGI(TAG, "New card present");
+      PICC_ReadCardSerial(mfrc);
+      uint8_t serial[5];
+      for (int i = 0; i < 5; i++) {
+        serial[i] = mfrc->uid.uidByte[i];
+      }
+      ESP_LOGI(
+          TAG,
+          "Serial: %02x %02x %02x %02x %02x",
+          serial[0],
+          serial[1],
+          serial[2],
+          serial[3],
+          serial[4]
+      );
+    }
   }
 }
