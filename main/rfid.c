@@ -78,7 +78,7 @@ static bool read_balance(spi_device_handle_t spi, mfrc522_uid* uid) {
     memcpy(new_card.id, uid->uidByte, LENGTH_ID);
     new_card.deposit = *(uint8_t*)(decoded_payload + OFFSET_DEPOSIT);
     new_card.balance = *(uint16_t*)(decoded_payload + OFFSET_BALANCE);
-    memcpy(new_card.signature, decoded_payload + OFFSET_SIGNATURE, 5);
+    memcpy(new_card.signature, decoded_payload + OFFSET_SIGNATURE, LENGTH_SIGNATURE);
 
     // verify signature
     uint8_t hash[20];
