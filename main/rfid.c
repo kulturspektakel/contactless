@@ -11,19 +11,30 @@
 static const char* TAG = "rfid";
 ultralight_card_info_t current_card = {0};
 
+#define LENGTH_ID 7
+#define LENGTH_COUNTER 2
+#define LENGTH_DEPOSIT 1
+#define LENGTH_BALANCE 2
+#define LENGTH_SIGNATURE 5
+
+#define OFFSET_COUNTER LENGTH_ID
+#define OFFSET_DEPOSIT LENGTH_ID + LENGTH_COUNTER
+#define OFFSET_BALANCE LENGTH_ID + LENGTH_COUNTER + LENGTH_DEPOSIT
+#define OFFSET_SIGNATURE LENGTH_ID + LENGTH_COUNTER + LENGTH_DEPOSIT + LENGTH_BALANCE
+
 void calculateSignatureUltralight(uint8_t* target, ultralight_card_info_t* card) {
   char* salt = alloc_slat();
-  size_t len = 7 +  // ID
-               2 +  // count
-               1 +  // deposit
-               2 +  // balance
+  size_t len = LENGTH_SIGNATURE +  // ID
+               LENGTH_COUNTER +    // count
+               LENGTH_DEPOSIT +    // deposit
+               LENGTH_BALANCE +    // balance
                strlen(salt);
   char hash_input[len];
   memcpy(hash_input, &card->id, 7);
-  memcpy(hash_input + 7, &card->counter, 2);
-  memcpy(hash_input + 7 + 2, &card->deposit, 1);
-  memcpy(hash_input + 7 + 2 + 1, &card->balance, 2);
-  memcpy(hash_input + 7 + 2 + 1 + 2, salt, strlen(salt));
+  memcpy(hash_input + OFFSET_COUNTER, &card->counter, LENGTH_COUNTER);
+  memcpy(hash_input + OFFSET_DEPOSIT, &card->deposit, LENGTH_DEPOSIT);
+  memcpy(hash_input + OFFSET_BALANCE, &card->balance, LENGTH_BALANCE);
+  memcpy(hash_input + OFFSET_SIGNATURE, salt, strlen(salt));
   free(salt);
 
   ESP_LOG_BUFFER_HEX(TAG, hash_input, len);
@@ -57,22 +68,22 @@ static bool read_balance(spi_device_handle_t spi, mfrc522_uid* uid) {
     ESP_LOG_BUFFER_HEX(TAG, decoded_payload, sizeof(decoded_payload));
 
     new_card.counter = *((uint16_t*)backData);
-    uint16_t counter_from_payload = *(uint16_t*)(decoded_payload + 7);
+    uint16_t counter_from_payload = *(uint16_t*)(decoded_payload + OFFSET_COUNTER);
     if (new_card.counter != counter_from_payload) {
       ESP_LOGE(
           TAG, "Counter mismatch: %d (card) != %d (payload)", new_card.counter, counter_from_payload
       );
       return false;
     }
-    memcpy(new_card.id, uid->uidByte, 7);
-    new_card.deposit = *(uint8_t*)(decoded_payload + 9);
-    new_card.balance = *(uint16_t*)(decoded_payload + 10);
-    memcpy(new_card.signature, decoded_payload + 12, 5);
+    memcpy(new_card.id, uid->uidByte, LENGTH_ID);
+    new_card.deposit = *(uint8_t*)(decoded_payload + OFFSET_DEPOSIT);
+    new_card.balance = *(uint16_t*)(decoded_payload + OFFSET_BALANCE);
+    memcpy(new_card.signature, decoded_payload + OFFSET_SIGNATURE, 5);
 
     // verify signature
     uint8_t hash[20];
     calculateSignatureUltralight(hash, &new_card);
-    if (memcmp(hash, new_card.signature, 5) != 0) {
+    if (memcmp(hash, new_card.signature, LENGTH_SIGNATURE) != 0) {
       ESP_LOGE(TAG, "Signature mismatch");
       return false;
     }
