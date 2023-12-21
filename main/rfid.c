@@ -1,14 +1,38 @@
 #include "rfid.h"
 #include <esp_log.h>
 #include <mbedtls/base64.h>
+#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "http_auth_headers.h"
+#include "mbedtls/sha1.h"
 #include "mfrc522.h"
 
 static const char* TAG = "rfid";
+ultralight_card_info_t current_card = {0};
+
+void calculateSignatureUltralight(uint8_t* target, ultralight_card_info_t* card) {
+  char* salt = alloc_slat();
+  size_t len = 7 +  // ID
+               2 +  // count
+               1 +  // deposit
+               2 +  // balance
+               strlen(salt);
+  char hash_input[len];
+  memcpy(hash_input, &card->id, 7);
+  memcpy(hash_input + 7, &card->counter, 2);
+  memcpy(hash_input + 7 + 2, &card->deposit, 1);
+  memcpy(hash_input + 7 + 2 + 1, &card->balance, 2);
+  memcpy(hash_input + 7 + 2 + 1 + 2, salt, strlen(salt));
+  free(salt);
+
+  ESP_LOG_BUFFER_HEX(TAG, hash_input, len);
+  create_sha1_hash(hash_input, len, target);
+}
 
 static bool read_balance(spi_device_handle_t spi, mfrc522_uid* uid) {
   if (PICC_GetType(uid->sak) == PICC_TYPE_MIFARE_UL) {
+    ultralight_card_info_t new_card = {0};
     // read counter
     uint8_t command[] = {0x39, 0x00, 0x1A, 0x7F};  // Read Counter 00 + CRC
     uint8_t backData[8];                           // needs to be at least 8 bytes
@@ -18,8 +42,6 @@ static bool read_balance(spi_device_handle_t spi, mfrc522_uid* uid) {
       ESP_LOGE(TAG, "Reading counter failed");
       return false;
     }
-    uint16_t counter = *((uint16_t*)backData);
-    ESP_LOGI(TAG, "Counter: %d", counter);
 
     uint8_t size = 16 + 2 + 16;
     uint8_t payload[size];
@@ -30,9 +52,32 @@ static bool read_balance(spi_device_handle_t spi, mfrc522_uid* uid) {
       return false;
     }
 
-    uint8_t decodedPayload[17];
-    mbedtls_base64_decode(decodedPayload, sizeof(decodedPayload), &size, payload, size);
-    ESP_LOG_BUFFER_HEX(TAG, decodedPayload, sizeof(decodedPayload));
+    uint8_t decoded_payload[17];
+    mbedtls_base64_decode(decoded_payload, sizeof(decoded_payload), &size, payload, size);
+    ESP_LOG_BUFFER_HEX(TAG, decoded_payload, sizeof(decoded_payload));
+
+    new_card.counter = *((uint16_t*)backData);
+    uint16_t counter_from_payload = *(uint16_t*)(decoded_payload + 7);
+    if (new_card.counter != counter_from_payload) {
+      ESP_LOGE(
+          TAG, "Counter mismatch: %d (card) != %d (payload)", new_card.counter, counter_from_payload
+      );
+      return false;
+    }
+    memcpy(new_card.id, uid->uidByte, 7);
+    new_card.deposit = *(uint8_t*)(decoded_payload + 9);
+    new_card.balance = *(uint16_t*)(decoded_payload + 10);
+    memcpy(new_card.signature, decoded_payload + 12, 5);
+
+    // verify signature
+    uint8_t hash[20];
+    calculateSignatureUltralight(hash, &new_card);
+    if (memcmp(hash, new_card.signature, 5) != 0) {
+      ESP_LOGE(TAG, "Signature mismatch");
+      return false;
+    }
+
+    current_card = new_card;
 
     return true;
   }
@@ -58,7 +103,7 @@ void rfid(void* params) {
 
   ESP_ERROR_CHECK(spi_bus_initialize(VSPI_HOST, &buscfg, SPI_DMA_DISABLED));
   ESP_ERROR_CHECK(spi_bus_add_device(VSPI_HOST, &devcfg, &spi));
-  PCD_Init(spi, 5);
+  PCD_Init(spi, 5 /* cs_pin */);
 
   ESP_LOGI(TAG, "Start scanning for tags");
 
@@ -67,7 +112,10 @@ void rfid(void* params) {
     if (PICC_IsNewCardPresent(spi)) {
       PICC_Select(spi, &uid, 0);
       ESP_LOGI(TAG, "New card present %d", uid.size);
-      read_balance(spi, &uid);
+      if (!read_balance(spi, &uid)) {
+        // TODO: show error, card not readable
+        continue;
+      }
     }
   }
 }
