@@ -9,7 +9,7 @@
 #include "freertos/task.h"
 
 static const char* TAG = "mfrc522";
-static mfrc522_uid uid;  // Used by PICC_ReadCardSerial().
+// static mfrc522_uid uid;  // Used by PICC_ReadCardSerial().
 static gpio_num_t gpio_cs_num;
 
 /*
@@ -514,15 +514,6 @@ StatusCode PCD_CommunicateWithPICC(
 
 }  // End PCD_CommunicateWithPICC()
 
-/*
- *
- *
- * Function to read the card serial UID, SAK
- */
-
-StatusCode PICC_ReadCardSerial(spi_device_handle_t spi) {
-  return PICC_Select(spi, &uid, 0);
-}
 /**
  * Transmits SELECT/ANTICOLLISION commands to select a single PICC.
  * Before calling this function the PICCs must be placed in the READY(*) state by calling
