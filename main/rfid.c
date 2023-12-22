@@ -22,7 +22,7 @@ ultralight_card_info_t current_card = {0};
 #define OFFSET_BALANCE LENGTH_ID + LENGTH_COUNTER + LENGTH_DEPOSIT
 #define OFFSET_SIGNATURE LENGTH_ID + LENGTH_COUNTER + LENGTH_DEPOSIT + LENGTH_BALANCE
 
-void calculateSignatureUltralight(uint8_t* target, ultralight_card_info_t* card) {
+void calculate_signature_ultralight(uint8_t* target, ultralight_card_info_t* card) {
   char* salt = alloc_slat();
   size_t len = LENGTH_SIGNATURE +  // ID
                LENGTH_COUNTER +    // count
@@ -54,8 +54,8 @@ static bool read_balance(spi_device_handle_t spi, mfrc522_uid* uid) {
       return false;
     }
 
-    uint8_t size = 16 + 2 + 16;
-    uint8_t payload[size];
+    uint8_t size = 18;  // two 16 byte blocks + CRC
+    uint8_t payload[16 + 2 + 16];
 
     if (MIFARE_Read(spi, 9, payload, &size) != STATUS_OK ||
         MIFARE_Read(spi, 13, payload + 16, &size) != STATUS_OK) {
@@ -63,9 +63,18 @@ static bool read_balance(spi_device_handle_t spi, mfrc522_uid* uid) {
       return false;
     }
 
-    uint8_t decoded_payload[17];
-    mbedtls_base64_decode(decoded_payload, sizeof(decoded_payload), &size, payload, size);
-    ESP_LOG_BUFFER_HEX(TAG, decoded_payload, sizeof(decoded_payload));
+    ESP_LOG_BUFFER_HEX(TAG, payload, 23);
+
+    uint8_t decoded_payload[23];
+    size_t size_decoded = 0;
+    int decode_error =
+        mbedtls_base64_decode(decoded_payload, sizeof(decoded_payload), &size_decoded, payload, 23);
+    if (decode_error != 0) {
+      ESP_LOGE(TAG, "Decoding payload failed %d", decode_error);
+      return false;
+    }
+    ESP_LOG_BUFFER_HEX(TAG, decoded_payload, size_decoded);
+    ESP_LOGI(TAG, "Decoded payload size: %d", size_decoded);
 
     new_card.counter = *((uint16_t*)backData);
     uint16_t counter_from_payload = *(uint16_t*)(decoded_payload + OFFSET_COUNTER);
@@ -82,7 +91,7 @@ static bool read_balance(spi_device_handle_t spi, mfrc522_uid* uid) {
 
     // verify signature
     uint8_t hash[20];
-    calculateSignatureUltralight(hash, &new_card);
+    calculate_signature_ultralight(hash, &new_card);
     if (memcmp(hash, new_card.signature, LENGTH_SIGNATURE) != 0) {
       ESP_LOGE(TAG, "Signature mismatch");
       return false;
