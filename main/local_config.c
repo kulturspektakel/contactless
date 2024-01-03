@@ -95,7 +95,7 @@ static AllLists read_local_config(pb_callback_t callback) {
     }
     fclose(config_file);
   } else {
-    ESP_LOGE(TAG, "failed to open config file");
+    ESP_LOGW(TAG, "failed to open config file");
   }
   return all_lists;
 }

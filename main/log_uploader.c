@@ -94,29 +94,32 @@ log_uploader_event_t upload_file(char* filename) {
   }
 }
 
+void maybe_create_log_dir() {
+  DIR* dir = opendir(LOG_DIR);
+  if (dir == NULL) {
+    // create directory if it doesn't exist
+    ESP_LOGI(TAG, "Creating directory %s", LOG_DIR);
+    if (mkdir(LOG_DIR, 0777) != 0) {
+      ESP_LOGE(TAG, "Failed to create directory");
+      // TODO this is a fatal error
+      vTaskDelete(NULL);
+      return;
+    }
+  }
+  closedir(dir);
+}
+
 void log_uploader(void* params) {
+  maybe_create_log_dir();
+
   // initial value
   log_count = count_logs();
   ESP_LOGI(TAG, "Found %d logs", log_count);
 
   while (1) {
     xEventGroupWaitBits(event_group, WIFI_CONNECTED, pdFALSE, pdTRUE, portMAX_DELAY);
-
     int consecutive_error_count = 0;
     DIR* dir = opendir(LOG_DIR);
-
-    if (dir == NULL) {
-      // create directory if it doesn't exist
-      ESP_LOGI(TAG, "Creating directory %s", LOG_DIR);
-      if (mkdir(LOG_DIR, 0777) == 0) {
-        continue;
-      }
-      ESP_LOGE(TAG, "Failed to create directory");
-      // TODO this is a fatal error
-      vTaskDelete(NULL);
-      return;
-    }
-
     struct dirent* entry;
     while ((entry = readdir(dir))) {
       if (entry->d_type != DT_REG) {

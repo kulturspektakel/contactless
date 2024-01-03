@@ -9,6 +9,7 @@
 #include "mfrc522.h"
 
 static const char* TAG = "rfid";
+static gpio_num_t NUM_CS_PIN = 21;
 ultralight_card_info_t current_card = {0};
 
 #define LENGTH_ID 7
@@ -107,23 +108,24 @@ static bool read_balance(spi_device_handle_t spi, mfrc522_uid* uid) {
 void rfid(void* params) {
   spi_device_handle_t spi;
   spi_bus_config_t buscfg = {
-      .miso_io_num = 19,
-      .mosi_io_num = 23,
-      .sclk_io_num = 18,
+      .miso_io_num = 37,
+      .mosi_io_num = 35,
+      .sclk_io_num = 36,
       .quadwp_io_num = -1,
-      .quadhd_io_num = -1
+      .quadhd_io_num = -1,
   };
   spi_device_interface_config_t devcfg = {
       .clock_speed_hz = 5000000,
       .mode = 0,
-      .spics_io_num = 5,
+      .spics_io_num = NUM_CS_PIN,
       .queue_size = 7,
   };
   mfrc522_uid uid;
 
-  ESP_ERROR_CHECK(spi_bus_initialize(VSPI_HOST, &buscfg, SPI_DMA_DISABLED));
-  ESP_ERROR_CHECK(spi_bus_add_device(VSPI_HOST, &devcfg, &spi));
-  PCD_Init(spi, 5 /* cs_pin */);
+  ESP_ERROR_CHECK(spi_bus_initialize(SPI3_HOST, &buscfg, SPI_DMA_DISABLED));
+  ESP_ERROR_CHECK(spi_bus_add_device(SPI3_HOST, &devcfg, &spi));
+
+  PCD_Init(spi, NUM_CS_PIN);
 
   ESP_LOGI(TAG, "Start scanning for tags");
 

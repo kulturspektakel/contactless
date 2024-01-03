@@ -216,15 +216,15 @@ static void write_card(u8g2_t* u8g2) {
 }
 
 void display(void* params) {
-  // 2 second delay to allow other tasks to start
+  // 200ms delay to allow other tasks to start
   vTaskDelay(200 / portTICK_PERIOD_MS);
 
   u8g2_esp32_hal_t u8g2_esp32_hal = {
-      .clk = 14,
-      .mosi = 13,
-      .cs = 15,
-      .dc = 33,
-      .reset = 32,
+      .clk = 11,
+      .mosi = 12,
+      .cs = 10,
+      .dc = 13,
+      .reset = 9,
   };
   u8g2_esp32_hal_init(u8g2_esp32_hal);
 

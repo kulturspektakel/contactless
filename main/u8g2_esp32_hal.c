@@ -61,7 +61,7 @@ uint8_t u8g2_esp32_spi_byte_cb(u8x8_t* u8x8, uint8_t msg, uint8_t arg_int, void*
       bus_config.quadwp_io_num = -1;                 // Not used
       bus_config.quadhd_io_num = -1;                 // Not used
       // ESP_LOGI(TAG, "... Initializing bus.");
-      ESP_ERROR_CHECK(spi_bus_initialize(HSPI_HOST, &bus_config, 1));
+      ESP_ERROR_CHECK(spi_bus_initialize(SPI2_HOST, &bus_config, SPI_DMA_CH_AUTO));
 
       spi_device_interface_config_t dev_config;
       dev_config.address_bits = 0;
@@ -72,14 +72,14 @@ uint8_t u8g2_esp32_spi_byte_cb(u8x8_t* u8x8, uint8_t msg, uint8_t arg_int, void*
       dev_config.cs_ena_posttrans = 0;
       dev_config.cs_ena_pretrans = 0;
       dev_config.clock_speed_hz = 10000000;  // 10MHz clock
+      dev_config.clock_source = SPI_CLK_SRC_DEFAULT;
       dev_config.spics_io_num = u8g2_esp32_hal.cs;
       dev_config.flags = 0;
       dev_config.queue_size = 200;
       dev_config.pre_cb = NULL;
       dev_config.post_cb = NULL;
       // ESP_LOGI(TAG, "... Adding device bus.");
-      ESP_ERROR_CHECK(spi_bus_add_device(HSPI_HOST, &dev_config, &handle_spi));
-
+      ESP_ERROR_CHECK(spi_bus_add_device(SPI2_HOST, &dev_config, &handle_spi));
       break;
     }
 

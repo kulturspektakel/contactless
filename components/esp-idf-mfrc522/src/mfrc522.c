@@ -26,7 +26,7 @@ esp_err_t PCD_Version(spi_device_handle_t spi) {
     ESP_LOGI(TAG, "MFRC522 Version 1 detected.");
     return ESP_OK;
   } else {
-    ESP_LOGE(TAG, "Unknown MFRC522 version.");
+    ESP_LOGE(TAG, "Unknown MFRC522 version: 0x%02X", ver);
   }
 
   return ESP_FAIL;

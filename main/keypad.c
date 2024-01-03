@@ -16,7 +16,7 @@ const char KEYPAD[] = {
     '*', '0', '#', 'D'
     // clang-format on
 };
-static const int KEYPAD_PINS[8] = {15, 2, 4, 16, 17, 5, 18, 19};
+static const int KEYPAD_PINS[8] = {4, 5, 6, 7, 15, 16, 17, 18};
 QueueHandle_t keypad_queue;
 
 void turnon_rows() {
