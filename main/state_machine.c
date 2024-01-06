@@ -78,16 +78,6 @@ void add_digit(int d) {
   }
 }
 
-mode_type two_digit_number_pressed(int d) {
-  if (current_state.product_list_first_digit == -1) {
-    current_state.product_list_first_digit = d;
-    return CHARGE_LIST_TWO_DIGIT;
-  }
-  select_product(10 * current_state.product_list_first_digit + d);
-  current_state.product_list_first_digit = -1;
-  return CHARGE_LIST;
-}
-
 mode_type token_detected(event_t event) {
   reset_cart();
   current_state.is_privileged = true;
@@ -113,18 +103,41 @@ mode_type charge_list_two_digit(event_t event) {
     case KEY_7:
     case KEY_8:
     case KEY_9:
-      return two_digit_number_pressed(event - KEY_0);
+      if (current_state.product_list_first_digit == -1) {
+        // set first digit
+        if (event - KEY_0 <= active_config.products_count / 10) {
+          current_state.product_list_first_digit = event - KEY_0;
+        }
+        break;
+      }
+
+      // second digit
+      int idx = current_state.product_list_first_digit * 10 + event - KEY_0 - 1;
+      if (idx > active_config.products_count) {
+        break;
+      }
+
+      select_product(idx);
+      current_state.product_list_first_digit = -1;
+      return CHARGE_LIST;
+
     case KEY_HASH:
     case KEY_C:
     case KEY_D:
+      current_state.product_list_first_digit = -1;
       return CHARGE_LIST;
     default:
       break;
   }
+
   return CHARGE_LIST_TWO_DIGIT;
 }
+
 mode_type charge_without_card(event_t event) {
-  return CHARGE_WITHOUT_CARD;
+  if (current_state.cart.item_count > 0) {
+    return CHARGE_WITHOUT_CARD;
+  }
+  return current_state.mode;
 }
 
 mode_type charge_list(event_t event) {
@@ -133,9 +146,9 @@ mode_type charge_list(event_t event) {
       current_state.main_menu = initialize_main_menu();
       return MAIN_MENU;
     case KEY_STAR:
-      return CHARGE_WITHOUT_CARD;
+      return current_state.cart.item_count > 0 ? CHARGE_WITHOUT_CARD : CHARGE_LIST;
     case KEY_HASH:
-      return CHARGE_LIST_TWO_DIGIT;
+      return active_config.products_count > 9 ? CHARGE_LIST_TWO_DIGIT : CHARGE_LIST;
     case TOKEN_DETECTED:
       return token_detected(event);
     case CARD_DETECTED:

@@ -8,6 +8,7 @@ set(srcs
     "logger.c"
     "keypad.c"
     "main.c"
+    "power_management.c"
     "rfid.c"
     "state_machine.c"
     "wifi_connect.c"

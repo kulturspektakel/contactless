@@ -11,6 +11,7 @@
 #include "local_config.h"
 #include "log_uploader.h"
 #include "nvs_flash.h"
+#include "power_management.h"
 #include "rfid.h"
 #include "state_machine.h"
 #include "time_sync.h"
@@ -39,4 +40,5 @@ void app_main(void) {
   xTaskCreate(&state_machine, "state_machine", 4096, NULL, 5, NULL);
   xTaskCreate(&time_sync, "time_sync", 4096, NULL, 5, NULL);
   xTaskCreate(&rfid, "rfid", 4096, NULL, 5, NULL);
+  xTaskCreate(&power_management, "power_management", 4096, NULL, 5, NULL);
 }

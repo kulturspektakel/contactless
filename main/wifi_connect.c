@@ -9,10 +9,15 @@
 #include "nvs_flash.h"
 
 static const char* TAG = "wifi_connect";
+static TimerHandle_t signal_strength_timer;
+int8_t wifi_rssi = 0;
+wifi_status_t wifi_status = DISCONNECTED;
 
-static void connect_to_wifi() {
-  xEventGroupSetBits(event_group, WIFI_CONNECTING);
-  esp_wifi_connect();
+static void update_signal_strength(TimerHandle_t timer) {
+  wifi_ap_record_t wifidata;
+  esp_wifi_sta_get_ap_info(&wifidata);
+  wifi_rssi = wifidata.rssi;
+  xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
 }
 
 static void event_handler(
@@ -22,14 +27,25 @@ static void event_handler(
     void* event_data
 ) {
   if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-    connect_to_wifi();
+    if (signal_strength_timer != NULL) {
+      xTimerDelete(signal_strength_timer, 0);
+    }
+    wifi_status = CONNECTING;
+    esp_wifi_connect();
   } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+    wifi_status = DISCONNECTED;
     xEventGroupClearBits(event_group, WIFI_CONNECTED);
-    // notify task
+    if (signal_strength_timer != NULL) {
+      xTimerDelete(signal_strength_timer, 0);
+    }
+    // notify task to try reconnecting
     xTaskNotifyGive(arg);
   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+    wifi_status = WIFI_CONNECTED;
     xEventGroupSetBits(event_group, WIFI_CONNECTED);
-    xEventGroupClearBits(event_group, WIFI_CONNECTING);
+    signal_strength_timer = xTimerCreate(
+        "wifi_signal_strength", pdMS_TO_TICKS(10000), pdTRUE, 0, update_signal_strength
+    );
   }
   xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
 }
@@ -69,7 +85,6 @@ void wifi_connect(void* params) {
   esp_wifi_set_mode(WIFI_MODE_STA);
   esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
   esp_wifi_start();
-  xEventGroupSetBits(event_group, WIFI_CONNECTING);
 
   ESP_LOGI(
       TAG, "initialized with ssid=%s password=%s", wifi_config.sta.ssid, wifi_config.sta.password
@@ -78,7 +93,8 @@ void wifi_connect(void* params) {
   while (1) {
     // reconnect if disconnected
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    // TODO maybe exponential backoff
     vTaskDelay(10000 / portTICK_PERIOD_MS);
-    connect_to_wifi();
+    esp_wifi_connect();
   }
 }

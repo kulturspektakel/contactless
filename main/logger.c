@@ -64,5 +64,3 @@ void write_log() {
     ESP_LOGE(TAG, "Failed to open %s for writing", filename);
   }
 }
-
-void logger(void* params) {}

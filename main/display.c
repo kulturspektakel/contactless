@@ -1,5 +1,5 @@
 #include "esp_log.h"
-#include "esp_wifi.h"
+#include "esp_timer.h"
 #include "event_group.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -8,6 +8,7 @@
 #include "time.h"
 #include "u8g2.h"
 #include "u8g2_esp32_hal.h"
+#include "wifi_connect.h"
 
 static const char* TAG = "display";
 #define logo_width 34
@@ -25,6 +26,10 @@ static const uint8_t logo_bits[] = {
     0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0x03,
     0xFF, 0xFF, 0xFF, 0xFF, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0x03,
 };
+static TimerHandle_t animation_timer;
+static void vTimerCallback(TimerHandle_t timer) {
+  xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
+}
 
 static void battery(u8g2_t* u8g2, int current) {
   int y = 0;
@@ -44,37 +49,53 @@ static void battery(u8g2_t* u8g2, int current) {
   u8g2_DrawBox(u8g2, x + 1, y + 1, bar_width, h - 1);
 }
 
+static int animation_tick(int ms) {
+  static int64_t last_time_ms = 0;
+  if (animation_timer == NULL) {
+    animation_timer = xTimerCreate("animation_timer", pdMS_TO_TICKS(ms), pdTRUE, 0, vTimerCallback);
+  } else {
+    xTimerReset(animation_timer, pdMS_TO_TICKS(ms));
+  }
+  int64_t now = esp_timer_get_time() / 1000;
+  if (now - last_time_ms > ms) {
+    last_time_ms = now;
+  }
+  return last_time_ms;
+}
+
 static void wifi_strength(u8g2_t* u8g2) {
-  static int8_t rssi;
+  static int skip = -1;
   int x = 0;
   int y = 4;
   int bars = 0;
 
-  wifi_ap_record_t wifidata;
+  switch (wifi_status) {
+    case CONNECTING:
+      skip = animation_tick(250) % 4;
+      break;
 
-  EventBits_t bits = xEventGroupWaitBits(event_group, WIFI_CONNECTED, pdFALSE, pdFALSE, 0);
-  if ((bits & WIFI_CONNECTED) != 0) {
-    if (esp_wifi_sta_get_ap_info(&wifidata) == ESP_OK) {
-      rssi = wifidata.rssi;
-    }
+    case CONNECTED:
+      skip = -1;
+      if (wifi_rssi > -55) {
+        bars = 4;
+      } else if (wifi_rssi > -66) {
+        bars = 3;
+      } else if (wifi_rssi > -77) {
+        bars = 2;
+      } else {
+        bars = 1;
+      }
+      break;
 
-    if (rssi > -55) {
-      bars = 4;
-    } else if (rssi > -66) {
-      bars = 3;
-    } else if (rssi > -77) {
-      bars = 2;
-    } else {
-      bars = 1;
-    }
-  }
-
-  bits = xEventGroupWaitBits(event_group, WIFI_CONNECTING, pdFALSE, pdFALSE, 0);
-  if ((bits & WIFI_CONNECTING) != 0) {
-    // TODO
+    case DISCONNECTED:
+      skip = -1;
+      break;
   }
 
   for (int step = 0; step < 4; step++) {
+    if (step == skip) {
+      continue;
+    }
     u8g2_DrawLine(u8g2, x + (step * 2), y, x + (step * 2), step < bars ? y - 1 - step : y);
   }
 }
@@ -184,6 +205,16 @@ static void charge_list(u8g2_t* u8g2) {
   draw_amount(u8g2, current_state.cart.total + (current_state.cart.deposit * 200), 63);
 }
 
+static void charge_list_two_digit(u8g2_t* u8g2) {
+  char* str = "Produkt #__";
+  if (current_state.product_list_first_digit > 0) {
+    str[9] = current_state.product_list_first_digit + '0';
+  }
+  u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+  u8g2_DrawStr(u8g2, 0, 20, str);
+  keypad_legend(u8g2);
+}
+
 static void main_menu(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
   for (int i = 0; i < 3; i++) {
@@ -254,6 +285,10 @@ void display(void* params) {
       case CHARGE_LIST:
         status_bar(&u8g2);
         charge_list(&u8g2);
+        break;
+      case CHARGE_LIST_TWO_DIGIT:
+        status_bar(&u8g2);
+        charge_list_two_digit(&u8g2);
         break;
       case MAIN_MENU:
         status_bar(&u8g2);
