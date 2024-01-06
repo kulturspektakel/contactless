@@ -1,5 +1,6 @@
 #include "esp_log.h"
 #include "esp_wifi.h"
+#include "event_group.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "log_uploader.h"
@@ -43,27 +44,34 @@ static void battery(u8g2_t* u8g2, int current) {
   u8g2_DrawBox(u8g2, x + 1, y + 1, bar_width, h - 1);
 }
 
-static void wifi_strength(u8g2_t* u8g2, bool needs_update) {
+static void wifi_strength(u8g2_t* u8g2) {
   static int8_t rssi;
   int x = 0;
   int y = 4;
   int bars = 0;
 
-  if (needs_update) {
-    wifi_ap_record_t wifidata;
+  wifi_ap_record_t wifidata;
+
+  EventBits_t bits = xEventGroupWaitBits(event_group, WIFI_CONNECTED, pdFALSE, pdFALSE, 0);
+  if ((bits & WIFI_CONNECTED) != 0) {
     if (esp_wifi_sta_get_ap_info(&wifidata) == ESP_OK) {
       rssi = wifidata.rssi;
     }
+
+    if (rssi > -55) {
+      bars = 4;
+    } else if (rssi > -66) {
+      bars = 3;
+    } else if (rssi > -77) {
+      bars = 2;
+    } else {
+      bars = 1;
+    }
   }
 
-  if (rssi > -55) {
-    bars = 4;
-  } else if (rssi > -66) {
-    bars = 3;
-  } else if (rssi > -77) {
-    bars = 2;
-  } else {
-    bars = 1;
+  bits = xEventGroupWaitBits(event_group, WIFI_CONNECTING, pdFALSE, pdFALSE, 0);
+  if ((bits & WIFI_CONNECTING) != 0) {
+    // TODO
   }
 
   for (int step = 0; step < 4; step++) {
@@ -114,7 +122,7 @@ static void keypad_legend(u8g2_t* u8g2) {
 
 static void status_bar(u8g2_t* u8g2) {
   battery(u8g2, 1);
-  wifi_strength(u8g2, true);
+  wifi_strength(u8g2);
   pending_uploads(u8g2);
   time_display(u8g2);
 }
@@ -261,7 +269,6 @@ void display(void* params) {
     }
 
     u8g2_SendBuffer(&u8g2);
-    // TODO use event group to wait for state change
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    xEventGroupWaitBits(event_group, DISPLAY_NEEDS_UPDATE, pdFALSE, pdTRUE, portMAX_DELAY);
   }
 }

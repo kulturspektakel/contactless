@@ -31,6 +31,7 @@ static void event_handler(
     xEventGroupSetBits(event_group, WIFI_CONNECTED);
     xEventGroupClearBits(event_group, WIFI_CONNECTING);
   }
+  xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
 }
 
 void wifi_connect(void* params) {
@@ -75,12 +76,6 @@ void wifi_connect(void* params) {
   );
 
   while (1) {
-    wifi_ap_record_t wifidata;
-    if (esp_wifi_sta_get_ap_info(&wifidata) == 0) {
-      printf("rssi:%d\r\n", wifidata.rssi);
-      ESP_LOGI(TAG, "signal strength %d", wifidata.rssi);
-    }
-
     // reconnect if disconnected
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     vTaskDelay(10000 / portTICK_PERIOD_MS);

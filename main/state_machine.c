@@ -14,37 +14,9 @@ state_t current_state = {
     .cart =
         {
             .deposit = 0,
-            .total = -1000,
-            .items =
-                {{.amount = 1,
-                  .has_product = true,
-                  .product =
-                      {
-                          .name = "Helles",
-                          .price = 350,
-                      }},
-                 {.amount = 2,
-                  .has_product = true,
-                  .product =
-                      {
-                          .name = "Spezi",
-                          .price = 300,
-                      }},
-                 {.amount = 1,
-                  .has_product = true,
-                  .product =
-                      {
-                          .name = "Wasser",
-                          .price = 150,
-                      }},
-                 {.amount = 1,
-                  .has_product = true,
-                  .product =
-                      {
-                          .name = "Eis",
-                          .price = 100,
-                      }}},
-            .item_count = 4,
+            .total = 0,
+            .items = {},
+            .item_count = 0,
         },
 };
 
@@ -59,13 +31,13 @@ void reset_cart() {
 }
 
 void select_product(int product) {
-  if (active_config.products_count > product) {
+  if (product >= active_config.products_count) {
     return;
   }
   if (current_state.cart.item_count >= 9) {
     return;
   }
-  Product p = active_config.products[product - 1];
+  Product p = active_config.products[product];
   if (current_state.cart.total + p.price > 9999) {
     return;
   }
@@ -179,7 +151,7 @@ mode_type charge_list(event_t event) {
     case KEY_7:
     case KEY_8:
     case KEY_9:
-      select_product(event - KEY_1 + 1);
+      select_product(event - KEY_1);
       break;
     case KEY_A:
       update_deposit(true);
@@ -289,6 +261,22 @@ mode_type privileged_topup(event_t event) {
 
 mode_type main_menu(event_t event) {
   switch (event) {
+    case KEY_A:
+      current_state.main_menu.active_item--;
+      if (current_state.main_menu.active_item < 0) {
+        current_state.main_menu.active_item = 0;
+      }
+      break;
+    case KEY_B:
+      current_state.main_menu.active_item++;
+      if (current_state.main_menu.active_item >= current_state.main_menu.count) {
+        current_state.main_menu.active_item = current_state.main_menu.count - 1;
+      }
+      break;
+    case KEY_STAR:
+      reset_cart();
+      select_list(current_state.main_menu.items[current_state.main_menu.active_item].list_id);
+      // fallthrough
     case KEY_D:
       current_state.main_menu.count = 0;
       free(current_state.main_menu.items);
@@ -350,5 +338,6 @@ void state_machine(void* params) {
           TAG, "Event %d changed state from %d to %d", event, previous_mode, current_state.mode
       );
     }
+    xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
   }
 }

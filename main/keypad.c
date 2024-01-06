@@ -8,15 +8,15 @@
 #include "state_machine.h"
 
 static const char* TAG = "keypad";
-const char KEYPAD[] = {
+const event_t KEYPAD[] = {
     // clang-format off
-    '1', '2', '3', 'A',
-    '4', '5', '6', 'B',
-    '7', '8', '9', 'C',
-    '*', '0', '#', 'D'
+    KEY_1, KEY_2, KEY_3, KEY_A,
+    KEY_4, KEY_5, KEY_6, KEY_B,
+    KEY_7, KEY_8, KEY_9, KEY_C,
+    KEY_STAR, KEY_0, KEY_HASH, KEY_D,
     // clang-format on
 };
-static const int KEYPAD_PINS[8] = {4, 5, 6, 7, 15, 16, 17, 18};
+static const int KEYPAD_PINS[8] = {18, 17, 16, 15, 7, 6, 5, 4};
 QueueHandle_t keypad_queue;
 
 void turnon_rows() {
@@ -58,7 +58,7 @@ static void IRAM_ATTR gpio_interrupt_handler(void* args) {
 }
 
 void keypad(void* params) {
-  keypad_queue = xQueueCreate(5, sizeof(char));
+  keypad_queue = xQueueCreate(5, sizeof(event_t));
   if (keypad_queue == NULL) {
     ESP_LOGI(TAG, "Failed to create keypad queue");
     // TODO fatal error
@@ -80,19 +80,19 @@ void keypad(void* params) {
 
   turnon_rows();
 
-  char key;
-  char prev_key = '\0';
+  event_t key;
+  event_t prev_key = '\0';
   uint8_t count = 0;
   int64_t prev_key_time = 0;
 
   while (true) {
     xQueueReceive(keypad_queue, &key, portMAX_DELAY);
-    xQueueSend(state_events, &key, portMAX_DELAY);
+    xQueueSend(state_events, (void*)(&key), portMAX_DELAY);
     if (key == prev_key && esp_timer_get_time() - prev_key_time < 500000) {
       count++;
-      if (count == 2) {
-        // tripple click detected
-        xQueueSend(state_events, &key, portMAX_DELAY);
+      if (count == 2 && key == KEY_HASH) {
+        key = KEY_TRIPPLE_HASH;
+        xQueueSend(state_events, (void*)(&key), portMAX_DELAY);
         count = 0;
       }
     } else {
@@ -100,6 +100,6 @@ void keypad(void* params) {
     }
     prev_key = key;
     prev_key_time = esp_timer_get_time();
-    ESP_LOGI(TAG, "keypress %c", key);
+    ESP_LOGI(TAG, "keypress %d", key);
   }
 }

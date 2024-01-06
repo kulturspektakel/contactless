@@ -8,5 +8,6 @@
 #define WIFI_CONNECTING BIT3
 #define LOCAL_CONFIG_UPDATED BIT4
 #define TIME_SET BIT5
+#define DISPLAY_NEEDS_UPDATE BIT6
 
 extern EventGroupHandle_t event_group;

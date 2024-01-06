@@ -110,12 +110,27 @@ menu_items_t initialize_main_menu() {
   return args;
 }
 
+void select_list(int list_id) {
+  nvs_handle_t nvs_handle;
+  ESP_ERROR_CHECK(nvs_open("device_config", NVS_READWRITE, &nvs_handle));
+  ESP_ERROR_CHECK(nvs_set_i32(nvs_handle, "product_list", list_id));
+  ESP_ERROR_CHECK(nvs_commit(nvs_handle));
+  nvs_close(nvs_handle);
+  xEventGroupSetBits(event_group, LOCAL_CONFIG_UPDATED);
+}
+
 void local_config(void* params) {
   while (1) {
     int32_t product_list_id = read_product_list_id();
+    active_config.list_id = -1;
     pb_callback_t callback = {.funcs.decode = load_active_product_list, .arg = &product_list_id};
     AllLists all_lists = read_local_config(callback);
     all_lists_checksum = all_lists.checksum;
+
+    if (active_config.list_id == -1) {
+      ESP_LOGE(TAG, "failed to load product list");
+      // TODO fatal error
+    }
 
     xEventGroupClearBits(event_group, LOCAL_CONFIG_UPDATED);
     xEventGroupSetBits(event_group, LOCAL_CONFIG_LOADED);
