@@ -7,6 +7,7 @@
 #include "http_auth_headers.h"
 #include "mbedtls/sha1.h"
 #include "mfrc522.h"
+#include "state_machine.h"
 
 static const char* TAG = "rfid";
 static gpio_num_t NUM_CS_PIN = 21;
@@ -42,7 +43,7 @@ void calculate_signature_ultralight(uint8_t* target, ultralight_card_info_t* car
   create_sha1_hash(hash_input, len, target);
 }
 
-static bool read_balance(spi_device_handle_t spi, mfrc522_uid* uid) {
+static bool read_card(spi_device_handle_t spi, mfrc522_uid* uid) {
   if (PICC_GetType(uid->sak) == PICC_TYPE_MIFARE_UL) {
     ultralight_card_info_t new_card = {0};
     // read counter
@@ -105,6 +106,8 @@ static bool read_balance(spi_device_handle_t spi, mfrc522_uid* uid) {
   return false;
 }
 
+void write_card() {}
+
 void rfid(void* params) {
   spi_device_handle_t spi;
   spi_bus_config_t buscfg = {
@@ -130,14 +133,33 @@ void rfid(void* params) {
   ESP_LOGI(TAG, "Start scanning for tags");
 
   while (1) {
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-    if (PICC_IsNewCardPresent(spi)) {
-      PICC_Select(spi, &uid, 0);
-      ESP_LOGI(TAG, "New card present %d", uid.size);
-      if (!read_balance(spi, &uid)) {
-        // TODO: show error, card not readable
-        continue;
-      }
+    // wait for card
+    if (!PICC_IsNewCardPresent(spi)) {
+      vTaskDelay(100 / portTICK_PERIOD_MS);
+      continue;
+    }
+
+    if (PICC_Select(spi, &uid, 0) != STATUS_OK) {
+      continue;
+    }
+
+    if (!read_card(spi, &uid)) {
+      // TODO: show error, card not readable
+      continue;
+    }
+
+    mode_type operation = current_state.mode;
+
+    ESP_LOGI(TAG, "New card present %d", uid.size);
+    xQueueSend(state_events, (void*)&(event_t){CARD_DETECTED}, portMAX_DELAY);
+
+    switch (operation) {
+      case PRIVILEGED_CASHOUT:
+        /* code */
+        break;
+
+      default:
+        break;
     }
   }
 }

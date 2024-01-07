@@ -11,8 +11,11 @@
 #include "wifi_connect.h"
 
 static const char* TAG = "display";
-#define logo_width 34
-#define logo_height 34
+#define DISPLAY_WIDTH 128
+#define DISPLAY_HEIGHT 64
+#define LEGEND_HEIGHT 9
+#define LOGO_WIDTH 34
+#define LOGO_HEIGHT 34
 static const uint8_t logo_bits[] = {
     0xFF, 0xFF, 0xFF, 0xFF, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0x03, 0xFF,
     0xFF, 0xFF, 0xFF, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0x03, 0xFF, 0xFF,
@@ -35,7 +38,7 @@ static void battery(u8g2_t* u8g2, int current) {
   int y = 0;
   int h = 4;
   int w = 10;
-  int x = 127 - w;
+  int x = DISPLAY_WIDTH - 1 - w;
   int min = 0;
   int max = 1000;
   u8g2_DrawLine(u8g2, x, y, x, y + h);
@@ -57,7 +60,7 @@ static int animation_tick(int ms) {
     xTimerReset(animation_timer, pdMS_TO_TICKS(ms));
   }
   int64_t now = esp_timer_get_time() / 1000;
-  if (now - last_time_ms > ms) {
+  if (now - last_time_ms >= ms) {
     last_time_ms = now;
   }
   return last_time_ms;
@@ -106,9 +109,9 @@ static void pending_uploads(u8g2_t* u8g2) {
   sprintf(pending, "%3d", log_count);
   // render right aligned
   u8g2_uint_t w = u8g2_GetStrWidth(u8g2, pending);
-  u8g2_DrawStr(u8g2, 112 - w, 5, pending);
+  u8g2_DrawStr(u8g2, DISPLAY_WIDTH - 16 - w, 5, pending);
   u8g2_SetFont(u8g2, u8g2_font_m2icon_5_tf);
-  u8g2_DrawStr(u8g2, 110 - w, 5, "B");
+  u8g2_DrawStr(u8g2, DISPLAY_WIDTH - 18 - w, 5, "B");
 }
 
 static void time_display(u8g2_t* u8g2) {
@@ -124,17 +127,17 @@ static void time_display(u8g2_t* u8g2) {
 
 static void keypad_legend_letter(u8g2_t* u8g2, char* letter, char* text, int offset) {
   u8g2_SetDrawColor(u8g2, 0);
-  u8g2_DrawRBox(u8g2, offset + 1, 56, 8, 7, 1);
+  u8g2_DrawRBox(u8g2, offset + 1, DISPLAY_HEIGHT - LEGEND_HEIGHT + 1, LEGEND_HEIGHT - 1, 7, 1);
   u8g2_SetDrawColor(u8g2, 1);
   u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
-  u8g2_DrawStr(u8g2, offset + 3, 62, letter);
+  u8g2_DrawStr(u8g2, offset + 3, DISPLAY_HEIGHT - 2, letter);
   u8g2_SetDrawColor(u8g2, 0);
-  u8g2_DrawStr(u8g2, offset + 11, 62, text);
+  u8g2_DrawStr(u8g2, offset + 11, DISPLAY_HEIGHT - 2, text);
   u8g2_SetDrawColor(u8g2, 1);
 }
 
 static void keypad_legend(u8g2_t* u8g2) {
-  u8g2_DrawBox(u8g2, 0, 55, 128, 9);
+  u8g2_DrawBox(u8g2, 0, DISPLAY_HEIGHT - LEGEND_HEIGHT, DISPLAY_WIDTH, LEGEND_HEIGHT);
   keypad_legend_letter(u8g2, "A", "Up", 0);
   keypad_legend_letter(u8g2, "B", "Dn", 26);
   keypad_legend_letter(u8g2, "*", "OK", 52);
@@ -149,14 +152,21 @@ static void status_bar(u8g2_t* u8g2) {
 }
 
 static void boot_screen(u8g2_t* u8g2) {
-  u8g2_DrawXBM(u8g2, 47, 15, logo_width, logo_height, &logo_bits);
+  u8g2_DrawXBM(
+      u8g2,
+      DISPLAY_WIDTH / 2 - LOGO_WIDTH / 2,
+      DISPLAY_HEIGHT / 2 - LOGO_HEIGHT / 2,
+      LOGO_WIDTH,
+      LOGO_HEIGHT,
+      &logo_bits
+  );
 }
 
 static void draw_amount(u8g2_t* u8g2, int amount, int y) {
   char amount_str[7];
   snprintf(amount_str, sizeof(amount_str), "%5.2f", ((float)amount) / 100);
   u8g2_uint_t w = u8g2_GetStrWidth(u8g2, amount_str);
-  u8g2_DrawStr(u8g2, 128 - w, y, amount_str);
+  u8g2_DrawStr(u8g2, DISPLAY_WIDTH - w, y, amount_str);
 }
 
 static void charge_list(u8g2_t* u8g2) {
@@ -198,11 +208,13 @@ static void charge_list(u8g2_t* u8g2) {
   } else {
     snprintf(deposit, sizeof(deposit), "%d Pfand", current_state.cart.deposit);
   }
-  u8g2_DrawStr(u8g2, 0, 51, deposit);
-  draw_amount(u8g2, current_state.cart.deposit * 200, 51);
-  u8g2_DrawHLine(u8g2, 0, 53, 128);
-  u8g2_DrawStr(u8g2, 0, 63, "Summe");
-  draw_amount(u8g2, current_state.cart.total + (current_state.cart.deposit * 200), 63);
+  u8g2_DrawStr(u8g2, 0, DISPLAY_HEIGHT - 13, deposit);
+  draw_amount(u8g2, current_state.cart.deposit * 200, DISPLAY_HEIGHT - 13);
+  u8g2_DrawHLine(u8g2, 0, DISPLAY_HEIGHT - 11, DISPLAY_WIDTH);
+  u8g2_DrawStr(u8g2, 0, DISPLAY_HEIGHT - 1, "Summe");
+  draw_amount(
+      u8g2, current_state.cart.total + (current_state.cart.deposit * 200), DISPLAY_HEIGHT - 1
+  );
 }
 
 static void charge_list_two_digit(u8g2_t* u8g2) {
@@ -226,20 +238,22 @@ static void main_menu(u8g2_t* u8g2) {
     }
 
     u8g2_DrawStr(u8g2, 4, 18 + (i * 15), current_state.main_menu.items[offset + i].name);
+
+    // highlight active item
     if (offset + i == current_state.main_menu.active_item) {
-      u8g2_DrawRFrame(u8g2, 0, 8 + (i * 15), 120, 15, 3);
-      u8g2_DrawHLine(u8g2, 2, 21 + (i * 15), 116);
-      u8g2_DrawVLine(u8g2, 118, 9 + (i * 15), 13);
+      u8g2_DrawRFrame(u8g2, 0, 8 + (i * 15), DISPLAY_WIDTH - 8, 15, 3);
+      u8g2_DrawHLine(u8g2, 2, 21 + (i * 15), DISPLAY_WIDTH - 12);
+      u8g2_DrawVLine(u8g2, DISPLAY_WIDTH - 10, 9 + (i * 15), 13);
     }
   }
 
   // scrollbar
-  for (int i = 7; i < 53; i = i + 3) {
-    u8g2_DrawPixel(u8g2, 124, i);
+  for (int i = 7; i < DISPLAY_HEIGHT - 11; i = i + 3) {
+    u8g2_DrawPixel(u8g2, DISPLAY_WIDTH - 4, i);
   }
   u8g2_DrawBox(
       u8g2,
-      123,
+      DISPLAY_WIDTH - 5,
       7 + ((float)current_state.main_menu.active_item / (float)current_state.main_menu.count) * 45,
       3,
       4
@@ -252,6 +266,36 @@ static void write_card(u8g2_t* u8g2) {
   u8g2_DrawStr(u8g2, 0, 27, "auflegen");
   u8g2_DrawStr(u8g2, 0, 37, "zum Aufladen");
   u8g2_DrawStr(u8g2, 0, 47, "oder Abbrechen");
+}
+
+static void charge_without_card(u8g2_t* u8g2) {
+  u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+  char label[13];
+  for (int i = 0; i < 3; i++) {
+    switch (i) {
+      case 0:
+        strncpy(label, "Crew", sizeof(label));
+        break;
+      case 1:
+        strncpy(label, "Barzahlung", sizeof(label));
+        break;
+      case 2:
+        strncpy(label, "Gutschein", sizeof(label));
+        break;
+    }
+    u8g2_DrawRFrame(u8g2, 0, 16 + (i * 18), 16, 16, 2);
+    char number[2];
+    snprintf(number, sizeof(number), "%d", i + 1);
+    u8g2_DrawStr(u8g2, 4, 18 + (i * 18), number);
+    u8g2_DrawStr(u8g2, 20, 18 + (i * 18), label);
+  }
+}
+
+void show_message(u8g2_t* u8g2) {
+  int padding = 20;
+  u8g2_DrawRBox(
+      u8g2, padding, padding, DISPLAY_WIDTH - 2 * padding, DISPLAY_HEIGHT - 2 * padding, 3
+  );
 }
 
 void display(void* params) {
@@ -285,6 +329,11 @@ void display(void* params) {
       case CHARGE_LIST:
         status_bar(&u8g2);
         charge_list(&u8g2);
+        break;
+      case CHARGE_WITHOUT_CARD:
+        status_bar(&u8g2);
+        charge_without_card(&u8g2);
+        keypad_legend(&u8g2);
         break;
       case CHARGE_LIST_TWO_DIGIT:
         status_bar(&u8g2);

@@ -70,6 +70,7 @@ typedef struct {
   cart_t cart;
   int product_list_first_digit;
   menu_items_t main_menu;
+  mode_type previous_mode;
 } state_t;
 
 extern QueueHandle_t state_events;

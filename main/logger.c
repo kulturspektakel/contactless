@@ -1,5 +1,6 @@
 #include "logger.h"
 #include <dirent.h>
+#include <time.h>
 #include "device_id.h"
 #include "esp_littlefs.h"
 #include "esp_log.h"
@@ -8,6 +9,7 @@
 #include "freertos/task.h"
 #include "log_uploader.h"
 #include "nanopb/pb_encode.h"
+#include "state_machine.h"
 
 static const char* TAG = "logger";
 static const char* ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -27,13 +29,59 @@ bool write_pb_to_file(pb_ostream_t* stream, const uint8_t* buffer, size_t count)
   return true;
 }
 
-void write_log() {
+void write_log(LogMessage_Order_PaymentMethod payment_method) {
+  // Card details
+  if (payment_method == LogMessage_Order_PaymentMethod_KULT_CARD) {
+    log_message.has_card_transaction = true;
+    LogMessage_CardTransaction transaction = LogMessage_CardTransaction_init_zero;
+    log_message.card_transaction = transaction;
+    switch (current_state.mode) {
+      case CHARGE_LIST:
+      case CHARGE_MANUAL:
+        log_message.card_transaction.transaction_type =
+            LogMessage_CardTransaction_TransactionType_CHARGE;
+        break;
+      case PRIVILEGED_CASHOUT:
+        log_message.card_transaction.transaction_type =
+            LogMessage_CardTransaction_TransactionType_CASHOUT;
+        break;
+      case PRIVILEGED_TOPUP:
+        log_message.card_transaction.transaction_type =
+            LogMessage_CardTransaction_TransactionType_TOP_UP;
+        break;
+      default: {
+        // other events are not logged
+        return;
+      }
+    }
+
+    // TODO
+    log_message.card_transaction.has_counter = true;
+    log_message.card_transaction.counter = 0;
+    strncpy(log_message.card_transaction.card_id, "", sizeof(log_message.card_transaction.card_id));
+    log_message.card_transaction.balance_after = 0;
+    log_message.card_transaction.balance_before = 0;
+    log_message.card_transaction.deposit_after = 0;
+    log_message.card_transaction.deposit_before = 0;
+  }
+
+  // Order details
+  if (current_state.cart.item_count > 0) {
+    log_message.has_order = true;
+    log_message.order.payment_method = payment_method;
+    log_message.order.cart_items_count = current_state.cart.item_count;
+    for (int i = 0; i < current_state.cart.item_count; i++) {
+      log_message.order.cart_items[i] = current_state.cart.items[i];
+    }
+  }
+
+  // Device details
   for (int i = 0; i < sizeof(log_message.client_id) - 1; i++) {
     log_message.client_id[i] = ALPHABET[esp_random() % strlen(ALPHABET)];
   }
   log_message.client_id[sizeof(log_message.client_id) - 1] = '\0';
-  log_message.device_time = 1;            // TODO
-  log_message.device_time_is_utc = true;  // TODO
+  log_message.device_time = time(NULL);
+  log_message.device_time_is_utc = true;
   device_id(log_message.device_id);
 
   char filename[29];
