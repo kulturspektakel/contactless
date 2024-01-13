@@ -47,6 +47,16 @@
     "vector": "c",
     "memory": "c",
     "string_view": "c",
-    "system_error": "c"
+    "system_error": "c",
+    "adc.h": "c",
+    "stdint.h": "c",
+    "queue.h": "c",
+    "state_machine.h": "c",
+    "adc_cali.h": "c",
+    "adc_cali_scheme.h": "c",
+    "adc_oneshot.h": "c",
+    "chrono": "c",
+    "limits": "c",
+    "power_management.h": "c"
   }
 }

@@ -4,6 +4,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "log_uploader.h"
+#include "power_management.h"
 #include "state_machine.h"
 #include "time.h"
 #include "u8g2.h"
@@ -34,22 +35,44 @@ static void vTimerCallback(TimerHandle_t timer) {
   xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
 }
 
-static void battery(u8g2_t* u8g2, int current) {
-  int y = 0;
-  int h = 4;
-  int w = 10;
-  int x = DISPLAY_WIDTH - 1 - w;
-  int min = 0;
-  int max = 1000;
-  u8g2_DrawLine(u8g2, x, y, x, y + h);
-  u8g2_DrawLine(u8g2, x, y, x + w - 2, y);
-  u8g2_DrawLine(u8g2, x + w - 2, y, x + w - 2, y + h);
-  u8g2_DrawLine(u8g2, x, y + h, x + w - 2, y + h);
-  u8g2_DrawLine(u8g2, x + w, y + 1, x + w, y + h - 1);
+static void battery(u8g2_t* u8g2) {
+  if (usb_voltage > 0 && battery_voltage > 2000) {
+    // pluged in / battery full
+  } else if (usb_voltage > 0) {
+    // charging
 
-  // 100% overruns the bar
-  int bar_width = (w - 2) * (current - min) / (max - min);
-  u8g2_DrawBox(u8g2, x + 1, y + 1, bar_width, h - 1);
+  } else {
+    // running on battery
+  }
+
+  int offset = DISPLAY_WIDTH - 1;
+
+  if (usb_voltage > 1000) {
+    // charger
+    u8g2_DrawHLine(u8g2, offset - 2, 1, 2);
+    u8g2_DrawHLine(u8g2, offset - 2, 3, 2);
+    u8g2_DrawBox(u8g2, offset - 6, 0, 4, 5);
+    u8g2_DrawVLine(u8g2, offset - 7, 1, 3);
+    u8g2_DrawHLine(u8g2, offset - 10, 2, 3);
+  } else {
+    // battery
+    int BATTERY_WIDTH = 8;
+    u8g2_DrawFrame(u8g2, offset - BATTERY_WIDTH - 2, 0, 8, 5);
+    int bar_width =
+        (battery_voltage - BATTERY_MIN) * (BATTERY_WIDTH - 1) / (BATTERY_MAX - BATTERY_MIN);
+    u8g2_DrawBox(u8g2, offset - BATTERY_WIDTH - 1, 1, bar_width, 3);
+    u8g2_DrawVLine(u8g2, offset - 1, 1, 3);
+  }
+
+  u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
+  char buffer[10];
+  int percentage = battery_voltage * 100 / BATTERY_MAX;
+  if (percentage > 100) {
+    percentage = 100;
+  }
+  snprintf(buffer, sizeof(buffer), "%d%%", percentage);
+  u8g2_uint_t w = u8g2_GetStrWidth(u8g2, buffer);
+  u8g2_DrawStr(u8g2, DISPLAY_WIDTH - w - 13, 5, buffer);
 }
 
 static int animation_tick(int ms) {
@@ -145,9 +168,9 @@ static void keypad_legend(u8g2_t* u8g2) {
 }
 
 static void status_bar(u8g2_t* u8g2) {
-  battery(u8g2, 1);
+  battery(u8g2);
   wifi_strength(u8g2);
-  pending_uploads(u8g2);
+  // pending_uploads(u8g2);
   time_display(u8g2);
 }
 
@@ -171,9 +194,10 @@ static void draw_amount(u8g2_t* u8g2, int amount, int y) {
 
 static void charge_list(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+  int LINE_HEIGHT = 11;
 
   for (int i = 0; i < current_state.cart.item_count && i < 3; i++) {
-    char product[13];
+    char product[17];
     if (i == 2 && current_state.cart.item_count > 3) {
       int sum = 0;
       int amount = 0;
@@ -182,23 +206,26 @@ static void charge_list(u8g2_t* u8g2) {
         amount += current_state.cart.items[j].amount;
       }
       snprintf(product, sizeof(product), "+%d weitere", amount);
-      u8g2_DrawStr(u8g2, 0, 17 + (i * 10), product);
-      draw_amount(u8g2, sum, 17 + (i * 10));
+      u8g2_DrawStr(u8g2, 0, 17 + (i * LINE_HEIGHT), product);
+      draw_amount(u8g2, sum, 17 + (i * LINE_HEIGHT));
       break;
     }
 
     snprintf(
         product,
         sizeof(product),
-        "%ld %.10s",
+        "%ld %.14s",
         current_state.cart.items[i].amount,
         current_state.cart.items[i].product.name
     );
-    u8g2_DrawStr(u8g2, 0, 17 + (i * 10), product);
+    if (strlen(product) > 16) {
+      product[15] = '_';
+    }
+    u8g2_DrawStr(u8g2, 0, 17 + (i * LINE_HEIGHT), product);
     draw_amount(
         u8g2,
         current_state.cart.items[i].amount * current_state.cart.items[i].product.price,
-        17 + (i * 10)
+        17 + (i * LINE_HEIGHT)
     );
   }
 
@@ -283,11 +310,11 @@ static void charge_without_card(u8g2_t* u8g2) {
         strncpy(label, "Gutschein", sizeof(label));
         break;
     }
-    u8g2_DrawRFrame(u8g2, 0, 16 + (i * 18), 16, 16, 2);
+    u8g2_DrawRFrame(u8g2, 0, 9 + (i * 15), 13, 13, 2);
     char number[2];
     snprintf(number, sizeof(number), "%d", i + 1);
-    u8g2_DrawStr(u8g2, 4, 18 + (i * 18), number);
-    u8g2_DrawStr(u8g2, 20, 18 + (i * 18), label);
+    u8g2_DrawStr(u8g2, 4, 19 + (i * 15), number);
+    u8g2_DrawStr(u8g2, 18, 19 + (i * 15), label);
   }
 }
 
