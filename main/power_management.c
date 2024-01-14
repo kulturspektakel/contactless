@@ -52,7 +52,7 @@ static void update_leds() {
     gpio_set_level(LED_BLUE_PIN, 0);
     gpio_set_level(LED_GREEN_PIN, 1);
     gpio_set_level(LED_RED_PIN, 1);
-  } else if (battery_voltage < BATTERY_MIN + 100) {
+  } else if (battery_voltage < 1700) {
     // red
     gpio_set_level(LED_BLUE_PIN, 1);
     gpio_set_level(LED_GREEN_PIN, 1);
