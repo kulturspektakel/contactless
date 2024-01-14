@@ -8,6 +8,8 @@ message LogMessage {
   bool device_time_is_utc = 4;
   optional Order order = 5;
   optional CardTransaction card_transaction = 6;
+  optional int32 battery_voltage = 7;
+  optional int32 usb_voltage = 8;
 
   message CardTransaction {
     TransactionType transaction_type = 1;

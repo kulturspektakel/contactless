@@ -36,43 +36,31 @@ static void vTimerCallback(TimerHandle_t timer) {
 }
 
 static void battery(u8g2_t* u8g2) {
-  if (usb_voltage > 0 && battery_voltage > 2000) {
-    // pluged in / battery full
-  } else if (usb_voltage > 0) {
-    // charging
-
-  } else {
-    // running on battery
-  }
-
   int offset = DISPLAY_WIDTH - 1;
 
   if (usb_voltage > 1000) {
-    // charger
+    // charger icon
     u8g2_DrawHLine(u8g2, offset - 2, 1, 2);
     u8g2_DrawHLine(u8g2, offset - 2, 3, 2);
     u8g2_DrawBox(u8g2, offset - 6, 0, 4, 5);
     u8g2_DrawVLine(u8g2, offset - 7, 1, 3);
     u8g2_DrawHLine(u8g2, offset - 10, 2, 3);
   } else {
-    // battery
+    // battery icon
     int BATTERY_WIDTH = 8;
+    int percentage = battery_percentage();
     u8g2_DrawFrame(u8g2, offset - BATTERY_WIDTH - 2, 0, 8, 5);
-    int bar_width =
-        (battery_voltage - BATTERY_MIN) * (BATTERY_WIDTH - 1) / (BATTERY_MAX - BATTERY_MIN);
+    int bar_width = (percentage * (BATTERY_WIDTH - 1)) / 100;
     u8g2_DrawBox(u8g2, offset - BATTERY_WIDTH - 1, 1, bar_width, 3);
     u8g2_DrawVLine(u8g2, offset - 1, 1, 3);
-  }
 
-  u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
-  char buffer[10];
-  int percentage = battery_voltage * 100 / BATTERY_MAX;
-  if (percentage > 100) {
-    percentage = 100;
+    // percentage string
+    u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
+    char buffer[10];
+    snprintf(buffer, sizeof(buffer), "%d%%", percentage);
+    u8g2_uint_t w = u8g2_GetStrWidth(u8g2, buffer);
+    u8g2_DrawStr(u8g2, DISPLAY_WIDTH - w - 13, 5, buffer);
   }
-  snprintf(buffer, sizeof(buffer), "%d%%", percentage);
-  u8g2_uint_t w = u8g2_GetStrWidth(u8g2, buffer);
-  u8g2_DrawStr(u8g2, DISPLAY_WIDTH - w - 13, 5, buffer);
 }
 
 static int animation_tick(int ms) {

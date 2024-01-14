@@ -62,6 +62,10 @@ typedef struct _LogMessage {
     LogMessage_Order order;
     bool has_card_transaction;
     LogMessage_CardTransaction card_transaction;
+    bool has_battery_voltage;
+    int32_t battery_voltage;
+    bool has_usb_voltage;
+    int32_t usb_voltage;
 } LogMessage;
 
 
@@ -86,11 +90,11 @@ extern "C" {
 
 
 /* Initializer values for message structs */
-#define LogMessage_init_default                  {"", "", 0, 0, false, LogMessage_Order_init_default, false, LogMessage_CardTransaction_init_default}
+#define LogMessage_init_default                  {"", "", 0, 0, false, LogMessage_Order_init_default, false, LogMessage_CardTransaction_init_default, false, 0, false, 0}
 #define LogMessage_CardTransaction_init_default  {_LogMessage_CardTransaction_TransactionType_MIN, 0, 0, 0, 0, "", false, 0}
 #define LogMessage_Order_init_default            {_LogMessage_Order_PaymentMethod_MIN, 0, {LogMessage_Order_CartItem_init_default, LogMessage_Order_CartItem_init_default, LogMessage_Order_CartItem_init_default, LogMessage_Order_CartItem_init_default, LogMessage_Order_CartItem_init_default, LogMessage_Order_CartItem_init_default, LogMessage_Order_CartItem_init_default, LogMessage_Order_CartItem_init_default, LogMessage_Order_CartItem_init_default}, false, 0}
 #define LogMessage_Order_CartItem_init_default   {0, false, Product_init_default}
-#define LogMessage_init_zero                     {"", "", 0, 0, false, LogMessage_Order_init_zero, false, LogMessage_CardTransaction_init_zero}
+#define LogMessage_init_zero                     {"", "", 0, 0, false, LogMessage_Order_init_zero, false, LogMessage_CardTransaction_init_zero, false, 0, false, 0}
 #define LogMessage_CardTransaction_init_zero     {_LogMessage_CardTransaction_TransactionType_MIN, 0, 0, 0, 0, "", false, 0}
 #define LogMessage_Order_init_zero               {_LogMessage_Order_PaymentMethod_MIN, 0, {LogMessage_Order_CartItem_init_zero, LogMessage_Order_CartItem_init_zero, LogMessage_Order_CartItem_init_zero, LogMessage_Order_CartItem_init_zero, LogMessage_Order_CartItem_init_zero, LogMessage_Order_CartItem_init_zero, LogMessage_Order_CartItem_init_zero, LogMessage_Order_CartItem_init_zero, LogMessage_Order_CartItem_init_zero}, false, 0}
 #define LogMessage_Order_CartItem_init_zero      {0, false, Product_init_zero}
@@ -114,6 +118,8 @@ extern "C" {
 #define LogMessage_device_time_is_utc_tag        4
 #define LogMessage_order_tag                     5
 #define LogMessage_card_transaction_tag          6
+#define LogMessage_battery_voltage_tag           7
+#define LogMessage_usb_voltage_tag               8
 
 /* Struct field encoding specification for nanopb */
 #define LogMessage_FIELDLIST(X, a) \
@@ -122,7 +128,9 @@ X(a, STATIC,   SINGULAR, STRING,   client_id,         2) \
 X(a, STATIC,   SINGULAR, INT32,    device_time,       3) \
 X(a, STATIC,   SINGULAR, BOOL,     device_time_is_utc,   4) \
 X(a, STATIC,   OPTIONAL, MESSAGE,  order,             5) \
-X(a, STATIC,   OPTIONAL, MESSAGE,  card_transaction,   6)
+X(a, STATIC,   OPTIONAL, MESSAGE,  card_transaction,   6) \
+X(a, STATIC,   OPTIONAL, INT32,    battery_voltage,   7) \
+X(a, STATIC,   OPTIONAL, INT32,    usb_voltage,       8)
 #define LogMessage_CALLBACK NULL
 #define LogMessage_DEFAULT NULL
 #define LogMessage_order_MSGTYPE LogMessage_Order
@@ -169,7 +177,7 @@ extern const pb_msgdesc_t LogMessage_Order_CartItem_msg;
 #if defined(Product_size)
 #define LogMessage_Order_CartItem_size           (17 + Product_size)
 #define LogMessage_Order_size                    (220 + 9*Product_size)
-#define LogMessage_size                          (334 + 9*Product_size)
+#define LogMessage_size                          (356 + 9*Product_size)
 #endif
 #define LogMessage_CardTransaction_size          73
 

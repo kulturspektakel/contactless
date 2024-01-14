@@ -9,6 +9,7 @@
 #include "freertos/task.h"
 #include "log_uploader.h"
 #include "nanopb/pb_encode.h"
+#include "power_management.h"
 #include "state_machine.h"
 
 static const char* TAG = "logger";
@@ -82,6 +83,10 @@ void write_log(LogMessage_Order_PaymentMethod payment_method) {
   log_message.client_id[sizeof(log_message.client_id) - 1] = '\0';
   log_message.device_time = time(NULL);
   log_message.device_time_is_utc = true;
+  log_message.has_battery_voltage = true;
+  log_message.battery_voltage = battery_voltage;
+  log_message.has_usb_voltage = true;
+  log_message.usb_voltage = usb_voltage;
   device_id(log_message.device_id);
 
   char filename[29];

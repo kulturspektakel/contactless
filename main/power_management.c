@@ -8,11 +8,15 @@
 #include "event_group.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "math.h"
 
 #define TAG "power_management"
 #define USB_CHANNEL ADC_CHANNEL_0
 #define BATTERY_CHANNEL ADC_CHANNEL_1
 #define USB_PIN GPIO_NUM_1
+
+#define BATTERY_MAX 2070
+#define BATTERY_MIN 1500
 
 #define LED_BLUE_PIN GPIO_NUM_40
 #define LED_GREEN_PIN GPIO_NUM_41
@@ -21,6 +25,18 @@
 int battery_voltage = 0;
 int usb_voltage = 0;
 static TaskHandle_t task_handle;
+
+int battery_percentage() {
+  // https://www.desmos.com/calculator/jymu8kltny
+  double percentage =
+      1.2 - (1.2 / (1.0 + pow(((1.5 * fmax(0.0, battery_voltage - BATTERY_MIN)) / 580), 4.0)));
+  if (percentage < 0) {
+    percentage = 0;
+  } else if (percentage > 1) {
+    percentage = 1;
+  }
+  return (int)(percentage * 100);
+}
 
 static void adc_calibration_init(
     adc_unit_t unit,
@@ -85,10 +101,24 @@ static void read_voltages() {
   adc_cali_handle_t usb_cali_handle = NULL;
   adc_calibration_init(init_config.unit_id, USB_CHANNEL, config.atten, &usb_cali_handle);
 
-  adc_oneshot_read(adc1_handle, BATTERY_CHANNEL, &battery_voltage);
-  adc_cali_raw_to_voltage(battery_cali_handle, battery_voltage, &battery_voltage);
-  adc_oneshot_read(adc1_handle, USB_CHANNEL, &usb_voltage);
-  adc_cali_raw_to_voltage(usb_cali_handle, usb_voltage, &usb_voltage);
+  battery_voltage = 0;
+  usb_voltage = 0;
+  int battery_voltage_tmp;
+  int usb_voltage_tmp;
+  for (int i = 0; i < 3; i++) {
+    adc_oneshot_read(adc1_handle, BATTERY_CHANNEL, &battery_voltage_tmp);
+    adc_cali_raw_to_voltage(battery_cali_handle, battery_voltage_tmp, &battery_voltage_tmp);
+    adc_oneshot_read(adc1_handle, USB_CHANNEL, &usb_voltage_tmp);
+    adc_cali_raw_to_voltage(usb_cali_handle, usb_voltage_tmp, &usb_voltage_tmp);
+    ESP_LOGI(TAG, "Measurement %d USB %dmV, battery %dmV", i, usb_voltage_tmp, battery_voltage_tmp);
+
+    // find max voltage
+    battery_voltage = battery_voltage_tmp > battery_voltage ? battery_voltage_tmp : battery_voltage;
+    usb_voltage = usb_voltage_tmp > usb_voltage ? usb_voltage_tmp : usb_voltage;
+
+    // delay to allow ADC to settle
+    vTaskDelay(1 / portTICK_PERIOD_MS);
+  }
 
   ESP_ERROR_CHECK(adc_oneshot_del_unit(adc1_handle));
 
