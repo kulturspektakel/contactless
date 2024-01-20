@@ -10,6 +10,7 @@
 
 static const char* TAG = "wifi_connect";
 static TimerHandle_t signal_strength_timer;
+static int backoff_counter = 1;
 int8_t wifi_rssi = 0;
 wifi_status_t wifi_status = DISCONNECTED;
 
@@ -38,13 +39,17 @@ static void event_handler(
     if (signal_strength_timer != NULL) {
       xTimerDelete(signal_strength_timer, 0);
     }
+    if (backoff_counter < 15) {
+      backoff_counter++;
+    }
     // notify task to try reconnecting
     xTaskNotifyGive(arg);
   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-    wifi_status = WIFI_CONNECTED;
+    backoff_counter = 1;
+    wifi_status = CONNECTED;
     xEventGroupSetBits(event_group, WIFI_CONNECTED);
     signal_strength_timer = xTimerCreate(
-        "wifi_signal_strength", pdMS_TO_TICKS(10000), pdTRUE, 0, update_signal_strength
+        "wifi_signal_strength", pdMS_TO_TICKS(30000), pdTRUE, 0, update_signal_strength
     );
   }
   xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
@@ -93,8 +98,8 @@ void wifi_connect(void* params) {
   while (1) {
     // reconnect if disconnected
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    // TODO maybe exponential backoff
-    vTaskDelay(10000 / portTICK_PERIOD_MS);
+    ESP_LOGI(TAG, "Disconnected, reconnecting in %d minutes", backoff_counter);
+    vTaskDelay(pdMS_TO_TICKS(60000 * backoff_counter));
     esp_wifi_connect();
   }
 }

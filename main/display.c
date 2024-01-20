@@ -31,7 +31,7 @@ static const uint8_t logo_bits[] = {
     0xFF, 0xFF, 0xFF, 0xFF, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0x03,
 };
 static TimerHandle_t animation_timer;
-static void vTimerCallback(TimerHandle_t timer) {
+static void animation_timer_cb(TimerHandle_t timer) {
   xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
 }
 
@@ -66,10 +66,10 @@ static void battery(u8g2_t* u8g2) {
 static int animation_tick(int ms) {
   static int64_t last_time_ms = 0;
   if (animation_timer == NULL) {
-    animation_timer = xTimerCreate("animation_timer", pdMS_TO_TICKS(ms), pdTRUE, 0, vTimerCallback);
-  } else {
-    xTimerReset(animation_timer, pdMS_TO_TICKS(ms));
+    animation_timer =
+        xTimerCreate("animation_timer", pdMS_TO_TICKS(ms), pdFALSE, NULL, animation_timer_cb);
   }
+  xTimerReset(animation_timer, 0);
   int64_t now = esp_timer_get_time() / 1000;
   if (now - last_time_ms >= ms) {
     last_time_ms = now;
@@ -83,28 +83,30 @@ static void wifi_strength(u8g2_t* u8g2) {
   int y = 4;
   int bars = 0;
 
-  switch (wifi_status) {
-    case CONNECTING:
-      skip = animation_tick(250) % 4;
-      break;
+  // switch (wifi_status) {
+  //   case CONNECTING:
+  //     skip = animation_tick(250) % 4;
+  //     break;
 
-    case CONNECTED:
-      skip = -1;
-      if (wifi_rssi > -55) {
-        bars = 4;
-      } else if (wifi_rssi > -66) {
-        bars = 3;
-      } else if (wifi_rssi > -77) {
-        bars = 2;
-      } else {
-        bars = 1;
-      }
-      break;
+  //   case CONNECTED:
+  //     skip = -1;
+  //     if (wifi_rssi > -55) {
+  //       bars = 4;
+  //     } else if (wifi_rssi > -66) {
+  //       bars = 3;
+  //     } else if (wifi_rssi > -77) {
+  //       bars = 2;
+  //     } else {
+  //       bars = 1;
+  //     }
+  //     break;
 
-    case DISCONNECTED:
-      skip = -1;
-      break;
-  }
+  //   case DISCONNECTED:
+  //     skip = -1;
+  //     break;
+  // }
+  skip = animation_tick(250) % 4;
+  ESP_LOGI(TAG, "skip: %d", skip);
 
   for (int step = 0; step < 4; step++) {
     if (step == skip) {
@@ -117,7 +119,7 @@ static void wifi_strength(u8g2_t* u8g2) {
 static void pending_uploads(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
   char pending[4];
-  sprintf(pending, "%3d", log_count);
+  sprintf(pending, "%3d", current_state.log_files_to_upload);
   // render right aligned
   u8g2_uint_t w = u8g2_GetStrWidth(u8g2, pending);
   u8g2_DrawStr(u8g2, DISPLAY_WIDTH - 16 - w, 5, pending);
@@ -368,6 +370,6 @@ void display(void* params) {
     }
 
     u8g2_SendBuffer(&u8g2);
-    xEventGroupWaitBits(event_group, DISPLAY_NEEDS_UPDATE, pdFALSE, pdTRUE, portMAX_DELAY);
+    xEventGroupWaitBits(event_group, DISPLAY_NEEDS_UPDATE, pdTRUE, pdTRUE, portMAX_DELAY);
   }
 }

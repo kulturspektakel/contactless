@@ -7,7 +7,6 @@
 #include "esp_random.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "log_uploader.h"
 #include "nanopb/pb_encode.h"
 #include "power_management.h"
 #include "state_machine.h"
@@ -15,8 +14,6 @@
 static const char* TAG = "logger";
 static const char* ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 static const char* LOG_DIR = "/littlefs/logs";
-
-LogMessage log_message = LogMessage_init_default;
 
 bool write_pb_to_file(pb_ostream_t* stream, const uint8_t* buffer, size_t count) {
   FILE* file = (FILE*)stream->state;
@@ -31,6 +28,8 @@ bool write_pb_to_file(pb_ostream_t* stream, const uint8_t* buffer, size_t count)
 }
 
 void write_log(LogMessage_Order_PaymentMethod payment_method) {
+  LogMessage log_message = LogMessage_init_default;
+
   // Card details
   if (payment_method == LogMessage_Order_PaymentMethod_KULT_CARD) {
     log_message.has_card_transaction = true;
@@ -104,7 +103,7 @@ void write_log(LogMessage_Order_PaymentMethod payment_method) {
 
     if (pb_encode(&file_stream, LogMessage_fields, &log_message)) {
       ESP_LOGI(TAG, "Wrote log to %s", filename);
-      log_count++;
+      current_state.log_files_to_upload++;
       xTaskNotifyGive(xTaskGetHandle("log_uploader"));
       LogMessage l = LogMessage_init_default;
       log_message = l;

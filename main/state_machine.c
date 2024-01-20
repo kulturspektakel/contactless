@@ -14,6 +14,7 @@ state_t current_state = {
     .is_privileged = false,
     .product_list_first_digit = -1,
     .main_menu = {.count = 0},
+    .log_files_to_upload = -1,
     .cart =
         {
             .deposit = 0,

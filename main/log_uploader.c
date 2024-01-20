@@ -6,10 +6,12 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "http_auth_headers.h"
+#include "logger.h"
+#include "state_machine.h"
 
 static const char* TAG = "log_uploader";
 static const char* LOG_DIR = "/littlefs/logs";
-int log_count = -1;
+#define MAX_ERRORS 3
 
 int count_logs() {
   DIR* dir = opendir(LOG_DIR);
@@ -72,7 +74,7 @@ log_uploader_event_t upload_file(char* filename) {
   free(buffer);
 
   if (err != ESP_OK) {
-    ESP_LOGE(TAG, "HTTP request failed: %s", esp_err_to_name(err));
+    ESP_LOGE(TAG, "Request failed (Error: %s)", esp_err_to_name(err));
     esp_http_client_cleanup(client);
     return HTTP_ISSUE;
   }
@@ -81,15 +83,13 @@ log_uploader_event_t upload_file(char* filename) {
   esp_http_client_cleanup(client);
 
   if (status_code == 201 || status_code == 409) {
-    ESP_LOGI(TAG, "Log received: %d", status_code);
-    remove(filename);
+    ESP_LOGI(TAG, "Upload successful (HTTP %d), deleting log file %s", status_code, filename);
     return FILE_HANDLED;
   } else if (status_code == 400) {
-    ESP_LOGE(TAG, "Bad request, delete log");
-    remove(filename);
+    ESP_LOGE(TAG, "Bad request (HTTP 400), deleting log file %s", filename);
     return FILE_HANDLED;
   } else {
-    ESP_LOGE(TAG, "Some problem (%d): back off", status_code);
+    ESP_LOGE(TAG, "Server error (HTTP %d), skipping file %s", status_code, filename);
     return FILE_SKIPPED;
   }
 }
@@ -109,16 +109,22 @@ void maybe_create_log_dir() {
   closedir(dir);
 }
 
+static void retry_upload(TimerHandle_t xTimer) {
+  xTaskNotifyGive(xTaskGetHandle("log_uploader"));
+}
+
 void log_uploader(void* params) {
+  TimerHandle_t retry_timer = NULL;
   maybe_create_log_dir();
 
   // initial value
-  log_count = count_logs();
-  ESP_LOGI(TAG, "Found %d logs", log_count);
+  current_state.log_files_to_upload = count_logs();
+  xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
+  ESP_LOGI(TAG, "Found %d logs", current_state.log_files_to_upload);
 
   while (1) {
     xEventGroupWaitBits(event_group, WIFI_CONNECTED, pdFALSE, pdTRUE, portMAX_DELAY);
-    int consecutive_error_count = 0;
+    int error_count = 0;
     DIR* dir = opendir(LOG_DIR);
     struct dirent* entry;
     while ((entry = readdir(dir))) {
@@ -129,37 +135,48 @@ void log_uploader(void* params) {
 
       char filename[29];
       sprintf(filename, "%s/%.12s", LOG_DIR, entry->d_name);
+      ESP_LOGI(TAG, "Found log file %s", filename);
       log_uploader_event_t status = upload_file(filename);
 
       switch (status) {
         case FILE_SKIPPED:
-          consecutive_error_count++;
+          error_count++;
           break;
         case FILE_HANDLED:
-          log_count--;
-          consecutive_error_count = 0;
-          remove(filename);
+          if (remove(filename) == 0) {
+            current_state.log_files_to_upload--;
+            if (current_state.log_files_to_upload < 0) {
+              current_state.log_files_to_upload = 0;
+            }
+            xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
+          }
           break;
         case HTTP_ISSUE:
           // force starting over
-          consecutive_error_count = 3;
+          error_count = MAX_ERRORS;
           break;
       }
 
-      if (consecutive_error_count > 2) {
-        ESP_LOGE(TAG, "Too many consecutive errors");
+      if (error_count >= MAX_ERRORS) {
+        ESP_LOGE(TAG, "Stopping log uploader after %d error(s)", error_count);
         break;
       }
     }
     closedir(dir);
 
-    if (consecutive_error_count > 2) {
-      // stopped because of too many errors, retry after 2 minutes
-      vTaskDelay(120000 / portTICK_PERIOD_MS);
-    } else if (log_count == 0) {
-      // no logs left, wait for new ones
-      ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    if (error_count > 0) {
+      // retry in 5 minutes
+      if (retry_timer == NULL) {
+        retry_timer =
+            xTimerCreate("retry_timer", pdMS_TO_TICKS(300000), pdFALSE, NULL, retry_upload);
+      }
+      ESP_LOGI(
+          TAG, "Encountered %d errors while uploading. Scheduling retry in 5 Minutes", error_count
+      );
+      xTimerReset(retry_timer, 0);
     }
-    // else: there are still logs left, try again immediately
+
+    // waiting for new log files to be written or the retry timer to fire
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
   }
 }

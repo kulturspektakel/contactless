@@ -71,6 +71,7 @@ typedef struct {
   int product_list_first_digit;
   menu_items_t main_menu;
   mode_type previous_mode;
+  int log_files_to_upload;
 } state_t;
 
 extern QueueHandle_t state_events;
