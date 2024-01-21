@@ -63,50 +63,51 @@ static void battery(u8g2_t* u8g2) {
   }
 }
 
-static int animation_tick(int ms) {
-  static int64_t last_time_ms = 0;
+static bool animation_tick(int ms, int64_t* last_time_ms) {
   if (animation_timer == NULL) {
     animation_timer =
         xTimerCreate("animation_timer", pdMS_TO_TICKS(ms), pdFALSE, NULL, animation_timer_cb);
   }
   xTimerReset(animation_timer, 0);
   int64_t now = esp_timer_get_time() / 1000;
-  if (now - last_time_ms >= ms) {
+  if (now - *last_time_ms >= ms) {
     last_time_ms = now;
+    return true;
   }
-  return last_time_ms;
+  return false;
 }
 
 static void wifi_strength(u8g2_t* u8g2) {
   static int skip = -1;
+  static int64_t last_time_ms = 0;
   int x = 0;
   int y = 4;
   int bars = 0;
 
-  // switch (wifi_status) {
-  //   case CONNECTING:
-  //     skip = animation_tick(250) % 4;
-  //     break;
+  switch (wifi_status) {
+    case CONNECTING:
+      if (animation_tick(200, &last_time_ms)) {
+        skip = (skip + 1) % 5;
+      }
+      break;
 
-  //   case CONNECTED:
-  //     skip = -1;
-  //     if (wifi_rssi > -55) {
-  //       bars = 4;
-  //     } else if (wifi_rssi > -66) {
-  //       bars = 3;
-  //     } else if (wifi_rssi > -77) {
-  //       bars = 2;
-  //     } else {
-  //       bars = 1;
-  //     }
-  //     break;
+    case CONNECTED:
+      skip = -1;
+      if (wifi_rssi > -55) {
+        bars = 4;
+      } else if (wifi_rssi > -66) {
+        bars = 3;
+      } else if (wifi_rssi > -77) {
+        bars = 2;
+      } else {
+        bars = 1;
+      }
+      break;
 
-  //   case DISCONNECTED:
-  //     skip = -1;
-  //     break;
-  // }
-  skip = animation_tick(250) % 4;
-  ESP_LOGI(TAG, "skip: %d", skip);
+    case DISCONNECTED:
+      skip = -1;
+      break;
+  }
 
   for (int step = 0; step < 4; step++) {
     if (step == skip) {
