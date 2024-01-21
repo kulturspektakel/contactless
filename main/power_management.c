@@ -58,17 +58,18 @@ static void IRAM_ATTR gpio_interrupt_handler(void* args) {
 }
 
 static void update_leds() {
-  if (battery_voltage > BATTERY_MAX && usb_voltage > 1000) {
-    // green
-    gpio_set_level(LED_BLUE_PIN, 1);
-    gpio_set_level(LED_GREEN_PIN, 0);
-    gpio_set_level(LED_RED_PIN, 1);
-  } else if (usb_voltage > 1000) {
-    // orange
-    gpio_set_level(LED_BLUE_PIN, 0);
-    gpio_set_level(LED_GREEN_PIN, 1);
-    gpio_set_level(LED_RED_PIN, 1);
-  } else if (battery_voltage < 1700) {
+  // if (battery_voltage > BATTERY_MAX && usb_voltage > 1000) {
+  //   // green
+  //   gpio_set_level(LED_BLUE_PIN, 1);
+  //   gpio_set_level(LED_GREEN_PIN, 0);
+  //   gpio_set_level(LED_RED_PIN, 1);
+  // } else if (usb_voltage > 1000) {
+  //   // orange
+  //   gpio_set_level(LED_BLUE_PIN, 0);
+  //   gpio_set_level(LED_GREEN_PIN, 1);
+  //   gpio_set_level(LED_RED_PIN, 1);
+  // } else
+  if (battery_voltage < 1700) {
     // red
     gpio_set_level(LED_BLUE_PIN, 1);
     gpio_set_level(LED_GREEN_PIN, 1);
@@ -110,7 +111,6 @@ static void read_voltages() {
     adc_cali_raw_to_voltage(battery_cali_handle, battery_voltage_tmp, &battery_voltage_tmp);
     adc_oneshot_read(adc1_handle, USB_CHANNEL, &usb_voltage_tmp);
     adc_cali_raw_to_voltage(usb_cali_handle, usb_voltage_tmp, &usb_voltage_tmp);
-    ESP_LOGI(TAG, "Measurement %d USB %dmV, battery %dmV", i, usb_voltage_tmp, battery_voltage_tmp);
 
     // find max voltage
     battery_voltage = battery_voltage_tmp > battery_voltage ? battery_voltage_tmp : battery_voltage;
@@ -167,7 +167,7 @@ void power_management(void* params) {
 
     vTaskDelay(200 / portTICK_PERIOD_MS);
     read_voltages();
-    ESP_LOGI(TAG, "reading voltages: USB %dmV, battery %dmV", usb_voltage, battery_voltage);
+    ESP_LOGI(TAG, "USB %dmV, battery %dmV", usb_voltage, battery_voltage);
     xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
   }
 }

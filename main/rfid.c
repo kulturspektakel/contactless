@@ -65,6 +65,7 @@ static bool read_card(spi_device_handle_t spi, mfrc522_uid* uid) {
       return false;
     }
 
+    ESP_LOGI(TAG, "Payload:");
     ESP_LOG_BUFFER_HEX(TAG, payload, 23);
 
     uint8_t decoded_payload[23];
@@ -75,8 +76,8 @@ static bool read_card(spi_device_handle_t spi, mfrc522_uid* uid) {
       ESP_LOGE(TAG, "Decoding payload failed %d", decode_error);
       return false;
     }
+    ESP_LOGI(TAG, "Decoded payload (size %d):", size_decoded);
     ESP_LOG_BUFFER_HEX(TAG, decoded_payload, size_decoded);
-    ESP_LOGI(TAG, "Decoded payload size: %d", size_decoded);
 
     new_card.counter = *((uint16_t*)backData);
     uint16_t counter_from_payload = *(uint16_t*)(decoded_payload + OFFSET_COUNTER);
