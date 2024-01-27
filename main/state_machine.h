@@ -63,14 +63,20 @@ typedef struct {
 typedef struct {
   menu_item_t* items;
   size_t count;
-  int active_item;
+  int8_t active_item;
 } menu_items_t;
+
+typedef struct {
+  int8_t first_digit;
+  int8_t second_digit;
+  uint8_t current_index;
+} product_selection_t;
 
 typedef struct {
   mode_type mode;
   bool is_privileged;
   cart_t cart;
-  int product_list_number_entry;
+  product_selection_t product_selection;
   menu_items_t main_menu;
   mode_type previous_mode;
   int log_files_to_upload;

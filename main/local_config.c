@@ -131,9 +131,8 @@ void local_config(void* params) {
       ESP_LOGE(TAG, "failed to load product list");
       // TODO fatal error
     }
-
     xEventGroupClearBits(event_group, LOCAL_CONFIG_UPDATED);
-    xEventGroupSetBits(event_group, LOCAL_CONFIG_LOADED);
+    xEventGroupSetBits(event_group, LOCAL_CONFIG_LOADED | DISPLAY_NEEDS_UPDATE);
     xEventGroupWaitBits(event_group, LOCAL_CONFIG_UPDATED, pdTRUE, pdTRUE, portMAX_DELAY);
   }
   vTaskDelete(NULL);

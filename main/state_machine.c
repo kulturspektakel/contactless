@@ -13,9 +13,14 @@ state_t current_state = {
     .mode = MAIN_STARTING_UP,
     .previous_mode = MAIN_STARTING_UP,
     .is_privileged = false,
-    .product_list_number_entry = -1,
     .main_menu = {.count = 0},
     .log_files_to_upload = -1,
+    .product_selection =
+        {
+            .first_digit = -1,
+            .second_digit = -1,
+            .current_index = 0,
+        },
     .cart =
         {
             .deposit = 0,
@@ -121,6 +126,16 @@ static mode_type card_detected(event_t event) {
 
 static mode_type charge_list_two_digit(event_t event) {
   switch (event) {
+    case KEY_A:
+      if (current_state.product_selection.current_index > 0) {
+        current_state.product_selection.current_index--;
+      }
+      break;
+    case KEY_B:
+      if (current_state.product_selection.current_index < active_config.products_count - 1) {
+        current_state.product_selection.current_index++;
+      }
+      break;
     case KEY_0:
     case KEY_1:
     case KEY_2:
@@ -131,24 +146,38 @@ static mode_type charge_list_two_digit(event_t event) {
     case KEY_7:
     case KEY_8:
     case KEY_9:
-      if (current_state.product_list_number_entry == -1 &&
+      if (current_state.product_selection.first_digit == -1 &&
           event - KEY_0 <= active_config.products_count / 10) {
         // set first digit
-        current_state.product_list_number_entry = event - KEY_0;
-      } else if (current_state.product_list_number_entry * 10 + event - KEY_0 <= active_config.products_count) {
+        current_state.product_selection.first_digit = event - KEY_0;
+        current_state.product_selection.current_index =
+            current_state.product_selection.first_digit * 10;
+        if (current_state.product_selection.current_index > 0) {
+          current_state.product_selection.current_index--;
+        }
+      } else if (current_state.product_selection.first_digit * 10 + event - KEY_0 <= active_config.products_count) {
         // set second digit
-        current_state.product_list_number_entry =
-            current_state.product_list_number_entry * 10 + event - KEY_0;
-        select_product(current_state.product_list_number_entry);
-        timeout(300);
+        current_state.product_selection.second_digit = event - KEY_0;
+        current_state.product_selection.current_index =
+            current_state.product_selection.first_digit * 10 +
+            current_state.product_selection.second_digit - 1;
+        select_product(current_state.product_selection.current_index);
+        timeout(400);
       }
       break;
-    case KEY_HASH:
-    case KEY_C:
     case KEY_D:
     case TIMEOUT:
-      current_state.product_list_number_entry = -1;
+      current_state.product_selection.first_digit = -1;
+      current_state.product_selection.second_digit = -1;
+      current_state.product_selection.current_index = 0;
       return CHARGE_LIST;
+    case KEY_HASH:
+      select_product(current_state.product_selection.current_index);
+      uint8_t i = current_state.product_selection.current_index + 1;
+      current_state.product_selection.first_digit = i / 10;
+      current_state.product_selection.second_digit = i % 10;
+      timeout(400);
+      break;
     default:
       break;
   }
@@ -189,7 +218,7 @@ static mode_type charge_list(event_t event) {
     case KEY_STAR:
       return current_state.cart.item_count > 0 ? CHARGE_WITHOUT_CARD : CHARGE_LIST;
     case KEY_HASH:
-      return active_config.products_count > 9 ? CHARGE_LIST_TWO_DIGIT : CHARGE_LIST;
+      return CHARGE_LIST_TWO_DIGIT;
     case TOKEN_DETECTED:
       return token_detected(event);
     case CARD_DETECTED:
@@ -318,22 +347,22 @@ static mode_type privileged_topup(event_t event) {
 static mode_type main_menu(event_t event) {
   switch (event) {
     case KEY_A:
-      current_state.main_menu.active_item--;
-      if (current_state.main_menu.active_item < 0) {
-        current_state.main_menu.active_item = 0;
+      if (current_state.main_menu.active_item > 0) {
+        current_state.main_menu.active_item--;
       }
       break;
     case KEY_B:
-      current_state.main_menu.active_item++;
-      if (current_state.main_menu.active_item >= current_state.main_menu.count) {
-        current_state.main_menu.active_item = current_state.main_menu.count - 1;
+      if (current_state.main_menu.active_item < current_state.main_menu.count - 1) {
+        current_state.main_menu.active_item++;
       }
       break;
-    case KEY_STAR:
+    case KEY_HASH:
       reset_cart();
       select_list(current_state.main_menu.items[current_state.main_menu.active_item].list_id);
-      // fallthrough
+      timeout(400);
+      break;
     case KEY_D:
+    case TIMEOUT:
       current_state.main_menu.count = 0;
       free(current_state.main_menu.items);
       return default_mode();
