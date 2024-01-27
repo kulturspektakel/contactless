@@ -23,6 +23,7 @@ typedef enum {
   KEY_D,
   KEY_TRIPPLE_HASH,
   CARD_DETECTED,
+  CARD_REMOVED,
   TOKEN_DETECTED,
   TIMEOUT,
   STARTUP_COMPLETED,
@@ -44,11 +45,12 @@ typedef enum {
 
   WRITE_CARD,
   WRITE_FAILED,
+
+  CARD_BALANCE,
 } mode_type;
 
 typedef struct {
   int deposit;
-  int total;
   LogMessage_Order_CartItem items[9];
   int item_count;
 } cart_t;
@@ -68,7 +70,7 @@ typedef struct {
   mode_type mode;
   bool is_privileged;
   cart_t cart;
-  int product_list_first_digit;
+  int product_list_number_entry;
   menu_items_t main_menu;
   mode_type previous_mode;
   int log_files_to_upload;
@@ -77,3 +79,4 @@ typedef struct {
 extern QueueHandle_t state_events;
 extern state_t current_state;
 void state_machine(void* params);
+int current_total();

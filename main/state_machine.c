@@ -6,23 +6,37 @@
 #include "logmessage.pb.h"
 
 static const char* TAG = "state_machine";
+static TimerHandle_t timeout_handle;
 
 QueueHandle_t state_events;
 state_t current_state = {
     .mode = MAIN_STARTING_UP,
     .previous_mode = MAIN_STARTING_UP,
     .is_privileged = false,
-    .product_list_first_digit = -1,
+    .product_list_number_entry = -1,
     .main_menu = {.count = 0},
     .log_files_to_upload = -1,
     .cart =
         {
             .deposit = 0,
-            .total = 0,
             .items = {},
             .item_count = 0,
         },
 };
+
+static void timeout_callback(TimerHandle_t timer) {
+  xQueueSend(state_events, (void*)&(event_t){TIMEOUT}, portMAX_DELAY);
+}
+
+static void timeout(int ms) {
+  if (timeout_handle == NULL) {
+    timeout_handle = xTimerCreate("timeout_timer", pdMS_TO_TICKS(ms), pdFALSE, 0, timeout_callback);
+    xTimerStart(timeout_handle, 0);
+  } else {
+    xTimerChangePeriod(timeout_handle, pdMS_TO_TICKS(ms), 0);
+    xTimerReset(timeout_handle, 0);
+  }
+}
 
 static mode_type default_mode() {
   return current_state.is_privileged ? PRIVILEGED_TOPUP : CHARGE_LIST;
@@ -30,7 +44,6 @@ static mode_type default_mode() {
 
 static void reset_cart() {
   current_state.cart.deposit = 0;
-  current_state.cart.total = 0;
   current_state.cart.item_count = 0;
 }
 
@@ -42,10 +55,9 @@ static void select_product(int product) {
     return;
   }
   Product p = active_config.products[product];
-  if (current_state.cart.total + p.price > 9999) {
+  if (current_total() + p.price > 9999) {
     return;
   }
-  current_state.cart.total += p.price;
 
   for (int i = 0; i < current_state.cart.item_count; i++) {
     if (current_state.cart.items[i].has_product &&
@@ -64,8 +76,19 @@ static void select_product(int product) {
   current_state.cart.item_count++;
 }
 
+int current_total() {
+  int total = current_state.cart.deposit * 200;
+  for (int i = 0; i < current_state.cart.item_count; i++) {
+    if (!current_state.cart.items[i].has_product) {
+      continue;
+    }
+    total += current_state.cart.items[i].amount * current_state.cart.items[i].product.price;
+  }
+  return total;
+}
+
 static void update_deposit(bool up) {
-  if (up && current_state.cart.deposit < 9) {
+  if (up && current_state.cart.deposit < 9 && current_total() + 200 <= 9999) {
     current_state.cart.deposit++;
   } else if (!up && current_state.cart.deposit > -9) {
     current_state.cart.deposit--;
@@ -73,13 +96,11 @@ static void update_deposit(bool up) {
 }
 
 static void remove_digit() {
-  current_state.cart.deposit /= 10;
+  // TODO
 }
 
 static void add_digit(int d) {
-  if (current_state.cart.total < 1000) {
-    current_state.cart.deposit = current_state.cart.deposit * 10 + d;
-  }
+  // TODO
 }
 
 static mode_type token_detected(event_t event) {
@@ -89,9 +110,11 @@ static mode_type token_detected(event_t event) {
 }
 
 static mode_type card_detected(event_t event) {
-  if (current_state.cart.total == 0 && current_state.cart.deposit == 0) {
-    // TODO: display balance
-    return current_state.mode;
+  // TODO: beep
+  if (current_state.cart.item_count == 0 &&
+      current_state.cart.deposit == 0) {  // TODO manual mode is null, too?
+    timeout(2000);
+    return CARD_BALANCE;
   }
   return WRITE_CARD;
 }
@@ -108,28 +131,23 @@ static mode_type charge_list_two_digit(event_t event) {
     case KEY_7:
     case KEY_8:
     case KEY_9:
-      if (current_state.product_list_first_digit == -1) {
+      if (current_state.product_list_number_entry == -1 &&
+          event - KEY_0 <= active_config.products_count / 10) {
         // set first digit
-        if (event - KEY_0 <= active_config.products_count / 10) {
-          current_state.product_list_first_digit = event - KEY_0;
-        }
-        break;
+        current_state.product_list_number_entry = event - KEY_0;
+      } else if (current_state.product_list_number_entry * 10 + event - KEY_0 <= active_config.products_count) {
+        // set second digit
+        current_state.product_list_number_entry =
+            current_state.product_list_number_entry * 10 + event - KEY_0;
+        select_product(current_state.product_list_number_entry);
+        timeout(300);
       }
-
-      // second digit
-      int idx = current_state.product_list_first_digit * 10 + event - KEY_0 - 1;
-      if (idx > active_config.products_count) {
-        break;
-      }
-
-      select_product(idx);
-      current_state.product_list_first_digit = -1;
-      return CHARGE_LIST;
-
+      break;
     case KEY_HASH:
     case KEY_C:
     case KEY_D:
-      current_state.product_list_first_digit = -1;
+    case TIMEOUT:
+      current_state.product_list_number_entry = -1;
       return CHARGE_LIST;
     default:
       break;
@@ -331,6 +349,17 @@ static mode_type write_card(event_t event) {
   return WRITE_CARD;
 }
 
+static mode_type card_balance(event_t event) {
+  switch (event) {
+    case CARD_DETECTED:
+      timeout(1500);
+      return CARD_BALANCE;
+    default:
+      ESP_LOGI(TAG, "card balance timeout");
+      return default_mode();
+  }
+}
+
 static mode_type process_event(event_t event) {
   switch (current_state.mode) {
     case CHARGE_LIST:
@@ -353,6 +382,10 @@ static mode_type process_event(event_t event) {
     case WRITE_FAILED:
       break;
 
+    case CARD_BALANCE:
+      return card_balance(event);
+      break;
+
     case MAIN_MENU:
       return main_menu(event);
     case MAIN_STARTING_UP:
@@ -364,7 +397,6 @@ static mode_type process_event(event_t event) {
 }
 
 void state_machine(void* params) {
-  // booting
   state_events = xQueueCreate(5, sizeof(int));
   ESP_LOGI(TAG, "waiting for startup to complete");
 

@@ -26,10 +26,10 @@ ultralight_card_info_t current_card = {0};
 
 void calculate_signature_ultralight(uint8_t* target, ultralight_card_info_t* card) {
   char* salt = alloc_slat();
-  size_t len = LENGTH_SIGNATURE +  // ID
-               LENGTH_COUNTER +    // count
-               LENGTH_DEPOSIT +    // deposit
-               LENGTH_BALANCE +    // balance
+  size_t len = LENGTH_ID +       // ID
+               LENGTH_COUNTER +  // count
+               LENGTH_DEPOSIT +  // deposit
+               LENGTH_BALANCE +  // balance
                strlen(salt);
   char hash_input[len];
   memcpy(hash_input, &card->id, 7);
@@ -38,8 +38,6 @@ void calculate_signature_ultralight(uint8_t* target, ultralight_card_info_t* car
   memcpy(hash_input + OFFSET_BALANCE, &card->balance, LENGTH_BALANCE);
   memcpy(hash_input + OFFSET_SIGNATURE, salt, strlen(salt));
   free(salt);
-
-  ESP_LOG_BUFFER_HEX(TAG, hash_input, len);
   create_sha1_hash(hash_input, len, target);
 }
 
@@ -56,28 +54,28 @@ static bool read_card(spi_device_handle_t spi, mfrc522_uid* uid) {
       return false;
     }
 
-    uint8_t size = 18;  // two 16 byte blocks + CRC
-    uint8_t payload[16 + 2 + 16];
+    uint8_t size = 18;
+    uint8_t payload[16 + 2 + 16];  // two 16 byte blocks + CRC
 
     if (MIFARE_Read(spi, 9, payload, &size) != STATUS_OK ||
         MIFARE_Read(spi, 13, payload + 16, &size) != STATUS_OK) {
       ESP_LOGE(TAG, "Reading payload failed");
       return false;
     }
+    payload[23] = 0x3D;  // add padding for base64
 
-    ESP_LOGI(TAG, "Payload:");
-    ESP_LOG_BUFFER_HEX(TAG, payload, 23);
-
-    uint8_t decoded_payload[23];
+    uint8_t decoded_payload[24];
     size_t size_decoded = 0;
     int decode_error =
-        mbedtls_base64_decode(decoded_payload, sizeof(decoded_payload), &size_decoded, payload, 23);
+        mbedtls_base64_decode(decoded_payload, sizeof(decoded_payload), &size_decoded, payload, 24);
     if (decode_error != 0) {
       ESP_LOGE(TAG, "Decoding payload failed %d", decode_error);
       return false;
+    } else if (size_decoded != 17) {
+      ESP_LOGE(TAG, "Decoded payload has wrong size %d", size_decoded);
+      ESP_LOG_BUFFER_HEX(TAG, decoded_payload, size_decoded);
+      return false;
     }
-    ESP_LOGI(TAG, "Decoded payload (size %d):", size_decoded);
-    ESP_LOG_BUFFER_HEX(TAG, decoded_payload, size_decoded);
 
     new_card.counter = *((uint16_t*)backData);
     uint16_t counter_from_payload = *(uint16_t*)(decoded_payload + OFFSET_COUNTER);
@@ -95,13 +93,15 @@ static bool read_card(spi_device_handle_t spi, mfrc522_uid* uid) {
     // verify signature
     uint8_t hash[20];
     calculate_signature_ultralight(hash, &new_card);
+
     if (memcmp(hash, new_card.signature, LENGTH_SIGNATURE) != 0) {
-      ESP_LOGE(TAG, "Signature mismatch");
+      ESP_LOGE(TAG, "Signature mismatch: hash != signature");
+      ESP_LOG_BUFFER_HEX(TAG, hash, 5);
+      ESP_LOG_BUFFER_HEX(TAG, new_card.signature, 5);
       return false;
     }
 
     current_card = new_card;
-
     return true;
   }
   return false;

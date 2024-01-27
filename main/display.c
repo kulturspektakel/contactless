@@ -3,8 +3,10 @@
 #include "event_group.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "local_config.h"
 #include "log_uploader.h"
 #include "power_management.h"
+#include "rfid.h"
 #include "state_machine.h"
 #include "time.h"
 #include "u8g2.h"
@@ -67,11 +69,13 @@ static bool animation_tick(int ms, int64_t* last_time_ms) {
   if (animation_timer == NULL) {
     animation_timer =
         xTimerCreate("animation_timer", pdMS_TO_TICKS(ms), pdFALSE, NULL, animation_timer_cb);
+    xTimerReset(animation_timer, 0);
+  } else if (xTimerIsTimerActive(animation_timer) == pdFALSE) {
+    xTimerChangePeriod(animation_timer, pdMS_TO_TICKS(ms), 0);
   }
-  xTimerReset(animation_timer, 0);
   int64_t now = esp_timer_get_time() / 1000;
-  if (now - *last_time_ms >= ms) {
-    last_time_ms = now;
+  if (now - *last_time_ms >= ms - 10) {  // 10ms tolerance
+    *last_time_ms = now;
     return true;
   }
   return false;
@@ -150,11 +154,13 @@ static void keypad_legend_letter(u8g2_t* u8g2, char* letter, char* text, int off
   u8g2_SetDrawColor(u8g2, 1);
 }
 
-static void keypad_legend(u8g2_t* u8g2) {
+static void keypad_legend(u8g2_t* u8g2, bool with_navigation) {
   u8g2_DrawBox(u8g2, 0, DISPLAY_HEIGHT - LEGEND_HEIGHT, DISPLAY_WIDTH, LEGEND_HEIGHT);
-  keypad_legend_letter(u8g2, "A", "Up", 0);
-  keypad_legend_letter(u8g2, "B", "Dn", 26);
-  keypad_legend_letter(u8g2, "*", "OK", 52);
+  if (with_navigation) {
+    keypad_legend_letter(u8g2, "B", "Dn", 26);
+    keypad_legend_letter(u8g2, "*", "OK", 52);
+    keypad_legend_letter(u8g2, "A", "Up", 0);
+  }
   keypad_legend_letter(u8g2, "D", "Abbrechen", 78);
 }
 
@@ -184,7 +190,7 @@ static void draw_amount(u8g2_t* u8g2, int amount, int y) {
 }
 
 static void charge_list(u8g2_t* u8g2) {
-  u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+  u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
   int LINE_HEIGHT = 11;
 
   for (int i = 0; i < current_state.cart.item_count && i < 3; i++) {
@@ -197,7 +203,7 @@ static void charge_list(u8g2_t* u8g2) {
         amount += current_state.cart.items[j].amount;
       }
       snprintf(product, sizeof(product), "+%d weitere", amount);
-      u8g2_DrawStr(u8g2, 0, 17 + (i * LINE_HEIGHT), product);
+      u8g2_DrawUTF8(u8g2, 0, 17 + (i * LINE_HEIGHT), product);
       draw_amount(u8g2, sum, 17 + (i * LINE_HEIGHT));
       break;
     }
@@ -212,7 +218,7 @@ static void charge_list(u8g2_t* u8g2) {
     if (strlen(product) > 16) {
       product[15] = '_';
     }
-    u8g2_DrawStr(u8g2, 0, 17 + (i * LINE_HEIGHT), product);
+    u8g2_DrawUTF8(u8g2, 0, 17 + (i * LINE_HEIGHT), product);
     draw_amount(
         u8g2,
         current_state.cart.items[i].amount * current_state.cart.items[i].product.price,
@@ -226,39 +232,27 @@ static void charge_list(u8g2_t* u8g2) {
   } else {
     snprintf(deposit, sizeof(deposit), "%d Pfand", current_state.cart.deposit);
   }
-  u8g2_DrawStr(u8g2, 0, DISPLAY_HEIGHT - 13, deposit);
+  u8g2_DrawUTF8(u8g2, 0, DISPLAY_HEIGHT - 13, deposit);
   draw_amount(u8g2, current_state.cart.deposit * 200, DISPLAY_HEIGHT - 13);
   u8g2_DrawHLine(u8g2, 0, DISPLAY_HEIGHT - 11, DISPLAY_WIDTH);
   u8g2_DrawStr(u8g2, 0, DISPLAY_HEIGHT - 1, "Summe");
-  draw_amount(
-      u8g2, current_state.cart.total + (current_state.cart.deposit * 200), DISPLAY_HEIGHT - 1
-  );
+  draw_amount(u8g2, current_total(), DISPLAY_HEIGHT - 1);
 }
 
-static void charge_list_two_digit(u8g2_t* u8g2) {
-  char* str = "Produkt #__";
-  if (current_state.product_list_first_digit > 0) {
-    str[9] = current_state.product_list_first_digit + '0';
-  }
-  u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-  u8g2_DrawStr(u8g2, 0, 20, str);
-  keypad_legend(u8g2);
-}
-
-static void main_menu(u8g2_t* u8g2) {
-  u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+static void scrollable_list(u8g2_t* u8g2, char* (*callback)(int), int total, int active_item) {
+  u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
   for (int i = 0; i < 3; i++) {
-    int offset = current_state.main_menu.active_item - 1;
-    if (current_state.main_menu.active_item == 0) {
+    int offset = active_item - 1;
+    if (active_item == 0) {
       offset = 0;
-    } else if (current_state.main_menu.active_item == current_state.main_menu.count - 1) {
-      offset = current_state.main_menu.count - 3;
+    } else if (active_item == total - 1) {
+      offset = total - 3;
     }
 
-    u8g2_DrawStr(u8g2, 4, 18 + (i * 15), current_state.main_menu.items[offset + i].name);
+    u8g2_DrawUTF8(u8g2, 4, 18 + (i * 15), callback(offset + i));
 
     // highlight active item
-    if (offset + i == current_state.main_menu.active_item) {
+    if (offset + i == active_item) {
       u8g2_DrawRFrame(u8g2, 0, 8 + (i * 15), DISPLAY_WIDTH - 8, 15, 3);
       u8g2_DrawHLine(u8g2, 2, 21 + (i * 15), DISPLAY_WIDTH - 12);
       u8g2_DrawVLine(u8g2, DISPLAY_WIDTH - 10, 9 + (i * 15), 13);
@@ -269,25 +263,69 @@ static void main_menu(u8g2_t* u8g2) {
   for (int i = 7; i < DISPLAY_HEIGHT - 11; i = i + 3) {
     u8g2_DrawPixel(u8g2, DISPLAY_WIDTH - 4, i);
   }
-  u8g2_DrawBox(
-      u8g2,
-      DISPLAY_WIDTH - 5,
-      7 + ((float)current_state.main_menu.active_item / (float)current_state.main_menu.count) * 45,
-      3,
-      4
+  u8g2_DrawBox(u8g2, DISPLAY_WIDTH - 5, 7 + ((float)active_item / (float)total) * 45, 3, 4);
+}
+
+static char* charge_list_two_digit_cb(int i) {
+  char* str = "00 ______________";
+  str[0] = '0' + (i + 1) / 10;
+  // snprintf(str, 16, "%02d %s", i + 1, active_config.products[i].name);
+  // snprintf(str, "%02d", strlen(str) - 1, i + 1);
+  return str;
+}
+
+static void charge_list_two_digit(u8g2_t* u8g2) {
+  scrollable_list(u8g2, charge_list_two_digit_cb, active_config.products_count, 0);
+}
+
+static char* main_menu_cb(int i) {
+  return current_state.main_menu.items[i].name;
+}
+
+static void main_menu(u8g2_t* u8g2) {
+  scrollable_list(
+      u8g2, main_menu_cb, current_state.main_menu.count, current_state.main_menu.active_item
   );
 }
 
 static void write_card(u8g2_t* u8g2) {
-  u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+  u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
   u8g2_DrawStr(u8g2, 0, 17, "Bitte Karte");
   u8g2_DrawStr(u8g2, 0, 27, "auflegen");
   u8g2_DrawStr(u8g2, 0, 37, "zum Aufladen");
   u8g2_DrawStr(u8g2, 0, 47, "oder Abbrechen");
 }
 
+static void card_balance(u8g2_t* u8g2) {
+  u8g2_SetFont(u8g2, u8g2_font_profont29_tf);
+  char balance[6];
+  snprintf(balance, sizeof(balance), "%2.2f0", ((float)current_card.balance) / 100);
+  balance[2] = ',';
+  int w = u8g2_GetStrWidth(u8g2, balance);
+  int e = 8;  // euro symbol width
+  int h = 36;
+  u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2 - e, h, balance);
+
+  // Euro symbol
+  u8g2_DrawUTF8(u8g2, DISPLAY_WIDTH / 2 + w / 2 + 4 - e, h, "€");
+  // u8g2_SetDrawColor(u8g2, 0);
+  // u8g2_DrawBox(u8g2, DISPLAY_WIDTH / 2 + w / 2 + 7 - e, h - 15, 11, 11);
+  // u8g2_SetDrawColor(u8g2, 1);
+  // u8g2_DrawBox(u8g2, DISPLAY_WIDTH / 2 + w / 2 + 2 - e, h - 9, 10, 3);
+  // u8g2_DrawBox(u8g2, DISPLAY_WIDTH / 2 + w / 2 + 2 - e, h - 13, 10, 3);
+
+  u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
+  char* str = "0 Pfandmarken";
+  str[0] = '0' + current_card.deposit;
+  if (current_card.deposit == 1) {
+    str[12] = '\0';
+  }
+  w = u8g2_GetStrWidth(u8g2, str);
+  u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, 52, str);
+}
+
 static void charge_without_card(u8g2_t* u8g2) {
-  u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+  u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
   char label[13];
   for (int i = 0; i < 3; i++) {
     switch (i) {
@@ -351,20 +389,25 @@ void display(void* params) {
       case CHARGE_WITHOUT_CARD:
         status_bar(&u8g2);
         charge_without_card(&u8g2);
-        keypad_legend(&u8g2);
+        keypad_legend(&u8g2, false);
         break;
       case CHARGE_LIST_TWO_DIGIT:
         status_bar(&u8g2);
         charge_list_two_digit(&u8g2);
+        keypad_legend(&u8g2, false);
         break;
       case MAIN_MENU:
         status_bar(&u8g2);
         main_menu(&u8g2);
-        keypad_legend(&u8g2);
+        keypad_legend(&u8g2, true);
         break;
       case WRITE_CARD:
         status_bar(&u8g2);
         write_card(&u8g2);
+        break;
+      case CARD_BALANCE:
+        status_bar(&u8g2);
+        card_balance(&u8g2);
         break;
       default:
         break;
