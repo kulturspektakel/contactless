@@ -199,6 +199,20 @@ static void draw_amount(u8g2_t* u8g2, int amount, int y) {
   u8g2_DrawStr(u8g2, DISPLAY_WIDTH - w, y, amount_str);
 }
 
+static void charge_total(u8g2_t* u8g2, int y) {
+  char deposit[21];
+  if (current_state.cart.deposit < 0) {
+    snprintf(deposit, sizeof(deposit), "%d Rückgabe", current_state.cart.deposit * -1);
+  } else {
+    snprintf(deposit, sizeof(deposit), "%d Pfand", current_state.cart.deposit);
+  }
+  u8g2_DrawUTF8(u8g2, 0, y, deposit);
+  draw_amount(u8g2, current_state.cart.deposit * 200, y);
+  u8g2_DrawHLine(u8g2, 0, y + 2, DISPLAY_WIDTH);
+  u8g2_DrawStr(u8g2, 0, y + 12, "Summe");
+  draw_amount(u8g2, current_total(), y + 12);
+}
+
 static void charge_list(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
   int LINE_HEIGHT = 11;
@@ -237,17 +251,7 @@ static void charge_list(u8g2_t* u8g2) {
     );
   }
 
-  char deposit[21];
-  if (current_state.cart.deposit < 0) {
-    snprintf(deposit, sizeof(deposit), "%d Rückgabe", current_state.cart.deposit * -1);
-  } else {
-    snprintf(deposit, sizeof(deposit), "%d Pfand", current_state.cart.deposit);
-  }
-  u8g2_DrawUTF8(u8g2, 0, DISPLAY_HEIGHT - 13, deposit);
-  draw_amount(u8g2, current_state.cart.deposit * 200, DISPLAY_HEIGHT - 13);
-  u8g2_DrawHLine(u8g2, 0, DISPLAY_HEIGHT - 11, DISPLAY_WIDTH);
-  u8g2_DrawStr(u8g2, 0, DISPLAY_HEIGHT - 1, "Summe");
-  draw_amount(u8g2, current_total(), DISPLAY_HEIGHT - 1);
+  charge_total(u8g2, DISPLAY_HEIGHT - 13);
 }
 
 static void scrollable_list(
@@ -426,11 +430,29 @@ static void charge_without_card(u8g2_t* u8g2) {
   }
 }
 
-void show_message(u8g2_t* u8g2) {
-  int padding = 20;
-  u8g2_DrawRBox(
-      u8g2, padding, padding, DISPLAY_WIDTH - 2 * padding, DISPLAY_HEIGHT - 2 * padding, 3
-  );
+static void enter_amount(u8g2_t* u8g2, int amount) {
+  char str[7];
+  snprintf(str, sizeof(str), "%2.2f", ((float)current_state.manual_charge_amount) / 100);
+  int w = 39;
+  int y = 7;
+  int x = DISPLAY_WIDTH - w;
+  u8g2_DrawStr(u8g2, DISPLAY_WIDTH - u8g2_GetStrWidth(u8g2, str) - 5, y + 10, str);
+  u8g2_DrawRFrame(u8g2, x, y, w, 13, 3);
+  static int64_t last_animation_tick = 0;
+  static bool cursor = false;
+  if (animation_tick(500, &last_animation_tick)) {
+    cursor = !cursor;
+  }
+  if (cursor) {
+    u8g2_DrawLine(u8g2, x + w - 4, y + 2, x + w - 4, y + 10);
+  }
+}
+
+static void charge_manual(u8g2_t* u8g2) {
+  u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
+  u8g2_DrawStr(u8g2, 0, 17, "Manuell");
+  enter_amount(u8g2, current_state.manual_charge_amount);
+  charge_total(u8g2, DISPLAY_HEIGHT - LEGEND_HEIGHT - 14);
 }
 
 void display(void* params) {
@@ -487,6 +509,11 @@ void display(void* params) {
       case CARD_BALANCE:
         status_bar(&u8g2);
         card_balance(&u8g2);
+        break;
+      case CHARGE_MANUAL:
+        status_bar(&u8g2);
+        charge_manual(&u8g2);
+        keypad_legend(&u8g2, false);
         break;
       default:
         break;

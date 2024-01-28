@@ -15,6 +15,7 @@ state_t current_state = {
     .is_privileged = false,
     .main_menu = {.count = 0},
     .log_files_to_upload = -1,
+    .manual_charge_amount = 0,
     .product_selection =
         {
             .first_digit = -1,
@@ -50,6 +51,7 @@ static mode_type default_mode() {
 static void reset_cart() {
   current_state.cart.deposit = 0;
   current_state.cart.item_count = 0;
+  current_state.manual_charge_amount = 0;
 }
 
 static void select_product(int product) {
@@ -82,7 +84,7 @@ static void select_product(int product) {
 }
 
 int current_total() {
-  int total = current_state.cart.deposit * 200;
+  int total = current_state.cart.deposit * 200 + current_state.manual_charge_amount;
   for (int i = 0; i < current_state.cart.item_count; i++) {
     if (!current_state.cart.items[i].has_product) {
       continue;
@@ -101,11 +103,15 @@ static void update_deposit(bool up) {
 }
 
 static void remove_digit() {
-  // TODO
+  current_state.manual_charge_amount /= 10;
 }
 
 static void add_digit(int d) {
-  // TODO
+  int add = current_state.manual_charge_amount * 9 + d;
+  if (current_total() + add > 9999) {
+    return;
+  }
+  current_state.manual_charge_amount += add;
 }
 
 static mode_type token_detected(event_t event) {
@@ -116,8 +122,8 @@ static mode_type token_detected(event_t event) {
 
 static mode_type card_detected(event_t event) {
   // TODO: beep
-  if (current_state.cart.item_count == 0 &&
-      current_state.cart.deposit == 0) {  // TODO manual mode is null, too?
+  if (current_state.cart.item_count == 0 && current_state.cart.deposit == 0 &&
+      current_state.manual_charge_amount == 0) {
     timeout(2000);
     return CARD_BALANCE;
   }
@@ -218,7 +224,7 @@ static mode_type charge_list(event_t event) {
       current_state.main_menu = initialize_main_menu();
       return MAIN_MENU;
     case KEY_STAR:
-      return current_state.cart.item_count > 0 ? CHARGE_WITHOUT_CARD : CHARGE_LIST;
+      return current_state.cart.item_count > 0 ? CHARGE_WITHOUT_CARD : CHARGE_MANUAL;
     case KEY_HASH:
       return CHARGE_LIST_TWO_DIGIT;
     case TOKEN_DETECTED:
@@ -300,6 +306,9 @@ static mode_type charge_manual(event_t event) {
     case KEY_D:
       reset_cart();
       break;
+    case KEY_HASH:
+      reset_cart();
+      return CHARGE_LIST;
     default:
       break;
   }
