@@ -149,17 +149,27 @@ static void keypad_legend_letter(u8g2_t* u8g2, char* letter, char* text, int off
   u8g2_SetDrawColor(u8g2, 1);
   u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
   u8g2_DrawStr(u8g2, offset + 3, DISPLAY_HEIGHT - 2, letter);
-  u8g2_SetDrawColor(u8g2, 0);
-  u8g2_DrawStr(u8g2, offset + 11, DISPLAY_HEIGHT - 2, text);
-  u8g2_SetDrawColor(u8g2, 1);
+  if (text != NULL) {
+    u8g2_SetDrawColor(u8g2, 0);
+    u8g2_DrawStr(u8g2, offset + 11, DISPLAY_HEIGHT - 2, text);
+    u8g2_SetDrawColor(u8g2, 1);
+  }
 }
 
 static void keypad_legend(u8g2_t* u8g2, bool with_navigation) {
   u8g2_DrawBox(u8g2, 0, DISPLAY_HEIGHT - LEGEND_HEIGHT, DISPLAY_WIDTH, LEGEND_HEIGHT);
   if (with_navigation) {
-    keypad_legend_letter(u8g2, "B", "Dn", 26);
+    keypad_legend_letter(u8g2, "B", NULL, 26);
+    u8g2_SetDrawColor(u8g2, 0);
+    u8g2_DrawTriangle(u8g2, 37, DISPLAY_HEIGHT - 5, 39, DISPLAY_HEIGHT - 2, 42, DISPLAY_HEIGHT - 5);
+    u8g2_DrawLine(u8g2, 39, DISPLAY_HEIGHT - 6, 39, DISPLAY_HEIGHT - 7);
+    u8g2_SetDrawColor(u8g2, 1);
     keypad_legend_letter(u8g2, "#", "OK", 52);
-    keypad_legend_letter(u8g2, "A", "Up", 0);
+    keypad_legend_letter(u8g2, "A", NULL, 0);
+    u8g2_SetDrawColor(u8g2, 0);
+    u8g2_DrawTriangle(u8g2, 10, DISPLAY_HEIGHT - 4, 13, DISPLAY_HEIGHT - 8, 17, DISPLAY_HEIGHT - 4);
+    u8g2_DrawLine(u8g2, 13, DISPLAY_HEIGHT - 3, 13, DISPLAY_HEIGHT - 5);
+    u8g2_SetDrawColor(u8g2, 1);
   }
   keypad_legend_letter(u8g2, "D", "Abbrechen", 78);
 }
@@ -194,7 +204,7 @@ static void charge_list(u8g2_t* u8g2) {
   int LINE_HEIGHT = 11;
 
   for (int i = 0; i < current_state.cart.item_count && i < 3; i++) {
-    char product[17];
+    char product[18];
     if (i == 2 && current_state.cart.item_count > 3) {
       int sum = 0;
       int amount = 0;
@@ -211,12 +221,13 @@ static void charge_list(u8g2_t* u8g2) {
     snprintf(
         product,
         sizeof(product),
-        "%ld %.14s",
+        "%ld %.15s",
         current_state.cart.items[i].amount,
         current_state.cart.items[i].product.name
     );
-    if (strlen(product) > 16) {
-      product[15] = '_';
+    int w = u8g2_GetUTF8Width(u8g2, product);
+    if (w > DISPLAY_WIDTH - 40) {
+      product[16] = 0x85;  // ellipsis
     }
     u8g2_DrawUTF8(u8g2, 0, 17 + (i * LINE_HEIGHT), product);
     draw_amount(
@@ -247,23 +258,27 @@ static void scrollable_list(
     int active
 ) {
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
-  for (int i = 0; i < 3; i++) {
+  int ROWS = 3;
+  int min = total < ROWS ? total : 3;
+  bool scrollable = total > ROWS;
+  for (int i = 0; i < min; i++) {
     int offset = 0;
     if (selected == 0) {
       offset = -1;
-    } else if (selected == total - 1) {
+    } else if (selected == total - 1 && total > 2) {
       offset = 1;
     }
 
     int current = selected + i - 1 - offset;
+    int scrollbar_offset = scrollable ? 4 : 0;
     // highlight active item
     if (offset == i - 1) {
       if (current == active) {
-        u8g2_DrawRBox(u8g2, 0, 8 + (i * 15), DISPLAY_WIDTH - 8, 15, 3);
+        u8g2_DrawRBox(u8g2, 0, 8 + (i * 15), DISPLAY_WIDTH - scrollbar_offset - 1, 15, 3);
       } else {
-        u8g2_DrawRFrame(u8g2, 0, 8 + (i * 15), DISPLAY_WIDTH - 8, 15, 3);
-        u8g2_DrawHLine(u8g2, 2, 21 + (i * 15), DISPLAY_WIDTH - 12);
-        u8g2_DrawVLine(u8g2, DISPLAY_WIDTH - 10, 9 + (i * 15), 13);
+        u8g2_DrawRFrame(u8g2, 0, 8 + (i * 15), DISPLAY_WIDTH - scrollbar_offset - 1, 15, 3);
+        u8g2_DrawHLine(u8g2, 2, 21 + (i * 15), DISPLAY_WIDTH - scrollbar_offset - 5);
+        u8g2_DrawVLine(u8g2, DISPLAY_WIDTH - scrollbar_offset - 3, 9 + (i * 15), 13);
       }
     }
 
@@ -277,19 +292,45 @@ static void scrollable_list(
   }
 
   // scrollbar
-  int h = DISPLAY_HEIGHT - 7 /* status_bar */ - 11 /* bottom*/;
-  for (int i = 0; i < h; i = i + 3) {
-    u8g2_DrawPixel(u8g2, DISPLAY_WIDTH - 4, i + 7 /* status_bar */);
+  if (!scrollable) {
+    return;  // no scrollbar needed
   }
-  int bh = (float)h / (float)total;
-  if (bh < 3) {
-    bh = 3;
+  int rail_height = DISPLAY_HEIGHT - 7 /* status_bar */ - 11 /* bottom*/;
+  for (int i = 0; i < rail_height; i = i + 3) {
+    u8g2_DrawPixel(u8g2, DISPLAY_WIDTH - 2, i + 7 /* status_bar */);
   }
-  u8g2_DrawBox(u8g2, DISPLAY_WIDTH - 5, 7 + ((float)selected / (float)total) * 45, 3, bh);
+  int handle_height = ((float)ROWS / total) * rail_height;
+  int hidden_top = selected - 1;
+  if (hidden_top < 0) {
+    hidden_top = 0;
+  }
+  float percentage = ((float)hidden_top) / (total - 3);
+  if (percentage > 1) {
+    percentage = 1;
+  }
+  int handle_y = percentage * (rail_height - handle_height);
+  u8g2_DrawBox(u8g2, DISPLAY_WIDTH - 3, 7 /* status_bar*/ + handle_y, 3, handle_height);
 }
 
 static void charge_list_two_digit_cb(u8g2_t* u8g2, int i, int x, int y) {
-  u8g2_DrawUTF8(u8g2, x, y, active_config.products[i].name);
+  char number[3];
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-truncation"
+  snprintf(number, sizeof(number), "%02d", i + 1);
+#pragma GCC diagnostic pop
+  u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
+  u8g2_DrawStr(u8g2, DISPLAY_WIDTH - 17, y - 1, number);
+  u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
+  int w = u8g2_GetUTF8Width(u8g2, active_config.products[i].name);
+  if (w > DISPLAY_WIDTH - 22) {
+    char name[18];
+    strncpy(name, active_config.products[i].name, 16);
+    name[16] = 0x85;  // ellipsis
+    name[17] = '\0';
+    u8g2_DrawUTF8(u8g2, x, y, name);
+  } else {
+    u8g2_DrawUTF8(u8g2, x, y, active_config.products[i].name);
+  }
 }
 
 static void charge_list_two_digit(u8g2_t* u8g2) {

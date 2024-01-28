@@ -155,12 +155,14 @@ static mode_type charge_list_two_digit(event_t event) {
         if (current_state.product_selection.current_index > 0) {
           current_state.product_selection.current_index--;
         }
-      } else if (current_state.product_selection.first_digit * 10 + event - KEY_0 <= active_config.products_count) {
+      } else if (current_state.product_selection.first_digit > -1 && current_state.product_selection.second_digit == -1) {
+        int no = current_state.product_selection.first_digit * 10 + event - KEY_0;
+        if (no > active_config.products_count || no < 1) {
+          break;
+        }
         // set second digit
         current_state.product_selection.second_digit = event - KEY_0;
-        current_state.product_selection.current_index =
-            current_state.product_selection.first_digit * 10 +
-            current_state.product_selection.second_digit - 1;
+        current_state.product_selection.current_index = no - 1;
         select_product(current_state.product_selection.current_index);
         timeout(400);
       }
@@ -212,7 +214,7 @@ static mode_type charge_without_card(event_t event) {
 
 static mode_type charge_list(event_t event) {
   switch (event) {
-    case KEY_TRIPPLE_HASH:
+    case KEY_TRIPPLE_D:
       current_state.main_menu = initialize_main_menu();
       return MAIN_MENU;
     case KEY_STAR:

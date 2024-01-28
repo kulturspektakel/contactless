@@ -90,8 +90,8 @@ void keypad(void* params) {
     xQueueSend(state_events, (void*)(&key), portMAX_DELAY);
     if (key == prev_key && esp_timer_get_time() - prev_key_time < 500000) {
       count++;
-      if (count == 2 && key == KEY_HASH) {
-        key = KEY_TRIPPLE_HASH;
+      if (count == 2 && key == KEY_D) {
+        key = KEY_TRIPPLE_D;
         xQueueSend(state_events, (void*)(&key), portMAX_DELAY);
         count = 0;
       }
