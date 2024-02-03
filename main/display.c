@@ -316,7 +316,7 @@ static void scrollable_list(
   u8g2_DrawBox(u8g2, DISPLAY_WIDTH - 3, 7 /* status_bar*/ + handle_y, 3, handle_height);
 }
 
-static void charge_list_two_digit_cb(u8g2_t* u8g2, int i, int x, int y) {
+static void product_list_cb(u8g2_t* u8g2, int i, int x, int y) {
   char number[3];
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-truncation"
@@ -337,10 +337,10 @@ static void charge_list_two_digit_cb(u8g2_t* u8g2, int i, int x, int y) {
   }
 }
 
-static void charge_list_two_digit(u8g2_t* u8g2) {
+static void product_list(u8g2_t* u8g2) {
   scrollable_list(
       u8g2,
-      charge_list_two_digit_cb,
+      product_list_cb,
       active_config.products_count,
       current_state.product_selection.current_index,
       current_state.product_selection.second_digit > -1
@@ -373,10 +373,17 @@ static void main_menu(u8g2_t* u8g2) {
 
 static void write_card(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
-  u8g2_DrawStr(u8g2, 0, 17, "Bitte Karte");
-  u8g2_DrawStr(u8g2, 0, 27, "auflegen");
-  u8g2_DrawStr(u8g2, 0, 37, "zum Aufladen");
-  u8g2_DrawStr(u8g2, 0, 47, "oder Abbrechen");
+
+  int y = DISPLAY_HEIGHT / 2;
+  int h = 10;
+  int p = 5;
+  u8g2_DrawRFrame(u8g2, p, y, DISPLAY_WIDTH - 2 * p, h, 2);
+  static int64_t last_animation_tick = 0;
+  static int progress = 0;
+  if (animation_tick(50, &last_animation_tick)) {
+    progress = (progress + 1) % 100;
+  }
+  u8g2_DrawBox(u8g2, p + 1, y + 1, (DISPLAY_WIDTH - 2 * p - 2) * progress / 100, h - 2);
 }
 
 static void card_balance(u8g2_t* u8g2) {
@@ -432,7 +439,7 @@ static void charge_without_card(u8g2_t* u8g2) {
 
 static void enter_amount(u8g2_t* u8g2, int amount) {
   char str[7];
-  snprintf(str, sizeof(str), "%2.2f", ((float)current_state.manual_charge_amount) / 100);
+  snprintf(str, sizeof(str), "%2.2f", ((float)current_state.manual_amount) / 100);
   int w = 39;
   int y = 7;
   int x = DISPLAY_WIDTH - w;
@@ -451,7 +458,7 @@ static void enter_amount(u8g2_t* u8g2, int amount) {
 static void charge_manual(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
   u8g2_DrawStr(u8g2, 0, 17, "Manuell");
-  enter_amount(u8g2, current_state.manual_charge_amount);
+  enter_amount(u8g2, current_state.manual_amount);
   charge_total(u8g2, DISPLAY_HEIGHT - LEGEND_HEIGHT - 14);
 }
 
@@ -492,9 +499,9 @@ void display(void* params) {
         charge_without_card(&u8g2);
         keypad_legend(&u8g2, false);
         break;
-      case CHARGE_LIST_TWO_DIGIT:
+      case PRODUCT_LIST:
         status_bar(&u8g2);
-        charge_list_two_digit(&u8g2);
+        product_list(&u8g2);
         keypad_legend(&u8g2, true);
         break;
       case MAIN_MENU:

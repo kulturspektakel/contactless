@@ -24,6 +24,8 @@ ultralight_card_info_t current_card = {0};
 #define OFFSET_BALANCE LENGTH_ID + LENGTH_COUNTER + LENGTH_DEPOSIT
 #define OFFSET_SIGNATURE LENGTH_ID + LENGTH_COUNTER + LENGTH_DEPOSIT + LENGTH_BALANCE
 
+#define PAYLOAD_LENGTH 23
+
 void calculate_signature_ultralight(uint8_t* target, ultralight_card_info_t* card) {
   char* salt = alloc_slat();
   size_t len = LENGTH_ID +       // ID
@@ -32,7 +34,7 @@ void calculate_signature_ultralight(uint8_t* target, ultralight_card_info_t* car
                LENGTH_BALANCE +  // balance
                strlen(salt);
   char hash_input[len];
-  memcpy(hash_input, &card->id, 7);
+  memcpy(hash_input, &card->id, LENGTH_ID);
   memcpy(hash_input + OFFSET_COUNTER, &card->counter, LENGTH_COUNTER);
   memcpy(hash_input + OFFSET_DEPOSIT, &card->deposit, LENGTH_DEPOSIT);
   memcpy(hash_input + OFFSET_BALANCE, &card->balance, LENGTH_BALANCE);
@@ -62,12 +64,13 @@ static bool read_card(spi_device_handle_t spi, mfrc522_uid* uid) {
       ESP_LOGE(TAG, "Reading payload failed");
       return false;
     }
-    payload[23] = 0x3D;  // add padding for base64
+    payload[PAYLOAD_LENGTH] = 0x3D;  // add padding for base64
 
-    uint8_t decoded_payload[24];
+    uint8_t decoded_payload[PAYLOAD_LENGTH + 1];
     size_t size_decoded = 0;
-    int decode_error =
-        mbedtls_base64_decode(decoded_payload, sizeof(decoded_payload), &size_decoded, payload, 24);
+    int decode_error = mbedtls_base64_decode(
+        decoded_payload, sizeof(decoded_payload), &size_decoded, payload, PAYLOAD_LENGTH + 1
+    );
     if (decode_error != 0) {
       ESP_LOGE(TAG, "Decoding payload failed %d", decode_error);
       return false;
@@ -107,7 +110,87 @@ static bool read_card(spi_device_handle_t spi, mfrc522_uid* uid) {
   return false;
 }
 
-void write_card() {}
+static void calculate_password(mfrc522_uid* uid, uint8_t* password, uint8_t* pack) {
+  char* salt = alloc_slat();
+  size_t len = LENGTH_ID + strlen(salt);
+  char data[len];
+  uint8_t hash[20];
+  memcpy(data, uid->uidByte, LENGTH_ID);
+  memcpy(&data[LENGTH_ID], salt, strlen(salt));
+  create_sha1_hash(data, sizeof(data), hash);
+  memcpy(password, &hash[16], 4);
+  memcpy(pack, &hash[14], 2);
+  free(salt);
+}
+
+bool write_card(spi_device_handle_t spi, mfrc522_uid* uid) {
+  // authenticate
+  uint8_t password[4] = {0xFF, 0xFF, 0xFF, 0xFF};
+  uint8_t pack[2] = {0x00, 0x00};
+  uint8_t pack_read[2] = {0x01, 0x01};  // initialize with different values than pack
+  calculate_password(uid, password, pack);
+
+  if (PCD_NTAG216_Auth(spi, password, pack_read) != STATUS_OK) {
+    ESP_LOGE(TAG, "Authentication failed");
+    return false;
+  }
+
+  // validate PACK
+  if (memcmp(pack, pack_read, 2) != 0) {
+    ESP_LOGE(
+        TAG, "PACK mismatch: %02x%02x != %02x%02x", pack[0], pack[1], pack_read[0], pack_read[1]
+    );
+    return false;
+  }
+
+  ESP_LOGI(TAG, "Authentication successful");
+
+  // calculate payload
+  size_t len = LENGTH_ID + LENGTH_COUNTER + LENGTH_DEPOSIT + LENGTH_BALANCE + LENGTH_SIGNATURE;
+  uint8_t buffer[len];
+  // TODO: use new card instead of current_card
+  memcpy(buffer, &current_card.id, LENGTH_ID);
+  memcpy(buffer + OFFSET_COUNTER, &current_card.counter, LENGTH_COUNTER);
+  memcpy(buffer + OFFSET_DEPOSIT, &current_card.deposit, LENGTH_DEPOSIT);
+  memcpy(buffer + OFFSET_BALANCE, &current_card.balance, LENGTH_BALANCE);
+  calculate_signature_ultralight(buffer + OFFSET_SIGNATURE, &current_card);
+
+  ESP_LOG_BUFFER_HEX(TAG, buffer, len);
+
+  // encode payload to base64
+  uint8_t write_data[PAYLOAD_LENGTH + 2];
+  size_t base64_len = sizeof(write_data);
+  if (mbedtls_base64_encode(write_data, base64_len, &base64_len, buffer, len) != 0) {
+    ESP_LOGE(TAG, "Encoding payload failed");
+    return false;
+  }
+  if (base64_len != PAYLOAD_LENGTH + 1) {
+    ESP_LOGE(TAG, "Base64 length mismatch: %d != %d", base64_len, PAYLOAD_LENGTH);
+    ESP_LOG_BUFFER_HEX(TAG, write_data, base64_len);
+    return false;
+  }
+  write_data[PAYLOAD_LENGTH] = 0xFE;  // override padding =
+
+  // write payload
+  for (size_t i = 2; i < base64_len / 4; i++) {  // skip first two bytes, because ID did not
+                                                 // change
+    if (MIFARE_Ultralight_Write(spi, i + 9, &write_data[4 * i], 4) != STATUS_OK) {
+      ESP_LOGE(TAG, "Writing payload failed at block %d w", i);
+      return false;
+    }
+  }
+
+  ESP_LOGI(TAG, "Write successful");
+
+  // increment counter
+  // uint8_t command[] = {0xA5, 0x00, 0x01, 0x00, 0x00, 0x00};  // Increment counter 00
+  // if (PCD_MIFARE_Transceive(spi, command, sizeof(command), false) != STATUS_OK) {
+  //   ESP_LOGE(TAG, "Incrementing counter failed");
+  //   return false;
+  // }
+
+  return true;
+}
 
 void rfid(void* params) {
   spi_device_handle_t spi;
@@ -149,18 +232,41 @@ void rfid(void* params) {
       continue;
     }
 
-    mode_type operation = current_state.mode;
-
-    ESP_LOGI(TAG, "New card present %d", uid.size);
+    mode_t previous_mode = current_state.mode;
+    ESP_LOGI(TAG, "New card present");
     xQueueSend(state_events, (void*)&(event_t){CARD_DETECTED}, portMAX_DELAY);
+    // yield so the status will be updated
+    taskYIELD();
 
-    switch (operation) {
-      case PRIVILEGED_CASHOUT:
-        /* code */
-        break;
-
-      default:
-        break;
+    if (current_state.mode != WRITE_CARD) {
+      continue;
     }
+
+    // write
+
+    // switch (mode) {
+    //   case PRIVILEGED_CASHOUT:
+    //     write_card(spi, &uid);
+    //     break;
+
+    //   case CHARGE_LIST:
+    //     write_card(spi, &uid);
+    //     break;
+
+    //   case CHARGE_MANUAL:
+    //     write_card(spi, &uid);
+    //     break;
+
+    //   case PRIVILEGED_TOPUP:
+    //     write_card(spi, &uid);
+    //     break;
+
+    //   case PRIVILEGED_REPAIR:
+    //     write_card(spi, &uid);
+    //     break;
+
+    //   default:
+    //     break;
+    // }
   }
 }

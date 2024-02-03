@@ -1001,3 +1001,64 @@ StatusCode PCD_MIFARE_Transceive(
   }
   return STATUS_OK;
 }  // End PCD_MIFARE_Transceive()
+
+StatusCode PCD_NTAG216_Auth(spi_device_handle_t spi, const uint8_t password[4], uint8_t pACK[]) {
+  // TODO: Fix cmdBuffer length and rxlength. They really should match.
+  //       (Better still, rxlength should not even be necessary.)
+  // TODO: Refactor.
+
+  StatusCode result;
+  uint8_t cmdBuffer[18];  // We need room for 16 bytes data and 2 bytes CRC_A.
+
+  cmdBuffer[0] = 0x1B;  // Authentication command.
+
+  for (uint8_t i = 0; i < 4; i++) {
+    cmdBuffer[i + 1] = password[i];
+  }
+
+  result = PCD_CalculateCRC(spi, cmdBuffer, 5, &cmdBuffer[5]);
+
+  if (result != STATUS_OK) {
+    return result;
+  }
+
+  // Transceive the data, store the reply in cmdBuffer[]
+  uint8_t waitIRq = 0x30;  // RxIRq and IdleIRq
+                           //	byte cmdBufferSize	= sizeof(cmdBuffer);
+  uint8_t validBits = 0;
+  uint8_t rxlength = 5;
+  result = PCD_CommunicateWithPICC(
+      spi, PCD_Transceive, waitIRq, cmdBuffer, 7, cmdBuffer, &rxlength, &validBits, 0, false
+  );
+
+  pACK[0] = cmdBuffer[0];
+  pACK[1] = cmdBuffer[1];
+
+  return result;
+}
+
+StatusCode MIFARE_Ultralight_Write(
+    spi_device_handle_t spi,
+    uint8_t page,       ///< The page (2-15) to write to.
+    uint8_t* buffer,    ///< The 4 bytes to write to the PICC
+    uint8_t bufferSize  ///< Buffer size, must be at least 4 bytes. Exactly 4 bytes are written.
+) {
+  StatusCode result;
+
+  // Sanity check
+  if (buffer == NULL || bufferSize < 4) {
+    return STATUS_INVALID;
+  }
+
+  // Build command buffer
+  uint8_t cmdBuffer[6];
+  cmdBuffer[0] = PICC_CMD_UL_WRITE;
+  cmdBuffer[1] = page;
+  memcpy(&cmdBuffer[2], buffer, 4);
+
+  // Perform the write
+  return PCD_MIFARE_Transceive(
+      spi, cmdBuffer, 6, false
+  );  // Adds CRC_A and checks that the response is MF_ACK.
+
+}  // End MIFARE_Ultralight_Write()

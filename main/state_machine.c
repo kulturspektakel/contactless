@@ -15,7 +15,7 @@ state_t current_state = {
     .is_privileged = false,
     .main_menu = {.count = 0},
     .log_files_to_upload = -1,
-    .manual_charge_amount = 0,
+    .manual_amount = 0,
     .product_selection =
         {
             .first_digit = -1,
@@ -51,7 +51,7 @@ static mode_type default_mode() {
 static void reset_cart() {
   current_state.cart.deposit = 0;
   current_state.cart.item_count = 0;
-  current_state.manual_charge_amount = 0;
+  current_state.manual_amount = 0;
 }
 
 static void select_product(int product) {
@@ -84,7 +84,7 @@ static void select_product(int product) {
 }
 
 int current_total() {
-  int total = current_state.cart.deposit * 200 + current_state.manual_charge_amount;
+  int total = current_state.cart.deposit * 200 + current_state.manual_amount;
   for (int i = 0; i < current_state.cart.item_count; i++) {
     if (!current_state.cart.items[i].has_product) {
       continue;
@@ -103,15 +103,15 @@ static void update_deposit(bool up) {
 }
 
 static void remove_digit() {
-  current_state.manual_charge_amount /= 10;
+  current_state.manual_amount /= 10;
 }
 
 static void add_digit(int d) {
-  int add = current_state.manual_charge_amount * 9 + d;
+  int add = current_state.manual_amount * 9 + d;
   if (current_total() + add > 9999) {
     return;
   }
-  current_state.manual_charge_amount += add;
+  current_state.manual_amount += add;
 }
 
 static mode_type token_detected(event_t event) {
@@ -123,14 +123,14 @@ static mode_type token_detected(event_t event) {
 static mode_type card_detected(event_t event) {
   // TODO: beep
   if (current_state.cart.item_count == 0 && current_state.cart.deposit == 0 &&
-      current_state.manual_charge_amount == 0) {
+      current_state.manual_amount == 0) {
     timeout(2000);
     return CARD_BALANCE;
   }
   return WRITE_CARD;
 }
 
-static mode_type charge_list_two_digit(event_t event) {
+static mode_type product_list(event_t event) {
   switch (event) {
     case KEY_A:
       if (current_state.product_selection.current_index > 0) {
@@ -189,7 +189,7 @@ static mode_type charge_list_two_digit(event_t event) {
     default:
       break;
   }
-  return CHARGE_LIST_TWO_DIGIT;
+  return PRODUCT_LIST;
 }
 
 static mode_type charge_without_card(event_t event) {
@@ -226,7 +226,7 @@ static mode_type charge_list(event_t event) {
     case KEY_STAR:
       return current_state.cart.item_count > 0 ? CHARGE_WITHOUT_CARD : CHARGE_MANUAL;
     case KEY_HASH:
-      return CHARGE_LIST_TWO_DIGIT;
+      return PRODUCT_LIST;
     case TOKEN_DETECTED:
       return token_detected(event);
     case CARD_DETECTED:
@@ -322,7 +322,7 @@ static mode_type privileged_topup(event_t event) {
       current_state.is_privileged = false;
       return CHARGE_LIST;
     case CARD_DETECTED:
-      return WRITE_CARD;
+      return card_detected(event);
 
     // stay in same state
     case KEY_0:
@@ -394,8 +394,9 @@ static mode_type card_balance(event_t event) {
     case CARD_DETECTED:
       timeout(1500);
       return CARD_BALANCE;
+    case TIMEOUT:
+      return default_mode();
     default:
-      ESP_LOGI(TAG, "card balance timeout");
       return default_mode();
   }
 }
@@ -406,8 +407,8 @@ static mode_type process_event(event_t event) {
       return charge_list(event);
     case CHARGE_MANUAL:
       return charge_manual(event);
-    case CHARGE_LIST_TWO_DIGIT:
-      return charge_list_two_digit(event);
+    case PRODUCT_LIST:
+      return product_list(event);
     case CHARGE_WITHOUT_CARD:
       return charge_without_card(event);
 
@@ -438,6 +439,8 @@ static mode_type process_event(event_t event) {
 
 void state_machine(void* params) {
   state_events = xQueueCreate(5, sizeof(int));
+  portMUX_TYPE mutex = portMUX_INITIALIZER_UNLOCKED;
+
   ESP_LOGI(TAG, "waiting for startup to complete");
 
   xEventGroupWaitBits(event_group, LOCAL_CONFIG_LOADED | TIME_SET, pdFALSE, pdTRUE, portMAX_DELAY);
@@ -446,14 +449,21 @@ void state_machine(void* params) {
   event_t event;
   while (true) {
     xQueueReceive(state_events, &event, portMAX_DELAY);
+    // state manipulation should not be interrupted, to prevent inconsistent state
+    taskENTER_CRITICAL(&mutex);
     mode_type previous_mode = current_state.mode;
     current_state.mode = process_event(event);
     if (previous_mode != current_state.mode) {
       current_state.previous_mode = previous_mode;
+    }
+    taskEXIT_CRITICAL(&mutex);
+    if (previous_mode != current_state.mode) {
+      // log needs to be outside of critical section
       ESP_LOGI(
           TAG, "Event %d changed state from %d to %d", event, previous_mode, current_state.mode
       );
     }
+    // taskEXIT_CRITICAL(&mutex);
     xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
   }
 }

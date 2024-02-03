@@ -296,3 +296,12 @@ StatusCode PCD_MIFARE_Transceive(
     uint8_t sendLen,    ///< Number of bytes in sendData.
     bool acceptTimeout  ///< True => A timeout is also success
 );
+
+StatusCode PCD_NTAG216_Auth(spi_device_handle_t spi, const uint8_t password[4], uint8_t pACK[]);
+
+StatusCode MIFARE_Ultralight_Write(
+    spi_device_handle_t spi,
+    uint8_t page,       ///< The page (2-15) to write to.
+    uint8_t* buffer,    ///< The 4 bytes to write to the PICC
+    uint8_t bufferSize  ///< Buffer size, must be at least 4 bytes. Exactly 4 bytes are written.
+);

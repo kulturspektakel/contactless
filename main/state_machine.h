@@ -35,7 +35,7 @@ typedef enum {
   MAIN_FATAL,
 
   CHARGE_LIST,
-  CHARGE_LIST_TWO_DIGIT,
+  PRODUCT_LIST,
   CHARGE_MANUAL,
   CHARGE_WITHOUT_CARD,
 
@@ -80,7 +80,7 @@ typedef struct {
   menu_items_t main_menu;
   mode_type previous_mode;
   int log_files_to_upload;
-  int manual_charge_amount;
+  int manual_amount;
 } state_t;
 
 extern QueueHandle_t state_events;
