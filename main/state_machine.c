@@ -127,6 +127,13 @@ static mode_type card_detected(event_t event) {
     timeout(2000);
     return CARD_BALANCE;
   }
+
+  current_state.data_to_write.deposit = current_state.cart.deposit;
+
+  if (current_state.data_to_write.deposit < 0) {
+    return WRITE_FAILED;
+  }
+
   return WRITE_CARD;
 }
 
@@ -386,6 +393,14 @@ static mode_type main_menu(event_t event) {
 }
 
 static mode_type write_card(event_t event) {
+  switch (event) {
+    case WRITE_SUCCESSFUL:
+      reset_cart();
+      return CARD_BALANCE;
+    case WRITE_UNSUCCESSFUL:
+      current_state.write_failed_reason = TECHNICAL_ERROR;
+      return WRITE_FAILED;
+  }
   return WRITE_CARD;
 }
 

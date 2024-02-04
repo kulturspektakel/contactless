@@ -462,6 +462,27 @@ static void charge_manual(u8g2_t* u8g2) {
   charge_total(u8g2, DISPLAY_HEIGHT - LEGEND_HEIGHT - 14);
 }
 
+static void write_failed(u8g2_t* u8g2) {
+  u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
+  u8g2_DrawStr(u8g2, 0, 17, "Write failed");
+  switch (current_state.write_failed_reason) {
+    case NONE:
+      break;
+    case CARD_LIMIT_EXCEEDED:
+      u8g2_DrawStr(u8g2, 0, 32, "Kartenlimit erreicht");
+      break;
+    case INSUFFICIENT_FUNDS:
+      u8g2_DrawStr(u8g2, 0, 32, "Nicht genug Guthaben");
+      break;
+    case INSUFFICIENT_DEPOSIT:
+      u8g2_DrawStr(u8g2, 0, 32, "Nicht genug Pfand");
+      break;
+    case TECHNICAL_ERROR:
+      u8g2_DrawStr(u8g2, 0, 32, "Technischer Fehler");
+      break;
+  }
+}
+
 void display(void* params) {
   // 200ms delay to allow other tasks to start
   vTaskDelay(200 / portTICK_PERIOD_MS);
@@ -512,6 +533,10 @@ void display(void* params) {
       case WRITE_CARD:
         status_bar(&u8g2);
         write_card(&u8g2);
+        break;
+      case WRITE_FAILED:
+        status_bar(&u8g2);
+        write_failed(&u8g2);
         break;
       case CARD_BALANCE:
         status_bar(&u8g2);

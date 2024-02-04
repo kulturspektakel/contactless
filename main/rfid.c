@@ -26,7 +26,7 @@ ultralight_card_info_t current_card = {0};
 
 #define PAYLOAD_LENGTH 23
 
-void calculate_signature_ultralight(uint8_t* target, ultralight_card_info_t* card) {
+static void calculate_signature_ultralight(uint8_t* target, ultralight_card_info_t* card) {
   char* salt = alloc_slat();
   size_t len = LENGTH_ID +       // ID
                LENGTH_COUNTER +  // count
@@ -123,7 +123,12 @@ static void calculate_password(mfrc522_uid* uid, uint8_t* password, uint8_t* pac
   free(salt);
 }
 
-bool write_card(spi_device_handle_t spi, mfrc522_uid* uid) {
+static bool write_card(
+    spi_device_handle_t spi,
+    mfrc522_uid* uid,
+    ultralight_card_info_t* card,
+    bool increment_counter
+) {
   // authenticate
   uint8_t password[4] = {0xFF, 0xFF, 0xFF, 0xFF};
   uint8_t pack[2] = {0x00, 0x00};
@@ -149,11 +154,12 @@ bool write_card(spi_device_handle_t spi, mfrc522_uid* uid) {
   size_t len = LENGTH_ID + LENGTH_COUNTER + LENGTH_DEPOSIT + LENGTH_BALANCE + LENGTH_SIGNATURE;
   uint8_t buffer[len];
   // TODO: use new card instead of current_card
-  memcpy(buffer, &current_card.id, LENGTH_ID);
-  memcpy(buffer + OFFSET_COUNTER, &current_card.counter, LENGTH_COUNTER);
-  memcpy(buffer + OFFSET_DEPOSIT, &current_card.deposit, LENGTH_DEPOSIT);
-  memcpy(buffer + OFFSET_BALANCE, &current_card.balance, LENGTH_BALANCE);
-  calculate_signature_ultralight(buffer + OFFSET_SIGNATURE, &current_card);
+  memcpy(buffer, &card->id, LENGTH_ID);
+  memcpy(buffer + OFFSET_COUNTER, &card->counter, LENGTH_COUNTER);
+  memcpy(buffer + OFFSET_DEPOSIT, &card->deposit, LENGTH_DEPOSIT);
+  memcpy(buffer + OFFSET_BALANCE, &card->balance, LENGTH_BALANCE);
+  // TODO overflow?!?!
+  calculate_signature_ultralight(buffer + OFFSET_SIGNATURE, &card);
 
   ESP_LOG_BUFFER_HEX(TAG, buffer, len);
 
@@ -182,12 +188,13 @@ bool write_card(spi_device_handle_t spi, mfrc522_uid* uid) {
 
   ESP_LOGI(TAG, "Write successful");
 
-  // increment counter
-  // uint8_t command[] = {0xA5, 0x00, 0x01, 0x00, 0x00, 0x00};  // Increment counter 00
-  // if (PCD_MIFARE_Transceive(spi, command, sizeof(command), false) != STATUS_OK) {
-  //   ESP_LOGE(TAG, "Incrementing counter failed");
-  //   return false;
-  // }
+  if (increment_counter) {
+    uint8_t command[] = {0xA5, 0x00, 0x01, 0x00, 0x00, 0x00};  // Increment counter 00
+    if (PCD_MIFARE_Transceive(spi, command, sizeof(command), false) != STATUS_OK) {
+      ESP_LOGE(TAG, "Incrementing counter failed");
+      return false;
+    }
+  }
 
   return true;
 }
@@ -242,31 +249,45 @@ void rfid(void* params) {
       continue;
     }
 
-    // write
+        calculate_signature_ultralight(, &current_state.data_to_write);
 
-    // switch (mode) {
-    //   case PRIVILEGED_CASHOUT:
-    //     write_card(spi, &uid);
-    //     break;
+    bool success = false;
+    bool increment_counter = true;
+    for (int retries = 3; retries > 0; retries--) {
+      if (!write_card(spi, &uid, &current_state.data_to_write, increment_counter)) {
+        ESP_LOGE(TAG, "Writing card failed");
+        continue;
+      }
 
-    //   case CHARGE_LIST:
-    //     write_card(spi, &uid);
-    //     break;
+      // don't need to increment counter on next try
+      increment_counter = false;
 
-    //   case CHARGE_MANUAL:
-    //     write_card(spi, &uid);
-    //     break;
+      ESP_LOGI(TAG, "Card written successfully");
+      if (!read_card(spi, &uid)) {
+        ESP_LOGE(TAG, "Rereading card failed");
+        continue;
+      }
 
-    //   case PRIVILEGED_TOPUP:
-    //     write_card(spi, &uid);
-    //     break;
+      if (current_card.deposit != current_state.data_to_write.deposit ||
+          current_card.balance != current_state.data_to_write.balance) {
+        // reread mismatch
+        ESP_LOGE(
+            TAG,
+            "Reread mismatch: Balance (%d != %d), deposit (%d != %d)",
+            current_card.balance,
+            current_state.data_to_write.balance,
+            current_card.deposit,
+            current_state.data_to_write.deposit
+        );
+        continue;
+      }
+      success = true;
+    }
 
-    //   case PRIVILEGED_REPAIR:
-    //     write_card(spi, &uid);
-    //     break;
-
-    //   default:
-    //     break;
-    // }
+    xQueueSend(
+        state_events,
+        (void*)&(event_t){success ? WRITE_SUCCESSFUL : WRITE_UNSUCCESSFUL},
+        portMAX_DELAY
+    );
   }
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdint.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "logmessage.pb.h"
@@ -27,6 +28,8 @@ typedef enum {
   TOKEN_DETECTED,
   TIMEOUT,
   STARTUP_COMPLETED,
+  WRITE_SUCCESSFUL,
+  WRITE_UNSUCCESSFUL,
 } event_t;
 
 typedef enum {
@@ -73,6 +76,22 @@ typedef struct {
 } product_selection_t;
 
 typedef struct {
+  uint8_t id[7];
+  uint16_t counter;
+  uint8_t deposit;
+  uint16_t balance;
+  uint8_t signature[5];
+} ultralight_card_info_t;
+
+typedef enum {
+  NONE,
+  CARD_LIMIT_EXCEEDED,
+  INSUFFICIENT_FUNDS,
+  INSUFFICIENT_DEPOSIT,
+  TECHNICAL_ERROR,
+} write_failed_reason_t;
+
+typedef struct {
   mode_type mode;
   bool is_privileged;
   cart_t cart;
@@ -81,6 +100,8 @@ typedef struct {
   mode_type previous_mode;
   int log_files_to_upload;
   int manual_amount;
+  ultralight_card_info_t data_to_write;
+  write_failed_reason_t write_failed_reason;
 } state_t;
 
 extern QueueHandle_t state_events;
