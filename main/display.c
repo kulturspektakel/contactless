@@ -389,8 +389,8 @@ static void write_card(u8g2_t* u8g2) {
 static void card_balance(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_profont29_tf);
   char balance[6];
-  snprintf(balance, sizeof(balance), "%2.2f0", ((float)current_card.balance) / 100);
-  balance[2] = ',';
+  snprintf(balance, sizeof(balance), "%.2f", ((float)current_card.balance) / 100);
+  balance[current_card.balance >= 1000 ? 2 : 1] = ',';
   int w = u8g2_GetStrWidth(u8g2, balance);
   int e = 8;  // euro symbol width
   int h = 36;

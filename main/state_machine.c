@@ -4,6 +4,7 @@
 #include "local_config.h"
 #include "logger.h"
 #include "logmessage.pb.h"
+#include "rfid.h"
 
 static const char* TAG = "state_machine";
 static TimerHandle_t timeout_handle;
@@ -121,18 +122,55 @@ static mode_type token_detected(event_t event) {
 }
 
 static mode_type card_detected(event_t event) {
-  // TODO: beep
   if (current_state.cart.item_count == 0 && current_state.cart.deposit == 0 &&
       current_state.manual_amount == 0) {
     timeout(2000);
     return CARD_BALANCE;
   }
 
-  current_state.data_to_write.deposit = current_state.cart.deposit;
+  // stroing in ints because it could go negative
+  int new_balance = current_card.balance;
+  int new_deposit = current_card.deposit;
+  int new_counter = current_card.counter;
+  if (current_state.mode == CHARGE_LIST || current_state.mode == CHARGE_MANUAL) {
+    new_balance -= current_total();
+    new_deposit += current_state.cart.deposit;
+    new_counter++;
+  } else if (current_state.mode == PRIVILEGED_TOPUP) {
+    new_balance += current_total();
+    new_deposit -= current_state.cart.deposit;
+    new_counter++;
+  } else if (current_state.mode == PRIVILEGED_CASHOUT) {
+    new_balance = 0;
+    new_deposit = 0;
+    new_counter++;
+  } else if (current_state.mode == PRIVILEGED_REPAIR) {
+    // no changes, just rewrite current values
+  } else {
+    return current_state.mode;
+  }
 
-  if (current_state.data_to_write.deposit < 0) {
+  if (new_balance < 0) {
+    current_state.write_failed_reason = INSUFFICIENT_FUNDS;
     return WRITE_FAILED;
   }
+  if (new_deposit < 0) {
+    current_state.write_failed_reason = INSUFFICIENT_DEPOSIT;
+    return WRITE_FAILED;
+  }
+  if (new_deposit > 9) {
+    current_state.write_failed_reason = CARD_LIMIT_EXCEEDED;
+    return WRITE_FAILED;
+  }
+  if (new_balance + new_deposit * 200 > 9999) {
+    current_state.write_failed_reason = CARD_LIMIT_EXCEEDED;
+    return WRITE_FAILED;
+  }
+
+  current_state.data_to_write = current_card;
+  current_state.data_to_write.balance = new_balance;
+  current_state.data_to_write.deposit = new_deposit;
+  current_state.data_to_write.counter = new_counter;
 
   return WRITE_CARD;
 }
@@ -266,6 +304,21 @@ static mode_type charge_list(event_t event) {
   return CHARGE_LIST;
 }
 
+static mode_type write_failed(event_t event) {
+  switch (event) {
+    case CARD_DETECTED:
+      if (memcmp(&current_card.id, &current_state.data_to_write.id, LENGTH_ID) == 0) {
+        return WRITE_CARD;
+      }
+      break;
+    case KEY_D:
+      return default_mode();
+    default:
+      break;
+  }
+  return WRITE_FAILED;
+}
+
 static mode_type main_starting_up(event_t event) {
   switch (event) {
     case STARTUP_COMPLETED:
@@ -396,10 +449,13 @@ static mode_type write_card(event_t event) {
   switch (event) {
     case WRITE_SUCCESSFUL:
       reset_cart();
+      timeout(1500);
       return CARD_BALANCE;
     case WRITE_UNSUCCESSFUL:
       current_state.write_failed_reason = TECHNICAL_ERROR;
       return WRITE_FAILED;
+    default:
+      break;
   }
   return WRITE_CARD;
 }
@@ -436,6 +492,7 @@ static mode_type process_event(event_t event) {
     case WRITE_CARD:
       return write_card(event);
     case WRITE_FAILED:
+      return write_failed(event);
       break;
 
     case CARD_BALANCE:

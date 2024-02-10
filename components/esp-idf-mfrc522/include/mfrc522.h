@@ -305,3 +305,6 @@ StatusCode MIFARE_Ultralight_Write(
     uint8_t* buffer,    ///< The 4 bytes to write to the PICC
     uint8_t bufferSize  ///< Buffer size, must be at least 4 bytes. Exactly 4 bytes are written.
 );
+
+uint8_t PICC_HaltA(spi_device_handle_t spi);
+void PCD_StopCrypto1(spi_device_handle_t spi);

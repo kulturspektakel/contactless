@@ -13,12 +13,6 @@ static const char* TAG = "rfid";
 static gpio_num_t NUM_CS_PIN = 21;
 ultralight_card_info_t current_card = {0};
 
-#define LENGTH_ID 7
-#define LENGTH_COUNTER 2
-#define LENGTH_DEPOSIT 1
-#define LENGTH_BALANCE 2
-#define LENGTH_SIGNATURE 5
-
 #define OFFSET_COUNTER LENGTH_ID
 #define OFFSET_DEPOSIT LENGTH_ID + LENGTH_COUNTER
 #define OFFSET_BALANCE LENGTH_ID + LENGTH_COUNTER + LENGTH_DEPOSIT
@@ -43,7 +37,7 @@ static void calculate_signature_ultralight(uint8_t* target, ultralight_card_info
   create_sha1_hash(hash_input, len, target);
 }
 
-static bool read_card(spi_device_handle_t spi, mfrc522_uid* uid) {
+static bool read_card(spi_device_handle_t spi, mfrc522_uid* uid, bool skip_security) {
   if (PICC_GetType(uid->sak) == PICC_TYPE_MIFARE_UL) {
     ultralight_card_info_t new_card = {0};
     // read counter
@@ -94,14 +88,16 @@ static bool read_card(spi_device_handle_t spi, mfrc522_uid* uid) {
     memcpy(new_card.signature, decoded_payload + OFFSET_SIGNATURE, LENGTH_SIGNATURE);
 
     // verify signature
-    uint8_t hash[20];
-    calculate_signature_ultralight(hash, &new_card);
+    if (!skip_security) {
+      uint8_t hash[20];
+      calculate_signature_ultralight(hash, &new_card);
 
-    if (memcmp(hash, new_card.signature, LENGTH_SIGNATURE) != 0) {
-      ESP_LOGE(TAG, "Signature mismatch: hash != signature");
-      ESP_LOG_BUFFER_HEX(TAG, hash, 5);
-      ESP_LOG_BUFFER_HEX(TAG, new_card.signature, 5);
-      return false;
+      if (memcmp(hash, new_card.signature, LENGTH_SIGNATURE) != 0) {
+        ESP_LOGE(TAG, "Signature mismatch: hash != signature");
+        ESP_LOG_BUFFER_HEX(TAG, hash, 5);
+        ESP_LOG_BUFFER_HEX(TAG, new_card.signature, 5);
+        return false;
+      }
     }
 
     current_card = new_card;
@@ -123,12 +119,7 @@ static void calculate_password(mfrc522_uid* uid, uint8_t* password, uint8_t* pac
   free(salt);
 }
 
-static bool write_card(
-    spi_device_handle_t spi,
-    mfrc522_uid* uid,
-    ultralight_card_info_t* card,
-    bool increment_counter
-) {
+static bool write_card(spi_device_handle_t spi, mfrc522_uid* uid, ultralight_card_info_t* card) {
   // authenticate
   uint8_t password[4] = {0xFF, 0xFF, 0xFF, 0xFF};
   uint8_t pack[2] = {0x00, 0x00};
@@ -153,13 +144,13 @@ static bool write_card(
   // calculate payload
   size_t len = LENGTH_ID + LENGTH_COUNTER + LENGTH_DEPOSIT + LENGTH_BALANCE + LENGTH_SIGNATURE;
   uint8_t buffer[len];
-  // TODO: use new card instead of current_card
+
   memcpy(buffer, &card->id, LENGTH_ID);
   memcpy(buffer + OFFSET_COUNTER, &card->counter, LENGTH_COUNTER);
   memcpy(buffer + OFFSET_DEPOSIT, &card->deposit, LENGTH_DEPOSIT);
   memcpy(buffer + OFFSET_BALANCE, &card->balance, LENGTH_BALANCE);
   // TODO overflow?!?!
-  calculate_signature_ultralight(buffer + OFFSET_SIGNATURE, &card);
+  calculate_signature_ultralight(buffer + OFFSET_SIGNATURE, card);
 
   ESP_LOG_BUFFER_HEX(TAG, buffer, len);
 
@@ -181,21 +172,27 @@ static bool write_card(
   for (size_t i = 2; i < base64_len / 4; i++) {  // skip first two bytes, because ID did not
                                                  // change
     if (MIFARE_Ultralight_Write(spi, i + 9, &write_data[4 * i], 4) != STATUS_OK) {
-      ESP_LOGE(TAG, "Writing payload failed at block %d w", i);
+      ESP_LOGE(TAG, "Writing payload failed at block %d", i);
       return false;
     }
   }
 
-  ESP_LOGI(TAG, "Write successful");
-
-  if (increment_counter) {
+  int counter_diff = card->counter - current_card.counter;
+  if (counter_diff < 0) {
+    ESP_LOGE(TAG, "Counter decreased");
+    return false;
+  }
+  ESP_LOGI(TAG, "Incrementing counter by %d", counter_diff);
+  while (counter_diff > 0) {
     uint8_t command[] = {0xA5, 0x00, 0x01, 0x00, 0x00, 0x00};  // Increment counter 00
     if (PCD_MIFARE_Transceive(spi, command, sizeof(command), false) != STATUS_OK) {
       ESP_LOGE(TAG, "Incrementing counter failed");
       return false;
     }
+    counter_diff--;
   }
 
+  ESP_LOGI(TAG, "Write successful");
   return true;
 }
 
@@ -224,6 +221,9 @@ void rfid(void* params) {
   ESP_LOGI(TAG, "Start scanning for tags");
 
   while (1) {
+    PICC_HaltA(spi);
+    PCD_StopCrypto1(spi);
+
     // wait for card
     if (!PICC_IsNewCardPresent(spi)) {
       vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -234,12 +234,13 @@ void rfid(void* params) {
       continue;
     }
 
-    if (!read_card(spi, &uid)) {
+    if (!read_card(
+            spi, &uid, current_state.mode == WRITE_FAILED || current_state.mode == PRIVILEGED_REPAIR
+        )) {
       // TODO: show error, card not readable
       continue;
     }
 
-    mode_t previous_mode = current_state.mode;
     ESP_LOGI(TAG, "New card present");
     xQueueSend(state_events, (void*)&(event_t){CARD_DETECTED}, portMAX_DELAY);
     // yield so the status will be updated
@@ -249,21 +250,22 @@ void rfid(void* params) {
       continue;
     }
 
-        calculate_signature_ultralight(, &current_state.data_to_write);
+    if (memcmp(&uid.uidByte, &current_state.data_to_write.id, LENGTH_ID) != 0) {
+      ESP_LOGE(TAG, "Card changed during write process");
+      continue;
+    }
 
     bool success = false;
-    bool increment_counter = true;
-    for (int retries = 3; retries > 0; retries--) {
-      if (!write_card(spi, &uid, &current_state.data_to_write, increment_counter)) {
+    for (int retries = 0; retries < 3 && !success; retries++) {
+      ESP_LOGI(TAG, "Write attempt %d", retries);
+
+      if (!write_card(spi, &uid, &current_state.data_to_write)) {
         ESP_LOGE(TAG, "Writing card failed");
         continue;
       }
 
-      // don't need to increment counter on next try
-      increment_counter = false;
-
       ESP_LOGI(TAG, "Card written successfully");
-      if (!read_card(spi, &uid)) {
+      if (!read_card(spi, &uid, current_state.mode == WRITE_FAILED)) {
         ESP_LOGE(TAG, "Rereading card failed");
         continue;
       }
