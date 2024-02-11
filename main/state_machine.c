@@ -117,8 +117,8 @@ static void add_digit(int d) {
 
 static mode_type token_detected(event_t event) {
   reset_cart();
-  current_state.is_privileged = true;
-  return PRIVILEGED_TOPUP;
+  current_state.is_privileged = !current_state.is_privileged;
+  return default_mode();
 }
 
 static mode_type card_detected(event_t event) {
@@ -272,7 +272,7 @@ static mode_type charge_list(event_t event) {
       return current_state.cart.item_count > 0 ? CHARGE_WITHOUT_CARD : CHARGE_MANUAL;
     case KEY_HASH:
       return PRODUCT_LIST;
-    case TOKEN_DETECTED:
+    case PRIVILEGE_TOKEN_DETECTED:
       return token_detected(event);
     case CARD_DETECTED:
       return card_detected(event);
@@ -334,7 +334,7 @@ static mode_type main_starting_up(event_t event) {
 static mode_type charge_manual(event_t event) {
   switch (event) {
     // change state
-    case TOKEN_DETECTED:
+    case PRIVILEGE_TOKEN_DETECTED:
       return token_detected(event);
     case CARD_DETECTED:
       return card_detected(event);
@@ -377,10 +377,8 @@ static mode_type charge_manual(event_t event) {
 
 static mode_type privileged_topup(event_t event) {
   switch (event) {
-    case TOKEN_DETECTED:
-      reset_cart();
-      current_state.is_privileged = false;
-      return CHARGE_LIST;
+    case PRIVILEGE_TOKEN_DETECTED:
+      return token_detected(event);
     case CARD_DETECTED:
       return card_detected(event);
 

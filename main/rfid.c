@@ -5,6 +5,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "http_auth_headers.h"
+#include "local_config.h"
 #include "mbedtls/sha1.h"
 #include "mfrc522.h"
 #include "state_machine.h"
@@ -35,6 +36,16 @@ static void calculate_signature_ultralight(uint8_t* target, ultralight_card_info
   memcpy(hash_input + OFFSET_SIGNATURE, salt, strlen(salt));
   free(salt);
   create_sha1_hash(hash_input, len, target);
+}
+
+static bool is_privilege_token(mfrc522_uid* uid) {
+  for (int i = 0; i < MAX_PRIVILEGE_TOKENS; i++) {
+    size_t len = uid->size > privilege_tokens[i].size ? uid->size : privilege_tokens[i].size;
+    if (memcmp(uid->uidByte, privilege_tokens[i].bytes, len) == 0) {
+      return true;
+    }
+  }
+  return false;
 }
 
 static bool read_card(spi_device_handle_t spi, mfrc522_uid* uid, bool skip_security) {
@@ -231,6 +242,11 @@ void rfid(void* params) {
     }
 
     if (PICC_Select(spi, &uid, 0) != STATUS_OK) {
+      continue;
+    }
+
+    if (is_privilege_token(&uid)) {
+      xQueueSend(state_events, (void*)&(event_t){PRIVILEGE_TOKEN_DETECTED}, portMAX_DELAY);
       continue;
     }
 

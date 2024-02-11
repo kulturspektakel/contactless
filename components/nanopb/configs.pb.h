@@ -11,28 +11,62 @@
 #endif
 
 /* Struct definitions */
+typedef PB_BYTES_ARRAY_T(10) AllLists_privilege_tokens_t;
 typedef struct _AllLists {
-    pb_callback_t product_list;
-    int32_t checksum;
+  pb_callback_t product_list;
+  int32_t checksum;
+  int32_t version_number;
+  int32_t timestamp;
+  pb_size_t privilege_tokens_count;
+  AllLists_privilege_tokens_t privilege_tokens[30];
 } AllLists;
-
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /* Initializer values for message structs */
-#define AllLists_init_default                    {{{NULL}, NULL}, 0}
-#define AllLists_init_zero                       {{{NULL}, NULL}, 0}
+#define AllLists_init_default                                                                   \
+  {                                                                                             \
+    {{NULL}, NULL}, 0, 0, 0, 0, {                                                               \
+      {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, \
+          {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}},       \
+          {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}},       \
+          {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {                                             \
+        0, {                                                                                    \
+          0                                                                                     \
+        }                                                                                       \
+      }                                                                                         \
+    }                                                                                           \
+  }
+#define AllLists_init_zero                                                                      \
+  {                                                                                             \
+    {{NULL}, NULL}, 0, 0, 0, 0, {                                                               \
+      {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, \
+          {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}},       \
+          {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}},       \
+          {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {                                             \
+        0, {                                                                                    \
+          0                                                                                     \
+        }                                                                                       \
+      }                                                                                         \
+    }                                                                                           \
+  }
 
 /* Field tags (for use in manual encoding/decoding) */
-#define AllLists_product_list_tag                1
-#define AllLists_checksum_tag                    2
+#define AllLists_product_list_tag 1
+#define AllLists_checksum_tag 2
+#define AllLists_version_number_tag 3
+#define AllLists_timestamp_tag 4
+#define AllLists_privilege_tokens_tag 5
 
 /* Struct field encoding specification for nanopb */
-#define AllLists_FIELDLIST(X, a) \
-X(a, CALLBACK, REPEATED, MESSAGE,  product_list,      1) \
-X(a, STATIC,   SINGULAR, INT32,    checksum,          2)
+#define AllLists_FIELDLIST(X, a)                     \
+  X(a, CALLBACK, REPEATED, MESSAGE, product_list, 1) \
+  X(a, STATIC, SINGULAR, INT32, checksum, 2)         \
+  X(a, STATIC, SINGULAR, INT32, version_number, 3)   \
+  X(a, STATIC, SINGULAR, INT32, timestamp, 4)        \
+  X(a, STATIC, REPEATED, BYTES, privilege_tokens, 5)
 #define AllLists_CALLBACK pb_default_field_callback
 #define AllLists_DEFAULT NULL
 #define AllLists_product_list_MSGTYPE DeviceConfig

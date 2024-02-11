@@ -11,6 +11,7 @@
 static const char* TAG = "local_config";
 static int32_t lists_count = 0;
 DeviceConfig active_config = DeviceConfig_init_default;
+AllLists_privilege_tokens_t privilege_tokens[MAX_PRIVILEGE_TOKENS];
 int32_t all_lists_checksum = -1;
 
 bool pb_from_file_stream(pb_istream_t* stream, uint8_t* buffer, size_t count) {
@@ -126,6 +127,7 @@ void local_config(void* params) {
     pb_callback_t callback = {.funcs.decode = load_active_product_list, .arg = &product_list_id};
     AllLists all_lists = read_local_config(callback);
     all_lists_checksum = all_lists.checksum;
+    memcpy(privilege_tokens, all_lists.privilege_tokens, sizeof(privilege_tokens));
 
     if (active_config.list_id == -1) {
       ESP_LOGE(TAG, "failed to load product list");
