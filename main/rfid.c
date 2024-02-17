@@ -40,8 +40,8 @@ static void calculate_signature_ultralight(uint8_t* target, ultralight_card_info
 
 static bool is_privilege_token(mfrc522_uid* uid) {
   for (int i = 0; i < MAX_PRIVILEGE_TOKENS; i++) {
-    size_t len = uid->size > privilege_tokens[i].size ? uid->size : privilege_tokens[i].size;
-    if (memcmp(uid->uidByte, privilege_tokens[i].bytes, len) == 0) {
+    if (uid->size == privilege_tokens[i].size &&
+        memcmp(uid->uidByte, privilege_tokens[i].bytes, privilege_tokens[i].size) == 0) {
       return true;
     }
   }
@@ -113,6 +113,9 @@ static bool read_card(spi_device_handle_t spi, mfrc522_uid* uid, bool skip_secur
 
     current_card = new_card;
     return true;
+  } else {
+    ESP_LOGE(TAG, "Unsupported card type: %d", PICC_GetType(uid->sak));
+    ESP_LOG_BUFFER_HEX(TAG, uid->uidByte, uid->size);
   }
   return false;
 }

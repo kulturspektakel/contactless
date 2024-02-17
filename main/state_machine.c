@@ -12,7 +12,6 @@ static TimerHandle_t timeout_handle;
 QueueHandle_t state_events;
 state_t current_state = {
     .mode = MAIN_STARTING_UP,
-    .previous_mode = MAIN_STARTING_UP,
     .is_privileged = false,
     .main_menu = {.count = 0},
     .log_files_to_upload = -1,
@@ -121,9 +120,13 @@ static mode_type token_detected(event_t event) {
   return default_mode();
 }
 
+static bool cart_is_empty() {
+  return current_state.cart.item_count == 0 && current_state.cart.deposit == 0 &&
+         current_state.manual_amount == 0;
+}
+
 static mode_type card_detected(event_t event) {
-  if (current_state.cart.item_count == 0 && current_state.cart.deposit == 0 &&
-      current_state.manual_amount == 0) {
+  if (cart_is_empty()) {
     timeout(2000);
     return CARD_BALANCE;
   }
@@ -138,7 +141,7 @@ static mode_type card_detected(event_t event) {
     new_counter++;
   } else if (current_state.mode == PRIVILEGED_TOPUP) {
     new_balance += current_total();
-    new_deposit -= current_state.cart.deposit;
+    new_deposit += current_state.cart.deposit;
     new_counter++;
   } else if (current_state.mode == PRIVILEGED_CASHOUT) {
     new_balance = 0;
@@ -396,15 +399,18 @@ static mode_type privileged_topup(event_t event) {
       add_digit(event - KEY_0);
       break;
     case KEY_A:
-      update_deposit(true);
+      update_deposit(false);
       break;
     case KEY_B:
-      update_deposit(false);
+      update_deposit(true);
       break;
     case KEY_C:
       remove_digit();
       break;
     case KEY_D:
+      if (cart_is_empty()) {
+        return PRIVILEGED_CASHOUT;
+      }
       reset_cart();
       break;
     default:
@@ -446,6 +452,7 @@ static mode_type main_menu(event_t event) {
 static mode_type write_card(event_t event) {
   switch (event) {
     case WRITE_SUCCESSFUL:
+      write_log(LogMessage_Order_PaymentMethod_KULT_CARD);
       reset_cart();
       timeout(1500);
       return CARD_BALANCE;
@@ -470,6 +477,18 @@ static mode_type card_balance(event_t event) {
   }
 }
 
+static mode_type privileged_cashout(event_t event) {
+  switch (event) {
+    case CARD_DETECTED:
+      return WRITE_CARD;
+    case KEY_D:
+    case TIMEOUT:
+      return default_mode();
+    default:
+      return PRIVILEGED_CASHOUT;
+  }
+}
+
 static mode_type process_event(event_t event) {
   switch (current_state.mode) {
     case CHARGE_LIST:
@@ -484,6 +503,7 @@ static mode_type process_event(event_t event) {
     case PRIVILEGED_TOPUP:
       return privileged_topup(event);
     case PRIVILEGED_CASHOUT:
+      return privileged_cashout(event);
     case PRIVILEGED_REPAIR:
       break;
 
@@ -519,14 +539,29 @@ void state_machine(void* params) {
   event_t event;
   while (true) {
     xQueueReceive(state_events, &event, portMAX_DELAY);
+    mode_type previous_mode = current_state.mode;
+
     // state manipulation should not be interrupted, to prevent inconsistent state
     taskENTER_CRITICAL(&mutex);
-    mode_type previous_mode = current_state.mode;
+    // state exit events
+
     current_state.mode = process_event(event);
-    if (previous_mode != current_state.mode) {
-      current_state.previous_mode = previous_mode;
+    // state entry events
+    switch (current_state.mode) {
+      case CHARGE_LIST:
+      case CHARGE_MANUAL:
+        current_state.transaction_type = LogMessage_CardTransaction_TransactionType_CHARGE;
+        break;
+      case PRIVILEGED_TOPUP:
+        current_state.transaction_type = LogMessage_CardTransaction_TransactionType_TOP_UP;
+        break;
+      case PRIVILEGED_CASHOUT:
+        current_state.transaction_type = LogMessage_CardTransaction_TransactionType_CASHOUT;
+      default:
+        break;
     }
     taskEXIT_CRITICAL(&mutex);
+
     if (previous_mode != current_state.mode) {
       // log needs to be outside of critical section
       ESP_LOGI(

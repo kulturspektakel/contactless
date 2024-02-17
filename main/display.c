@@ -462,6 +462,19 @@ static void charge_manual(u8g2_t* u8g2) {
   charge_total(u8g2, DISPLAY_HEIGHT - LEGEND_HEIGHT - 14);
 }
 
+static void privileged_topup(u8g2_t* u8g2) {
+  u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
+  u8g2_DrawStr(u8g2, 0, 17, "Aufladen");
+  enter_amount(u8g2, current_state.manual_amount);
+  charge_total(u8g2, DISPLAY_HEIGHT - 14);
+}
+
+static void privileged_cashout(u8g2_t* u8g2) {
+  u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
+  u8g2_DrawStr(u8g2, 0, 17, "Auszahlung");
+  charge_total(u8g2, DISPLAY_HEIGHT - 14);
+}
+
 static void write_failed(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
   u8g2_DrawStr(u8g2, 0, 17, "Write failed");
@@ -545,6 +558,15 @@ void display(void* params) {
       case CHARGE_MANUAL:
         status_bar(&u8g2);
         charge_manual(&u8g2);
+        keypad_legend(&u8g2, false);
+        break;
+      case PRIVILEGED_TOPUP:
+        status_bar(&u8g2);
+        privileged_topup(&u8g2);
+        break;
+      case PRIVILEGED_CASHOUT:
+        status_bar(&u8g2);
+        privileged_cashout(&u8g2);
         keypad_legend(&u8g2, false);
         break;
       default:

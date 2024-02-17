@@ -35,7 +35,7 @@ void app_main(void) {
   ESP_ERROR_CHECK(esp_vfs_littlefs_register(&conf));
 
   xTaskCreate(&wifi_connect, "wifi_connect", 4096, NULL, PRIO_NORMAL, NULL);
-  xTaskCreate(&local_config, "local_config", 4096, NULL, PRIO_NORMAL, NULL);
+  xTaskCreate(&local_config, "local_config", 5120, NULL, PRIO_NORMAL, NULL);
   xTaskCreate(&fetch_config, "fetch_config", 16096, NULL, PRIO_NORMAL, NULL);
   xTaskCreate(&log_uploader, "log_uploader", 4096, NULL, PRIO_NORMAL, NULL);
   xTaskCreate(&display, "display", 4096, NULL, PRIO_NORMAL, NULL);

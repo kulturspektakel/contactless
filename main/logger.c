@@ -35,25 +35,7 @@ void write_log(LogMessage_Order_PaymentMethod payment_method) {
     log_message.has_card_transaction = true;
     LogMessage_CardTransaction transaction = LogMessage_CardTransaction_init_zero;
     log_message.card_transaction = transaction;
-    switch (current_state.mode) {
-      case CHARGE_LIST:
-      case CHARGE_MANUAL:
-        log_message.card_transaction.transaction_type =
-            LogMessage_CardTransaction_TransactionType_CHARGE;
-        break;
-      case PRIVILEGED_CASHOUT:
-        log_message.card_transaction.transaction_type =
-            LogMessage_CardTransaction_TransactionType_CASHOUT;
-        break;
-      case PRIVILEGED_TOPUP:
-        log_message.card_transaction.transaction_type =
-            LogMessage_CardTransaction_TransactionType_TOP_UP;
-        break;
-      default: {
-        // other events are not logged
-        return;
-      }
-    }
+    log_message.card_transaction.transaction_type = current_state.transaction_type;
 
     // TODO
     log_message.card_transaction.has_counter = true;
