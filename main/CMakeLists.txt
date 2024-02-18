@@ -5,7 +5,7 @@ set(srcs
     "http_auth_headers.c"
     "local_config.c"
     "log_uploader.c"
-    "logger.c"
+    "log_writer.c"
     "keypad.c"
     "main.c"
     "power_management.c"

@@ -2,7 +2,7 @@
 #include "esp_log.h"
 #include "event_group.h"
 #include "local_config.h"
-#include "logger.h"
+#include "log_writer.h"
 #include "logmessage.pb.h"
 #include "rfid.h"
 
@@ -171,6 +171,7 @@ static mode_type card_detected(event_t event) {
   }
 
   current_state.data_to_write = current_card;
+  current_state.data_before_write = current_card;
   current_state.data_to_write.balance = new_balance;
   current_state.data_to_write.deposit = new_deposit;
   current_state.data_to_write.counter = new_counter;
@@ -238,6 +239,40 @@ static mode_type product_list(event_t event) {
       break;
   }
   return PRODUCT_LIST;
+}
+
+static void write_log(LogMessage_Order_PaymentMethod payment) {
+  LogMessage* log = pvPortMalloc(sizeof(LogMessage) LogMessage_init_default);
+
+  if (current_state.cart.item_count > 0) {
+    log->has_order = true;
+    log->order.payment_method = payment;
+    log->order.cart_items_count = current_state.cart.item_count;
+    for (int i = 0; i < current_state.cart.item_count; i++) {
+      log->order.cart_items[i] = current_state.cart.items[i];
+    }
+  }
+
+  if (payment == LogMessage_Order_PaymentMethod_KULT_CARD) {
+    log->has_card_transaction = true;
+    log->card_transaction.transaction_type = current_state.transaction_type;
+    log->card_transaction.has_counter = true;
+    log->card_transaction.counter = current_card.counter;
+
+    for (int i = 0; i < sizeof(current_card.id); i++) {
+      char buffer[3];
+      snprintf(buffer, sizeof(buffer), "%02X", current_card.id[i]);
+      log->card_transaction.card_id[i * 2] = buffer[0];
+      log->card_transaction.card_id[i * 2 + 1] = buffer[1];
+    }
+
+    log->card_transaction.balance_before = current_state.data_before_write.balance;
+    log->card_transaction.balance_after = current_state.data_to_write.balance;
+    log->card_transaction.deposit_before = current_state.data_before_write.deposit;
+    log->card_transaction.deposit_after = current_state.data_to_write.deposit;
+  }
+
+  xQueueSend(log_queue, &log, portMAX_DELAY);
 }
 
 static mode_type charge_without_card(event_t event) {
@@ -439,7 +474,7 @@ static mode_type main_menu(event_t event) {
     case KEY_D:
     case TIMEOUT:
       current_state.main_menu.count = 0;
-      free(current_state.main_menu.items);
+      vPortFree(current_state.main_menu.items);
       return default_mode();
 
     // stay in same state

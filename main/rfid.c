@@ -34,7 +34,7 @@ static void calculate_signature_ultralight(uint8_t* target, ultralight_card_info
   memcpy(hash_input + OFFSET_DEPOSIT, &card->deposit, LENGTH_DEPOSIT);
   memcpy(hash_input + OFFSET_BALANCE, &card->balance, LENGTH_BALANCE);
   memcpy(hash_input + OFFSET_SIGNATURE, salt, strlen(salt));
-  free(salt);
+  vPortFree(salt);
   create_sha1_hash(hash_input, len, target);
 }
 
@@ -130,7 +130,7 @@ static void calculate_password(mfrc522_uid* uid, uint8_t* password, uint8_t* pac
   create_sha1_hash(data, sizeof(data), hash);
   memcpy(password, &hash[16], 4);
   memcpy(pack, &hash[14], 2);
-  free(salt);
+  vPortFree(salt);
 }
 
 static bool write_card(spi_device_handle_t spi, mfrc522_uid* uid, ultralight_card_info_t* card) {

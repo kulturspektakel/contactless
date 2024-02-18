@@ -19,7 +19,7 @@ char* alloc_slat() {
   ESP_ERROR_CHECK(nvs_open("device_config", NVS_READONLY, &nvs_handle));
   size_t salt_size;
   nvs_get_str(nvs_handle, "salt", NULL, &salt_size);
-  char* salt = malloc(salt_size);
+  char* salt = pvPortMalloc(salt_size);
   ESP_ERROR_CHECK(nvs_get_str(nvs_handle, "salt", salt, &salt_size));
   nvs_close(nvs_handle);
   return salt;
@@ -37,7 +37,7 @@ void http_auth_headers(esp_http_client_handle_t client) {
   char did[9];
   device_id(did);
   sprintf(hash_input, "%s%s", did, salt);
-  free(salt);
+  vPortFree(salt);
   uint8_t hash[20];
   create_sha1_hash(hash_input, strlen(hash_input), hash);
   char authorization[48] = "Bearer ";

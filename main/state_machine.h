@@ -101,6 +101,7 @@ typedef struct {
   int log_files_to_upload;
   int manual_amount;
   ultralight_card_info_t data_to_write;
+  ultralight_card_info_t data_before_write;
   write_failed_reason_t write_failed_reason;
 } state_t;
 

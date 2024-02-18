@@ -10,6 +10,7 @@
 #include "keypad.h"
 #include "local_config.h"
 #include "log_uploader.h"
+#include "log_writer.h"
 #include "nvs_flash.h"
 #include "power_management.h"
 #include "rfid.h"
@@ -40,6 +41,7 @@ void app_main(void) {
   xTaskCreate(&log_uploader, "log_uploader", 4096, NULL, PRIO_NORMAL, NULL);
   xTaskCreate(&display, "display", 4096, NULL, PRIO_NORMAL, NULL);
   xTaskCreate(&keypad, "keypad", 4096, NULL, PRIO_NORMAL, NULL);
+  xTaskCreate(&log_writer, "log_writer", 4096, NULL, PRIO_NORMAL, NULL);
   // state machine needs to run at a higher priority than the other tasks, so that other tasks can
   // yield for the state to update
   xTaskCreate(&state_machine, "state_machine", 4096, NULL, PRIO_HIGH, NULL);

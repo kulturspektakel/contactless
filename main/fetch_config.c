@@ -30,7 +30,7 @@ esp_err_t _http_event_handler(esp_http_client_event_t* evt) {
       }
 
       if (bytes_written == 0) {
-        buffer = malloc(esp_http_client_get_content_length(evt->client));
+        buffer = pvPortMalloc(esp_http_client_get_content_length(evt->client));
       }
       memcpy(buffer + bytes_written, evt->data, evt->data_len);
       bytes_written += evt->data_len;
@@ -103,7 +103,7 @@ void fetch_config(void* params) {
       break;
   }
 
-  free(buffer);
+  vPortFree(buffer);
   xEventGroupSetBits(event_group, REMOTE_CONFIG_FETCHED);
   vTaskDelete(NULL);
 }

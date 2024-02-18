@@ -6,7 +6,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "http_auth_headers.h"
-#include "logger.h"
 #include "state_machine.h"
 
 static const char* TAG = "log_uploader";
@@ -63,7 +62,7 @@ log_uploader_event_t upload_file(char* filename) {
     return FILE_HANDLED;
   }
   fseek(f, 0, SEEK_SET);
-  char* buffer = malloc(file_size);
+  char* buffer = pvPortMalloc(file_size);
   fread(buffer, file_size, 1, f);
   fclose(f);
 
@@ -71,7 +70,7 @@ log_uploader_event_t upload_file(char* filename) {
   http_auth_headers(client);
   esp_http_client_set_post_field(client, buffer, file_size);
   esp_err_t err = esp_http_client_perform(client);
-  free(buffer);
+  vPortFree(buffer);
 
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "Request failed (Error: %s)", esp_err_to_name(err));

@@ -104,7 +104,7 @@ static AllLists read_local_config(pb_callback_t callback) {
 menu_items_t initialize_main_menu() {
   menu_items_t args = {
       .count = 0,
-      .items = (menu_item_t*)malloc(lists_count * sizeof(menu_item_t)),
+      .items = (menu_item_t*)pvPortMalloc(lists_count * sizeof(menu_item_t)),
       .active_item = 0,
   };
   read_local_config((pb_callback_t){.funcs.decode = load_menu_items, .arg = &args});
