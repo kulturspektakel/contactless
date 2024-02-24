@@ -1,5 +1,7 @@
 #include "state_machine.h"
+#include "constants.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "event_group.h"
 #include "local_config.h"
 #include "log_writer.h"
@@ -84,7 +86,7 @@ static void select_product(int product) {
 }
 
 int current_total() {
-  int total = current_state.cart.deposit * 200 + current_state.manual_amount;
+  int total = current_state.cart.deposit * DEPOSIT_VALUE + current_state.manual_amount;
   for (int i = 0; i < current_state.cart.item_count; i++) {
     if (!current_state.cart.items[i].has_product) {
       continue;
@@ -95,7 +97,7 @@ int current_total() {
 }
 
 static void update_deposit(bool up) {
-  if (up && current_state.cart.deposit < 9 && current_total() + 200 <= 9999) {
+  if (up && current_state.cart.deposit < 9 && current_total() + DEPOSIT_VALUE <= 9999) {
     current_state.cart.deposit++;
   } else if (!up && current_state.cart.deposit > -9) {
     current_state.cart.deposit--;
@@ -165,7 +167,7 @@ static mode_type card_detected(event_t event) {
     current_state.write_failed_reason = CARD_LIMIT_EXCEEDED;
     return WRITE_FAILED;
   }
-  if (new_balance + new_deposit * 200 > 9999) {
+  if (new_balance + new_deposit * DEPOSIT_VALUE > 9999) {
     current_state.write_failed_reason = CARD_LIMIT_EXCEEDED;
     return WRITE_FAILED;
   }
@@ -565,10 +567,19 @@ static mode_type process_event(event_t event) {
 void state_machine(void* params) {
   state_events = xQueueCreate(5, sizeof(int));
   portMUX_TYPE mutex = portMUX_INITIALIZER_UNLOCKED;
+  int64_t time_since_start = esp_timer_get_time();
 
   ESP_LOGI(TAG, "waiting for startup to complete");
 
-  xEventGroupWaitBits(event_group, LOCAL_CONFIG_LOADED | TIME_SET, pdFALSE, pdTRUE, portMAX_DELAY);
+  xEventGroupWaitBits(
+      event_group,
+      LOCAL_CONFIG_LOADED | TIME_SET | DEVICE_ID_LOADED | SALT_LOADED,
+      pdFALSE,
+      pdTRUE,
+      portMAX_DELAY
+  );
+
+  vTaskDelay((2000 - ((esp_timer_get_time() - time_since_start) / 1000)) / portTICK_PERIOD_MS);
   xQueueSend(state_events, (void*)&(event_t){STARTUP_COMPLETED}, portMAX_DELAY);
 
   event_t event;

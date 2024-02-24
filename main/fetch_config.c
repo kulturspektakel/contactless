@@ -1,5 +1,6 @@
 #include "fetch_config.h"
 #include "configs.pb.h"
+#include "constants.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "event_group.h"
@@ -50,7 +51,7 @@ void fetch_config(void* params) {
   ESP_LOGI(TAG, "start fetching config");
 
   esp_http_client_config_t config = {
-      .host = "api2.kulturspektakel.de",
+      .host = API_HOST,
       .transport_type = HTTP_TRANSPORT_OVER_SSL,
       .path = "/$$$/lists",
       .event_handler = _http_event_handler,
@@ -92,7 +93,7 @@ void fetch_config(void* params) {
       }
       pb_release(AllLists_fields, &all_lists);
 
-      FILE* config_file = fopen("/littlefs/config.cfg", "w");
+      FILE* config_file = fopen(CONFIG_FILE, "w");
       size_t files_written = fwrite(buffer, bytes_written, 1, config_file);
       ESP_LOGI(TAG, "written %d files", files_written);
       fclose(config_file);

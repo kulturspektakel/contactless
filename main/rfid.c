@@ -22,19 +22,17 @@ ultralight_card_info_t current_card = {0};
 #define PAYLOAD_LENGTH 23
 
 static void calculate_signature_ultralight(uint8_t* target, ultralight_card_info_t* card) {
-  char* salt = alloc_slat();
   size_t len = LENGTH_ID +       // ID
                LENGTH_COUNTER +  // count
                LENGTH_DEPOSIT +  // deposit
                LENGTH_BALANCE +  // balance
-               strlen(salt);
+               SALT_LENGTH;
   char hash_input[len];
   memcpy(hash_input, &card->id, LENGTH_ID);
   memcpy(hash_input + OFFSET_COUNTER, &card->counter, LENGTH_COUNTER);
   memcpy(hash_input + OFFSET_DEPOSIT, &card->deposit, LENGTH_DEPOSIT);
   memcpy(hash_input + OFFSET_BALANCE, &card->balance, LENGTH_BALANCE);
-  memcpy(hash_input + OFFSET_SIGNATURE, salt, strlen(salt));
-  vPortFree(salt);
+  memcpy(hash_input + OFFSET_SIGNATURE, SALT, SALT_LENGTH);
   create_sha1_hash(hash_input, len, target);
 }
 
@@ -121,16 +119,14 @@ static bool read_card(spi_device_handle_t spi, mfrc522_uid* uid, bool skip_secur
 }
 
 static void calculate_password(mfrc522_uid* uid, uint8_t* password, uint8_t* pack) {
-  char* salt = alloc_slat();
-  size_t len = LENGTH_ID + strlen(salt);
+  size_t len = LENGTH_ID + SALT_LENGTH;
   char data[len];
   uint8_t hash[20];
   memcpy(data, uid->uidByte, LENGTH_ID);
-  memcpy(&data[LENGTH_ID], salt, strlen(salt));
+  memcpy(&data[LENGTH_ID], SALT, SALT_LENGTH);
   create_sha1_hash(data, sizeof(data), hash);
   memcpy(password, &hash[16], 4);
   memcpy(pack, &hash[14], 2);
-  vPortFree(salt);
 }
 
 static bool write_card(spi_device_handle_t spi, mfrc522_uid* uid, ultralight_card_info_t* card) {

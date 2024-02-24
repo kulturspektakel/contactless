@@ -1,5 +1,6 @@
 #include "log_uploader.h"
 #include <dirent.h>
+#include "constants.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "event_group.h"
@@ -9,7 +10,6 @@
 #include "state_machine.h"
 
 static const char* TAG = "log_uploader";
-static const char* LOG_DIR = "/littlefs/logs";
 #define MAX_ERRORS 3
 
 int count_logs() {
@@ -47,7 +47,7 @@ log_uploader_event_t upload_file(char* filename) {
   }
 
   esp_http_client_config_t config = {
-      .host = "api.kulturspektakel.de",
+      .host = API_HOST,
       .transport_type = HTTP_TRANSPORT_OVER_SSL,
       .path = "/$$$/log",
       .method = HTTP_METHOD_POST,

@@ -1,5 +1,5 @@
 set(srcs
-    "device_id.c"
+
     "display.c"
     "fetch_config.c"
     "http_auth_headers.c"
@@ -14,6 +14,8 @@ set(srcs
     "wifi_connect.c"
     "u8g2_esp32_hal.c"
     "time_sync.c"
+    "esp_efuse_custom_table.c"
+    "constants.c"
 )
 
 idf_component_register(SRCS "${srcs}" INCLUDE_DIRS ".")

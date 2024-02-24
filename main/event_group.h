@@ -8,5 +8,7 @@
 #define LOCAL_CONFIG_UPDATED BIT3
 #define TIME_SET BIT4
 #define DISPLAY_NEEDS_UPDATE BIT5
+#define DEVICE_ID_LOADED BIT6
+#define SALT_LOADED BIT7
 
 extern EventGroupHandle_t event_group;

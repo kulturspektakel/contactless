@@ -1,5 +1,6 @@
 #include "local_config.h"
 #include "configs.pb.h"
+#include "constants.h"
 #include "esp_littlefs.h"
 #include "esp_log.h"
 #include "event_group.h"
@@ -28,9 +29,9 @@ bool pb_from_file_stream(pb_istream_t* stream, uint8_t* buffer, size_t count) {
 
 int32_t read_product_list_id() {
   nvs_handle_t nvs_handle;
-  ESP_ERROR_CHECK(nvs_open("device_config", NVS_READONLY, &nvs_handle));
+  ESP_ERROR_CHECK(nvs_open(NVS_DEVICE_CONFIG, NVS_READONLY, &nvs_handle));
   int32_t product_list_id;
-  if (nvs_get_i32(nvs_handle, "product_list", &product_list_id) != ESP_OK) {
+  if (nvs_get_i32(nvs_handle, NVS_PRODUCT_LIST, &product_list_id) != ESP_OK) {
     ESP_LOGE(TAG, "failed to read product list id");
     product_list_id = -1;
   }
@@ -77,7 +78,7 @@ static bool load_menu_items(pb_istream_t* stream, const pb_field_t* field, void*
 }
 
 static AllLists read_local_config(pb_callback_t callback) {
-  FILE* config_file = fopen("/littlefs/config.cfg", "r");
+  FILE* config_file = fopen(CONFIG_FILE, "r");
   AllLists all_lists = AllLists_init_default;
   if (config_file != NULL) {
     pb_istream_t file_stream = {
@@ -113,8 +114,8 @@ menu_items_t initialize_main_menu() {
 
 void select_list(int list_id) {
   nvs_handle_t nvs_handle;
-  ESP_ERROR_CHECK(nvs_open("device_config", NVS_READWRITE, &nvs_handle));
-  ESP_ERROR_CHECK(nvs_set_i32(nvs_handle, "product_list", list_id));
+  ESP_ERROR_CHECK(nvs_open(NVS_DEVICE_CONFIG, NVS_READWRITE, &nvs_handle));
+  ESP_ERROR_CHECK(nvs_set_i32(nvs_handle, NVS_PRODUCT_LIST, list_id));
   ESP_ERROR_CHECK(nvs_commit(nvs_handle));
   nvs_close(nvs_handle);
   xEventGroupSetBits(event_group, LOCAL_CONFIG_UPDATED);

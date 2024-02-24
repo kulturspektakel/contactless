@@ -1,7 +1,7 @@
 #include "log_writer.h"
 #include <dirent.h>
 #include <time.h>
-#include "device_id.h"
+#include "constants.h"
 #include "esp_littlefs.h"
 #include "esp_log.h"
 #include "esp_random.h"
@@ -14,7 +14,6 @@
 
 static const char* TAG = "logger";
 static const char* ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-static const char* LOG_DIR = "/littlefs/logs";
 
 QueueHandle_t log_queue;
 
@@ -50,7 +49,7 @@ void log_writer(void* params) {
       log_message->battery_voltage = battery_voltage;
       log_message->has_usb_voltage = true;
       log_message->usb_voltage = usb_voltage;
-      device_id(log_message->device_id);
+      strncpy(log_message->device_id, DEVICE_ID, sizeof(log_message->device_id));
 
       char filename[29];  // TODO: use strlen(LOG_DIR)
       sprintf(filename, "%s/%.8s.log", LOG_DIR, log_message->client_id);

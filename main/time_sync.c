@@ -1,6 +1,7 @@
 #include "time_sync.h"
 #include <sys/time.h>
 #include <time.h>
+#include "constants.h"
 #include "ds3231.h"
 #include "esp_log.h"
 #include "esp_netif_sntp.h"
@@ -31,7 +32,7 @@ void time_sync(void* params) {
   }
 
   // set timezone after settimeofday, because it receives UTC
-  setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
+  setenv("TZ", TZ, 1);
   tzset();
 
   // wait for wifi to connect

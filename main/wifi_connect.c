@@ -1,4 +1,5 @@
 #include "wifi_connect.h"
+#include "constants.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -78,13 +79,13 @@ void wifi_connect(void* params) {
   };
 
   nvs_handle_t nvs_handle;
-  ESP_ERROR_CHECK(nvs_open("device_config", NVS_READONLY, &nvs_handle));
+  ESP_ERROR_CHECK(nvs_open(NVS_DEVICE_CONFIG, NVS_READONLY, &nvs_handle));
 
   size_t required_size;
-  nvs_get_str(nvs_handle, "wifi_ssid", NULL, &required_size);
-  nvs_get_str(nvs_handle, "wifi_ssid", &wifi_config.sta.ssid, &required_size);
-  nvs_get_str(nvs_handle, "wifi_password", NULL, &required_size);
-  nvs_get_str(nvs_handle, "wifi_password", &wifi_config.sta.password, &required_size);
+  nvs_get_str(nvs_handle, NVS_WIFI_SSID, NULL, &required_size);
+  nvs_get_str(nvs_handle, NVS_WIFI_SSID, &wifi_config.sta.ssid, &required_size);
+  nvs_get_str(nvs_handle, NVS_WIFI_PASSWORD, NULL, &required_size);
+  nvs_get_str(nvs_handle, NVS_WIFI_PASSWORD, &wifi_config.sta.password, &required_size);
   nvs_close(nvs_handle);
 
   esp_wifi_set_mode(WIFI_MODE_STA);

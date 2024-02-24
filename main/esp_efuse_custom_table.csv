@@ -1,0 +1,2 @@
+# field_name,  efuse_block(EFUSE_BLK0..EFUSE_BLK3), bit_start(0..255),    bit_count(1..256),        comment
+DEVICE_ID, EFUSE_BLK3, 0, 128
