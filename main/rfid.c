@@ -191,6 +191,9 @@ static bool write_card(spi_device_handle_t spi, mfrc522_uid* uid, ultralight_car
   if (counter_diff < 0) {
     ESP_LOGE(TAG, "Counter decreased");
     return false;
+  } else if (counter_diff > 3) {
+    ESP_LOGE(TAG, "Counter diff to high: %d", counter_diff);
+    return false;
   }
   ESP_LOGI(TAG, "Incrementing counter by %d", counter_diff);
   while (counter_diff > 0) {
