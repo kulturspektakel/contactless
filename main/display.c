@@ -181,6 +181,16 @@ static void status_bar(u8g2_t* u8g2) {
   time_display(u8g2);
 }
 
+static void draw_status(u8g2_t* u8g2, char* status, int w, bool active) {
+  u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
+  u8g2_DrawStr(u8g2, w + 7, 5, status);
+  if (active) {
+    u8g2_DrawDisc(u8g2, w + 2, 2, 2, U8G2_DRAW_ALL);
+  } else {
+    u8g2_DrawCircle(u8g2, w + 2, 2, 2, U8G2_DRAW_ALL);
+  }
+}
+
 static void boot_screen(u8g2_t* u8g2) {
   u8g2_DrawXBM(
       u8g2,
@@ -190,6 +200,33 @@ static void boot_screen(u8g2_t* u8g2) {
       LOGO_HEIGHT,
       &logo_bits
   );
+
+  EventBits_t bits = xEventGroupGetBits(event_group);
+  if (bits & DEVICE_ID_LOADED) {
+    u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
+    u8g2_uint_t w = u8g2_GetUTF8Width(u8g2, DEVICE_ID);
+    u8g2_DrawUTF8(u8g2, DISPLAY_WIDTH / 2 - w / 2, DISPLAY_HEIGHT - 3, DEVICE_ID);
+  }
+
+  if (esp_timer_get_time() > current_state.expected_bootup_time) {
+    u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
+    int w = 0;
+    draw_status(u8g2, "DID", w++ * 26, bits & DEVICE_ID_LOADED);
+    draw_status(u8g2, "SLT", w++ * 26, bits & SALT_LOADED);
+    draw_status(u8g2, "CFG", w++ * 26, bits & LOCAL_CONFIG_LOADED);
+    draw_status(u8g2, "TME", w++ * 26, bits & TIME_SET);
+    draw_status(u8g2, "WFI", w++ * 26, bits & WIFI_CONNECTED);
+  } else {
+    static int64_t last_time_ms = 0;
+    static int64_t start_time_ms = 0;
+    if (start_time_ms == 0) {
+      start_time_ms = esp_timer_get_time() / 1000;
+    }
+    animation_tick(16, &last_time_ms);
+    float progress = (float)(last_time_ms - start_time_ms) /
+                     (float)(current_state.expected_bootup_time / 1000 - start_time_ms);
+    u8g2_DrawBox(u8g2, 0, 0, DISPLAY_WIDTH * progress, 5);
+  }
 }
 
 static void draw_amount(u8g2_t* u8g2, int amount, int y) {
@@ -466,40 +503,49 @@ static void privileged_topup(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
   u8g2_DrawStr(u8g2, 0, 17, "Aufladen");
   enter_amount(u8g2, current_state.manual_amount);
-  charge_total(u8g2, DISPLAY_HEIGHT - 14);
+  charge_total(u8g2, DISPLAY_HEIGHT - 13);
 }
 
 static void privileged_cashout(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
   u8g2_DrawStr(u8g2, 0, 17, "Auszahlung");
-  charge_total(u8g2, DISPLAY_HEIGHT - 14);
 }
 
 static void write_failed(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
-  u8g2_DrawStr(u8g2, 0, 17, "Write failed");
+  int r = 10;
+  u8g2_DrawDisc(u8g2, 14 + r, 10 + r, r, U8G2_DRAW_ALL);
+
+  u8g2_SetDrawColor(u8g2, 0);
+  u8g2_DrawRBox(u8g2, 12 + r - 1, r + 2, 3, 12, 1);
+  // u8g2_DrawRBox(u8g2, DISPLAY_WIDTH / 2 - 2, DISPLAY_HEIGHT / 2 + 4, 5, 5, 3);
+  u8g2_SetDrawColor(u8g2, 1);
+
+  char* str = "Guthaben 00,00";
+  u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
+  int w = u8g2_GetStrWidth(u8g2, str);
+  u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, DISPLAY_HEIGHT - 4, str);
+
   switch (current_state.write_failed_reason) {
     case NONE:
       break;
     case CARD_LIMIT_EXCEEDED:
-      u8g2_DrawStr(u8g2, 0, 32, "Kartenlimit erreicht");
+      u8g2_DrawStr(u8g2, 0, DISPLAY_HEIGHT - 4, "Kartenlimit\nerreicht");
       break;
     case INSUFFICIENT_FUNDS:
-      u8g2_DrawStr(u8g2, 0, 32, "Nicht genug Guthaben");
+      u8g2_DrawStr(u8g2, 0, DISPLAY_HEIGHT - 4, "Nicht genug\nGuthaben");
       break;
     case INSUFFICIENT_DEPOSIT:
-      u8g2_DrawStr(u8g2, 0, 32, "Nicht genug Pfand");
+      u8g2_DrawStr(u8g2, r * 2 + 23, r + 8, "Nicht genug");
+      u8g2_DrawStr(u8g2, r * 2 + 23, r + 19, "Pfandmarken");
       break;
     case TECHNICAL_ERROR:
-      u8g2_DrawStr(u8g2, 0, 32, "Technischer Fehler");
+      u8g2_DrawStr(u8g2, 0, DISPLAY_HEIGHT - 4, "Technischer\nFehler");
       break;
   }
 }
 
 void display(void* params) {
-  // 200ms delay to allow other tasks to start
-  vTaskDelay(200 / portTICK_PERIOD_MS);
-
   u8g2_esp32_hal_t u8g2_esp32_hal = {
       .clk = 11,
       .mosi = 12,

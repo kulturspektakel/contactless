@@ -16,6 +16,7 @@ set(srcs
     "time_sync.c"
     "esp_efuse_custom_table.c"
     "constants.c"
+    "buzzer.c"
 )
 
 idf_component_register(SRCS "${srcs}" INCLUDE_DIRS ".")

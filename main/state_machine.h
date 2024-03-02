@@ -1,8 +1,6 @@
 #pragma once
 
 #include <stdint.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/queue.h"
 #include "logmessage.pb.h"
 
 typedef enum {
@@ -30,6 +28,7 @@ typedef enum {
   STARTUP_COMPLETED,
   WRITE_SUCCESSFUL,
   WRITE_UNSUCCESSFUL,
+  SHOW_DEBUG_BAR,
 } event_t;
 
 typedef enum {
@@ -103,9 +102,10 @@ typedef struct {
   ultralight_card_info_t data_to_write;
   ultralight_card_info_t data_before_write;
   write_failed_reason_t write_failed_reason;
+  int64_t expected_bootup_time;
 } state_t;
 
-extern QueueHandle_t state_events;
 extern state_t current_state;
+void trigger_event(event_t event);
 void state_machine(void* params);
 int current_total();

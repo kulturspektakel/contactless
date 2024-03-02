@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include "buzzer.h"
 #include "display.h"
 #include "esp_event.h"
 #include "esp_littlefs.h"
@@ -48,7 +49,7 @@ void app_main(void) {
   xTaskCreate(&time_sync, "time_sync", 4096, NULL, PRIO_NORMAL, NULL);
   xTaskCreate(&rfid, "rfid", 4096, NULL, PRIO_NORMAL, NULL);
   xTaskCreate(&power_management, "power_management", 4096, NULL, PRIO_NORMAL, NULL);
-
   xTaskCreate(&load_device_id, "load_device_id", 3072, NULL, PRIO_NORMAL, NULL);
-  xTaskCreate(&load_salt, "load_salt", 2048, 3072, PRIO_NORMAL, NULL);
+  xTaskCreate(&load_salt, "load_salt", 3072, NULL, PRIO_NORMAL, NULL);
+  xTaskCreate(&buzzer, "buzzer", 5120, NULL, PRIO_NORMAL, NULL);
 }

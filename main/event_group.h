@@ -11,4 +11,7 @@
 #define DEVICE_ID_LOADED BIT6
 #define SALT_LOADED BIT7
 
+static const EventBits_t startup_bits =
+    LOCAL_CONFIG_LOADED | TIME_SET | DEVICE_ID_LOADED | SALT_LOADED;
+
 extern EventGroupHandle_t event_group;

@@ -245,7 +245,7 @@ void rfid(void* params) {
     }
 
     if (is_privilege_token(&uid)) {
-      xQueueSend(state_events, (void*)&(event_t){PRIVILEGE_TOKEN_DETECTED}, portMAX_DELAY);
+      trigger_event(PRIVILEGE_TOKEN_DETECTED);
       continue;
     }
 
@@ -257,9 +257,7 @@ void rfid(void* params) {
     }
 
     ESP_LOGI(TAG, "New card present");
-    xQueueSend(state_events, (void*)&(event_t){CARD_DETECTED}, portMAX_DELAY);
-    // yield so the status will be updated
-    taskYIELD();
+    trigger_event(CARD_DETECTED);
 
     if (current_state.mode != WRITE_CARD) {
       continue;
@@ -301,10 +299,6 @@ void rfid(void* params) {
       success = true;
     }
 
-    xQueueSend(
-        state_events,
-        (void*)&(event_t){success ? WRITE_SUCCESSFUL : WRITE_UNSUCCESSFUL},
-        portMAX_DELAY
-    );
+    trigger_event(success ? WRITE_SUCCESSFUL : WRITE_UNSUCCESSFUL);
   }
 }

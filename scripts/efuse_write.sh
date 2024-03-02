@@ -3,10 +3,16 @@
 echo "Enter a string:"
 read DEVICE_NAME
 
-regex='^[A-Za-z0-9äöü-]{1,16}$'
+REGEX='^[A-Za-z0-9äßöü-]$'
 
-if ! [[ $DEVICE_NAME =~ $regex ]]; then
-    echo "Error: String does not match the required pattern." >&2
+if ! [[ $DEVICE_NAME =~ $REGEX ]]; then
+    echo "Error: String contains invalid characters." >&2
+    exit 1
+fi
+
+BYTE_COUNT=$(echo -n "$DEVICE_NAME" | wc -c)
+if [ $BYTE_COUNT -gt 16 ]; then
+    echo "Error: String is longer than 16 bytes."
     exit 1
 fi
 

@@ -44,7 +44,7 @@ static void IRAM_ATTR gpio_interrupt_handler(void* args) {
   int r = (int)(args);
   int64_t time_now_isr = esp_timer_get_time();
 
-  if (time_now_isr - time_old_isr >= 50000) {  // 50ms debounce
+  if (time_now_isr - time_old_isr >= 100000) {  // 100ms debounce
     turnon_cols();
     for (int c = 4; c < 8; c++) {
       if (!gpio_get_level(KEYPAD_PINS[c])) {
@@ -87,12 +87,11 @@ void keypad(void* params) {
 
   while (true) {
     xQueueReceive(keypad_queue, &key, portMAX_DELAY);
-    xQueueSend(state_events, (void*)(&key), portMAX_DELAY);
+    trigger_event(key);
     if (key == prev_key && esp_timer_get_time() - prev_key_time < 500000) {
       count++;
       if (count == 2 && key == KEY_D) {
-        key = KEY_TRIPPLE_D;
-        xQueueSend(state_events, (void*)(&key), portMAX_DELAY);
+        trigger_event(KEY_TRIPPLE_D);
         count = 0;
       }
     } else {

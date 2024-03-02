@@ -1,17 +1,22 @@
 #include "state_machine.h"
+#include "buzzer.h"
 #include "constants.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "event_group.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "local_config.h"
 #include "log_writer.h"
 #include "logmessage.pb.h"
 #include "rfid.h"
 
+#define BOOTSCREEN_DELAY_MS 2000
+
 static const char* TAG = "state_machine";
 static TimerHandle_t timeout_handle;
+static QueueHandle_t state_events;
 
-QueueHandle_t state_events;
 state_t current_state = {
     .mode = MAIN_STARTING_UP,
     .is_privileged = false,
@@ -32,8 +37,14 @@ state_t current_state = {
         },
 };
 
+void trigger_event(event_t event) {
+  xQueueSend(state_events, (void*)&(event_t){event}, portMAX_DELAY);
+  // yield so the status will be updated before returning to the next instruction
+  taskYIELD();
+}
+
 static void timeout_callback(TimerHandle_t timer) {
-  xQueueSend(state_events, (void*)&(event_t){TIMEOUT}, portMAX_DELAY);
+  trigger_event(TIMEOUT);
 }
 
 static void timeout(int ms) {
@@ -117,6 +128,7 @@ static void add_digit(int d) {
 }
 
 static mode_type token_detected(event_t event) {
+  trigger_beep(BEEP_SHORT);
   reset_cart();
   current_state.is_privileged = !current_state.is_privileged;
   return default_mode();
@@ -130,6 +142,7 @@ static bool cart_is_empty() {
 static mode_type card_detected(event_t event) {
   if (cart_is_empty()) {
     timeout(2000);
+    trigger_beep(BEEP_SHORT);
     return CARD_BALANCE;
   }
 
@@ -157,18 +170,22 @@ static mode_type card_detected(event_t event) {
 
   if (new_balance < 0) {
     current_state.write_failed_reason = INSUFFICIENT_FUNDS;
+    trigger_beep(BEEP_LONG);
     return WRITE_FAILED;
   }
   if (new_deposit < 0) {
     current_state.write_failed_reason = INSUFFICIENT_DEPOSIT;
+    trigger_beep(BEEP_LONG);
     return WRITE_FAILED;
   }
   if (new_deposit > 9) {
     current_state.write_failed_reason = CARD_LIMIT_EXCEEDED;
+    trigger_beep(BEEP_LONG);
     return WRITE_FAILED;
   }
   if (new_balance + new_deposit * DEPOSIT_VALUE > 9999) {
     current_state.write_failed_reason = CARD_LIMIT_EXCEEDED;
+    trigger_beep(BEEP_LONG);
     return WRITE_FAILED;
   }
 
@@ -182,6 +199,10 @@ static mode_type card_detected(event_t event) {
 }
 
 static mode_type product_list(event_t event) {
+  static bool waiting_for_timeout = false;
+  if (waiting_for_timeout && event != TIMEOUT) {
+    return PRODUCT_LIST;
+  }
   switch (event) {
     case KEY_A:
       if (current_state.product_selection.current_index > 0) {
@@ -221,6 +242,7 @@ static mode_type product_list(event_t event) {
         current_state.product_selection.second_digit = event - KEY_0;
         current_state.product_selection.current_index = no - 1;
         select_product(current_state.product_selection.current_index);
+        waiting_for_timeout = true;
         timeout(400);
       }
       break;
@@ -229,12 +251,14 @@ static mode_type product_list(event_t event) {
       current_state.product_selection.first_digit = -1;
       current_state.product_selection.second_digit = -1;
       current_state.product_selection.current_index = 0;
+      waiting_for_timeout = false;
       return CHARGE_LIST;
     case KEY_HASH:
       select_product(current_state.product_selection.current_index);
       uint8_t i = current_state.product_selection.current_index + 1;
       current_state.product_selection.first_digit = i / 10;
       current_state.product_selection.second_digit = i % 10;
+      waiting_for_timeout = true;
       timeout(400);
       break;
     default:
@@ -282,14 +306,17 @@ static mode_type charge_without_card(event_t event) {
     case KEY_1:
       write_log(LogMessage_Order_PaymentMethod_FREE_CREW);
       reset_cart();
+      trigger_beep(BEEP_SHORT);
       return default_mode();
     case KEY_2:
       write_log(LogMessage_Order_PaymentMethod_CASH);
       reset_cart();
+      trigger_beep(BEEP_SHORT);
       return default_mode();
     case KEY_3:
       write_log(LogMessage_Order_PaymentMethod_VOUCHER);
       reset_cart();
+      trigger_beep(BEEP_SHORT);
       return default_mode();
 
     case KEY_STAR:
@@ -378,8 +405,6 @@ static mode_type charge_manual(event_t event) {
       return token_detected(event);
     case CARD_DETECTED:
       return card_detected(event);
-    case KEY_STAR:
-      return current_state.cart.item_count > 0 ? CHARGE_WITHOUT_CARD : CHARGE_MANUAL;
 
     // stay in same state
     case KEY_0:
@@ -404,8 +429,12 @@ static mode_type charge_manual(event_t event) {
       update_deposit(false);
       break;
     case KEY_D:
+      if (cart_is_empty()) {
+        return CHARGE_LIST;
+      }
       reset_cart();
       break;
+    case KEY_STAR:
     case KEY_HASH:
       reset_cart();
       return CHARGE_LIST;
@@ -489,11 +518,13 @@ static mode_type main_menu(event_t event) {
 static mode_type write_card(event_t event) {
   switch (event) {
     case WRITE_SUCCESSFUL:
+      trigger_beep(BEEP_SHORT);
       write_log(LogMessage_Order_PaymentMethod_KULT_CARD);
       reset_cart();
       timeout(1500);
       return CARD_BALANCE;
     case WRITE_UNSUCCESSFUL:
+      trigger_beep(BEEP_LONG);
       current_state.write_failed_reason = TECHNICAL_ERROR;
       return WRITE_FAILED;
     default:
@@ -567,20 +598,24 @@ static mode_type process_event(event_t event) {
 void state_machine(void* params) {
   state_events = xQueueCreate(5, sizeof(int));
   portMUX_TYPE mutex = portMUX_INITIALIZER_UNLOCKED;
-  int64_t time_since_start = esp_timer_get_time();
+  current_state.expected_bootup_time = esp_timer_get_time() + BOOTSCREEN_DELAY_MS * 1000;
 
   ESP_LOGI(TAG, "waiting for startup to complete");
 
-  xEventGroupWaitBits(
-      event_group,
-      LOCAL_CONFIG_LOADED | TIME_SET | DEVICE_ID_LOADED | SALT_LOADED,
-      pdFALSE,
-      pdTRUE,
-      portMAX_DELAY
-  );
-
-  vTaskDelay((2000 - ((esp_timer_get_time() - time_since_start) / 1000)) / portTICK_PERIOD_MS);
-  xQueueSend(state_events, (void*)&(event_t){STARTUP_COMPLETED}, portMAX_DELAY);
+  while (true) {
+    xEventGroupWaitBits(
+        event_group, startup_bits, pdFALSE, pdFALSE, BOOTSCREEN_DELAY_MS / portTICK_PERIOD_MS
+    );
+    if (xEventGroupGetBits(event_group) & startup_bits) {
+      // startup completed, wait at least 2 seconds
+      vTaskDelay(
+          (current_state.expected_bootup_time - esp_timer_get_time()) / 1000 / portTICK_PERIOD_MS
+      );
+      break;
+    }
+    trigger_event(DISPLAY_NEEDS_UPDATE);
+  }
+  trigger_event(STARTUP_COMPLETED);
 
   event_t event;
   while (true) {
