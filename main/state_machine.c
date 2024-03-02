@@ -140,6 +140,18 @@ static bool cart_is_empty() {
 }
 
 static mode_type card_detected(event_t event) {
+  if (event == CARD_DETECTED_NOT_READABLE) {
+    trigger_beep(BEEP_LONG);
+    return CARD_WITH_PROBLEM;
+  } else if (event == CARD_DETECTED_SKIPPED_SECUIRTY) {
+    trigger_beep(BEEP_LONG);
+    return CARD_WITH_PROBLEM;
+  } else if (event != CARD_DETECTED_OK) {
+    // should not happen
+    // TODO: fatal error
+    return current_state.mode;
+  }
+
   if (cart_is_empty()) {
     timeout(2000);
     trigger_beep(BEEP_SHORT);
@@ -341,7 +353,9 @@ static mode_type charge_list(event_t event) {
       return PRODUCT_LIST;
     case PRIVILEGE_TOKEN_DETECTED:
       return token_detected(event);
-    case CARD_DETECTED:
+    case CARD_DETECTED_OK:
+    case CARD_DETECTED_NOT_READABLE:
+    case CARD_DETECTED_SKIPPED_SECUIRTY:
       return card_detected(event);
 
     // stay in same state
@@ -373,11 +387,15 @@ static mode_type charge_list(event_t event) {
 
 static mode_type write_failed(event_t event) {
   switch (event) {
-    case CARD_DETECTED:
+    case CARD_DETECTED_SKIPPED_SECUIRTY:
+      // shouldn't happen, because security is always skipped in WRITE_FAILED mode
+    case CARD_DETECTED_OK:
       if (memcmp(&current_card.id, &current_state.data_to_write.id, LENGTH_ID) == 0) {
         return WRITE_CARD;
       }
       break;
+    case CARD_DETECTED_NOT_READABLE:
+      return card_detected(event);
     case KEY_D:
       return default_mode();
     default:
@@ -403,7 +421,10 @@ static mode_type charge_manual(event_t event) {
     // change state
     case PRIVILEGE_TOKEN_DETECTED:
       return token_detected(event);
-    case CARD_DETECTED:
+
+    case CARD_DETECTED_OK:
+    case CARD_DETECTED_NOT_READABLE:
+    case CARD_DETECTED_SKIPPED_SECUIRTY:
       return card_detected(event);
 
     // stay in same state
@@ -448,7 +469,10 @@ static mode_type privileged_topup(event_t event) {
   switch (event) {
     case PRIVILEGE_TOKEN_DETECTED:
       return token_detected(event);
-    case CARD_DETECTED:
+
+    case CARD_DETECTED_OK:
+    case CARD_DETECTED_NOT_READABLE:
+    case CARD_DETECTED_SKIPPED_SECUIRTY:
       return card_detected(event);
 
     // stay in same state
@@ -535,9 +559,12 @@ static mode_type write_card(event_t event) {
 
 static mode_type card_balance(event_t event) {
   switch (event) {
-    case CARD_DETECTED:
+    case CARD_DETECTED_OK:
       timeout(1500);
       return CARD_BALANCE;
+    case CARD_DETECTED_NOT_READABLE:
+    case CARD_DETECTED_SKIPPED_SECUIRTY:
+      return card_detected(event);
     case TIMEOUT:
       return default_mode();
     default:
@@ -547,13 +574,27 @@ static mode_type card_balance(event_t event) {
 
 static mode_type privileged_cashout(event_t event) {
   switch (event) {
-    case CARD_DETECTED:
+    case CARD_DETECTED_OK:
       return WRITE_CARD;
+    case CARD_DETECTED_NOT_READABLE:
+    case CARD_DETECTED_SKIPPED_SECUIRTY:
+      return card_detected(event);
     case KEY_D:
     case TIMEOUT:
       return default_mode();
     default:
       return PRIVILEGED_CASHOUT;
+  }
+}
+
+static mode_type card_with_problem(event_t event) {
+  switch (event) {
+    case CARD_DETECTED_OK:
+    case CARD_DETECTED_NOT_READABLE:
+    case CARD_DETECTED_SKIPPED_SECUIRTY:
+      return card_detected(event);
+    case TIMEOUT:
+      return default_mode();
   }
 }
 
@@ -583,6 +624,10 @@ static mode_type process_event(event_t event) {
 
     case CARD_BALANCE:
       return card_balance(event);
+      break;
+
+    case CARD_WITH_PROBLEM:
+      return card_with_problem(event);
       break;
 
     case MAIN_MENU:

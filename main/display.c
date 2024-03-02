@@ -511,37 +511,62 @@ static void privileged_cashout(u8g2_t* u8g2) {
   u8g2_DrawStr(u8g2, 0, 17, "Auszahlung");
 }
 
-static void write_failed(u8g2_t* u8g2) {
+static void error_message(u8g2_t* u8g2, char* line1, char* line2) {
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
   int r = 10;
-  u8g2_DrawDisc(u8g2, 14 + r, 10 + r, r, U8G2_DRAW_ALL);
-
+  int x = 24;
+  int y = 20;
+  u8g2_DrawDisc(u8g2, x, y, r, U8G2_DRAW_ALL);
   u8g2_SetDrawColor(u8g2, 0);
-  u8g2_DrawRBox(u8g2, 12 + r - 1, r + 2, 3, 12, 1);
-  // u8g2_DrawRBox(u8g2, DISPLAY_WIDTH / 2 - 2, DISPLAY_HEIGHT / 2 + 4, 5, 5, 3);
+  u8g2_DrawRBox(u8g2, x - 1, y - 8, 3, 12, 1);
+  u8g2_DrawRBox(u8g2, x - 1, y + 3, 3, 3, 1);
   u8g2_SetDrawColor(u8g2, 1);
 
-  char* str = "Guthaben 00,00";
-  u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
-  int w = u8g2_GetStrWidth(u8g2, str);
-  u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, DISPLAY_HEIGHT - 4, str);
+  x = r * 2 + 23;
+  y = r + 8;
 
+  u8g2_DrawStr(u8g2, x, y, "Kartenlimit");
+  u8g2_DrawStr(u8g2, x, y + 11, "erreicht");
+}
+
+static void card_with_problem(u8g2_t* u8g2) {
+  error_message(u8g2, "Karte", "defekt");
+  if (current_card.id != 0) {
+    // TODO show balance + deposit
+  }
+}
+
+static void write_failed(u8g2_t* u8g2) {
+  char str[15];
   switch (current_state.write_failed_reason) {
     case NONE:
       break;
     case CARD_LIMIT_EXCEEDED:
-      u8g2_DrawStr(u8g2, 0, DISPLAY_HEIGHT - 4, "Kartenlimit\nerreicht");
+      error_message(u8g2, "Kartenlimit", "erreicht");
       break;
     case INSUFFICIENT_FUNDS:
-      u8g2_DrawStr(u8g2, 0, DISPLAY_HEIGHT - 4, "Nicht genug\nGuthaben");
+      error_message(u8g2, "Nicht genug", "Guthaben");
+
+      snprintf(str, sizeof(str), "Guthaben %2.2f", ((float)current_card.balance) / 100);
+      str[current_card.balance > 999 ? 11 : 10] = ',';
       break;
     case INSUFFICIENT_DEPOSIT:
-      u8g2_DrawStr(u8g2, r * 2 + 23, r + 8, "Nicht genug");
-      u8g2_DrawStr(u8g2, r * 2 + 23, r + 19, "Pfandmarken");
+      error_message(u8g2, "Nicht genug", "Pfandmarken");
+
+      snprintf(str, sizeof(str), "%d Pfandmarken", current_card.deposit);
+      if (current_card.deposit == 1) {
+        str[12] = '\0';
+      }
       break;
     case TECHNICAL_ERROR:
-      u8g2_DrawStr(u8g2, 0, DISPLAY_HEIGHT - 4, "Technischer\nFehler");
+      error_message(u8g2, "Technischer", "Fahler");
       break;
+  }
+
+  if (strlen(str) > 0) {
+    u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
+    int w = u8g2_GetStrWidth(u8g2, str);
+    u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, DISPLAY_HEIGHT - 4, str);
   }
 }
 
@@ -614,6 +639,10 @@ void display(void* params) {
         status_bar(&u8g2);
         privileged_cashout(&u8g2);
         keypad_legend(&u8g2, false);
+        break;
+      case CARD_WITH_PROBLEM:
+        status_bar(&u8g2);
+        card_with_problem(&u8g2);
         break;
       default:
         break;

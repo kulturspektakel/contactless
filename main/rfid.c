@@ -252,15 +252,23 @@ void rfid(void* params) {
       continue;
     }
 
-    if (!read_card(
-            spi, &uid, current_state.mode == WRITE_FAILED || current_state.mode == PRIVILEGED_REPAIR
-        )) {
-      // TODO: show error, card not readable
-      continue;
+    // reset current card
+    ultralight_card_info_t new_card = {0};
+    current_card = new_card;
+
+    bool skip_security =
+        current_state.mode == WRITE_FAILED || current_state.mode == PRIVILEGED_REPAIR;
+
+    if (read_card(spi, &uid, skip_security)) {
+      trigger_event(CARD_DETECTED_OK);
+    } else if (!skip_security) {
+      // try again with skipping security
+      trigger_event(
+          read_card(spi, &uid, true) ? CARD_DETECTED_SKIPPED_SECUIRTY : CARD_DETECTED_NOT_READABLE
+      );
     }
 
     ESP_LOGI(TAG, "New card present");
-    trigger_event(CARD_DETECTED);
 
     if (current_state.mode != WRITE_CARD) {
       continue;
@@ -281,7 +289,7 @@ void rfid(void* params) {
       }
 
       ESP_LOGI(TAG, "Card written successfully");
-      if (!read_card(spi, &uid, current_state.mode == WRITE_FAILED)) {
+      if (!read_card(spi, &uid, false)) {
         ESP_LOGE(TAG, "Rereading card failed");
         continue;
       }
