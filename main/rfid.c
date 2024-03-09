@@ -2,6 +2,7 @@
 #include <esp_log.h>
 #include <mbedtls/base64.h>
 #include <string.h>
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "http_auth_headers.h"
@@ -232,8 +233,27 @@ void rfid(void* params) {
   PCD_Init(spi, NUM_CS_PIN);
 
   ESP_LOGI(TAG, "Start scanning for tags");
+  int64_t card_seen_at = 0;
+  uint8_t size = 18;
+  uint8_t payload[18] = {0};
 
   while (1) {
+    while (card_seen_at > 0) {
+      vTaskDelay(100 / portTICK_PERIOD_MS);
+      size = 18;
+      ESP_LOG_BUFFER_HEX("tag", payload, 18);
+      ESP_LOGI("tag", "asd");
+      int a = MIFARE_Read(spi, 0, payload, &size);
+      ESP_LOGI("tag", "size %d", size);
+      ESP_LOGI("tag", "asd %d", a);
+      if (a != STATUS_OK) {
+        int64_t delay = (esp_timer_get_time() - card_seen_at) / 1000;
+        card_seen_at = 0;
+        vTaskDelay((delay < 500 ? 500 : 0) / portTICK_PERIOD_MS);
+        trigger_event(CARD_REMOVED);
+      }
+    }
+
     PICC_HaltA(spi);
     PCD_StopCrypto1(spi);
 
@@ -243,29 +263,26 @@ void rfid(void* params) {
       continue;
     }
 
+    // reset current card
+    ultralight_card_info_t new_card = {0};
+    current_card = new_card;
+
     if (PICC_Select(spi, &uid, 0) != STATUS_OK) {
       continue;
     }
+    card_seen_at = esp_timer_get_time();
 
     if (is_privilege_token(&uid)) {
       trigger_event(PRIVILEGE_TOKEN_DETECTED);
       continue;
     }
 
-    // reset current card
-    ultralight_card_info_t new_card = {0};
-    current_card = new_card;
-
-    bool skip_security =
-        current_state.mode == WRITE_FAILED || current_state.mode == PRIVILEGED_REPAIR;
-
-    if (read_card(spi, &uid, skip_security)) {
+    if (read_card(spi, &uid, false)) {
       trigger_event(CARD_DETECTED_OK);
-    } else if (!skip_security) {
+    } else {
       // try again with skipping security
-      trigger_event(
-          read_card(spi, &uid, true) ? CARD_DETECTED_SKIPPED_SECUIRTY : CARD_DETECTED_NOT_READABLE
-      );
+      bool success = read_card(spi, &uid, true);
+      trigger_event(success ? CARD_DETECTED_SKIPPED_SECUIRTY : CARD_DETECTED_NOT_READABLE);
     }
 
     ESP_LOGI(TAG, "New card present");

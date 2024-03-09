@@ -153,7 +153,6 @@ static mode_type card_detected(event_t event) {
   }
 
   if (cart_is_empty()) {
-    timeout(2000);
     trigger_beep(BEEP_SHORT);
     return CARD_BALANCE;
   }
@@ -387,9 +386,8 @@ static mode_type charge_list(event_t event) {
 
 static mode_type write_failed(event_t event) {
   switch (event) {
-    case CARD_DETECTED_SKIPPED_SECUIRTY:
-      // shouldn't happen, because security is always skipped in WRITE_FAILED mode
     case CARD_DETECTED_OK:
+    case CARD_DETECTED_SKIPPED_SECUIRTY:
       if (memcmp(&current_card.id, &current_state.data_to_write.id, LENGTH_ID) == 0) {
         return WRITE_CARD;
       }
@@ -545,7 +543,6 @@ static mode_type write_card(event_t event) {
       trigger_beep(BEEP_SHORT);
       write_log(LogMessage_Order_PaymentMethod_KULT_CARD);
       reset_cart();
-      timeout(1500);
       return CARD_BALANCE;
     case WRITE_UNSUCCESSFUL:
       trigger_beep(BEEP_LONG);
@@ -560,15 +557,14 @@ static mode_type write_card(event_t event) {
 static mode_type card_balance(event_t event) {
   switch (event) {
     case CARD_DETECTED_OK:
-      timeout(1500);
       return CARD_BALANCE;
     case CARD_DETECTED_NOT_READABLE:
     case CARD_DETECTED_SKIPPED_SECUIRTY:
       return card_detected(event);
-    case TIMEOUT:
+    case CARD_REMOVED:
       return default_mode();
     default:
-      return default_mode();
+      return CARD_BALANCE;
   }
 }
 
@@ -593,8 +589,10 @@ static mode_type card_with_problem(event_t event) {
     case CARD_DETECTED_NOT_READABLE:
     case CARD_DETECTED_SKIPPED_SECUIRTY:
       return card_detected(event);
-    case TIMEOUT:
+    case CARD_REMOVED:
       return default_mode();
+    default:
+      return CARD_WITH_PROBLEM;
   }
 }
 

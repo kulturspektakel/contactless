@@ -423,6 +423,38 @@ static void write_card(u8g2_t* u8g2) {
   u8g2_DrawBox(u8g2, p + 1, y + 1, (DISPLAY_WIDTH - 2 * p - 2) * progress / 100, h - 2);
 }
 
+static void deposit(u8g2_t* u8g2, uint8_t deposit, int y) {
+  u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
+  char* str = "0 Pfandmarken";
+  str[0] = '0' + deposit;
+  if (deposit == 1) {
+    str[12] = '\0';
+  }
+  int w = u8g2_GetStrWidth(u8g2, str);
+  u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, y, str);
+}
+
+static void equals_to_euro_sign(u8g2_t* u8g2, int x, int y) {
+  u8g2_SetDrawColor(u8g2, 0);
+  u8g2_DrawPixel(u8g2, x + 4, y - 3);
+  u8g2_DrawPixel(u8g2, x + 4, y - 5);
+  u8g2_SetDrawColor(u8g2, 1);
+  u8g2_SetFontMode(u8g2, 1);
+  u8g2_DrawStr(u8g2, x + 1, y, "C");
+}
+
+static void balance(u8g2_t* u8g2, uint16_t balance, int y) {
+  u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
+  char str[16];
+  snprintf(str, sizeof(str), "%2.2f= Guthaben", ((float)balance) / 100);
+  bool two_digits = balance > 999;
+  str[two_digits ? 2 : 1] = ',';
+  int w = u8g2_GetStrWidth(u8g2, str);
+  int x = (DISPLAY_WIDTH - w) / 2;
+  u8g2_DrawStr(u8g2, x, y, str);
+  equals_to_euro_sign(u8g2, x + (two_digits ? 30 : 24), y);
+}
+
 static void card_balance(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_profont29_tf);
   char balance[6];
@@ -441,14 +473,7 @@ static void card_balance(u8g2_t* u8g2) {
   // u8g2_DrawBox(u8g2, DISPLAY_WIDTH / 2 + w / 2 + 2 - e, h - 9, 10, 3);
   // u8g2_DrawBox(u8g2, DISPLAY_WIDTH / 2 + w / 2 + 2 - e, h - 13, 10, 3);
 
-  u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
-  char* str = "0 Pfandmarken";
-  str[0] = '0' + current_card.deposit;
-  if (current_card.deposit == 1) {
-    str[12] = '\0';
-  }
-  w = u8g2_GetStrWidth(u8g2, str);
-  u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, 52, str);
+  deposit(u8g2, current_card.deposit, 52);
 }
 
 static void charge_without_card(u8g2_t* u8g2) {
@@ -513,31 +538,50 @@ static void privileged_cashout(u8g2_t* u8g2) {
 
 static void error_message(u8g2_t* u8g2, char* line1, char* line2) {
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
-  int r = 10;
-  int x = 24;
-  int y = 20;
+  int r = 8;
+  int x = 23;
+  int y = 21;
   u8g2_DrawDisc(u8g2, x, y, r, U8G2_DRAW_ALL);
   u8g2_SetDrawColor(u8g2, 0);
-  u8g2_DrawRBox(u8g2, x - 1, y - 8, 3, 12, 1);
-  u8g2_DrawRBox(u8g2, x - 1, y + 3, 3, 3, 1);
+
+  // draw X
+  u8g2_DrawLine(u8g2, x - 4, y - 4, x + 4, y + 4);
+  u8g2_DrawLine(u8g2, x - 3, y - 4, x + 4, y + 3);
+  u8g2_DrawLine(u8g2, x - 4, y - 3, x + 3, y + 4);
+  u8g2_DrawLine(u8g2, x - 4, y + 4, x + 4, y - 4);
+  u8g2_DrawLine(u8g2, x - 3, y + 4, x + 4, y - 3);
+  u8g2_DrawLine(u8g2, x - 4, y + 3, x + 3, y - 4);
+
   u8g2_SetDrawColor(u8g2, 1);
 
-  x = r * 2 + 23;
-  y = r + 8;
+  x += r * 2 - 2;
 
-  u8g2_DrawStr(u8g2, x, y, "Kartenlimit");
-  u8g2_DrawStr(u8g2, x, y + 11, "erreicht");
+  if (line2 != NULL) {
+    u8g2_DrawStr(u8g2, x, y + 9, line2);
+  } else {
+    y += 5;
+  }
+  u8g2_DrawStr(u8g2, x, y - 1, line1);
 }
 
 static void card_with_problem(u8g2_t* u8g2) {
-  error_message(u8g2, "Karte", "defekt");
-  if (current_card.id != 0) {
-    // TODO show balance + deposit
+  error_message(u8g2, "Karte defekt", NULL);
+
+  bool id_set = false;
+  for (int i = 0; i < sizeof(current_card.id); i++) {
+    if (current_card.id[i] != 0) {
+      id_set = true;
+      break;
+    }
+  }
+
+  if (id_set) {
+    balance(u8g2, current_card.balance, DISPLAY_HEIGHT - 16);
+    deposit(u8g2, current_card.deposit, DISPLAY_HEIGHT - 4);
   }
 }
 
 static void write_failed(u8g2_t* u8g2) {
-  char str[15];
   switch (current_state.write_failed_reason) {
     case NONE:
       break;
@@ -546,27 +590,15 @@ static void write_failed(u8g2_t* u8g2) {
       break;
     case INSUFFICIENT_FUNDS:
       error_message(u8g2, "Nicht genug", "Guthaben");
-
-      snprintf(str, sizeof(str), "Guthaben %2.2f", ((float)current_card.balance) / 100);
-      str[current_card.balance > 999 ? 11 : 10] = ',';
+      balance(u8g2, current_card.balance, DISPLAY_HEIGHT - 4);
       break;
     case INSUFFICIENT_DEPOSIT:
       error_message(u8g2, "Nicht genug", "Pfandmarken");
-
-      snprintf(str, sizeof(str), "%d Pfandmarken", current_card.deposit);
-      if (current_card.deposit == 1) {
-        str[12] = '\0';
-      }
+      deposit(u8g2, current_card.deposit, DISPLAY_HEIGHT - 4);
       break;
     case TECHNICAL_ERROR:
-      error_message(u8g2, "Technischer", "Fahler");
+      error_message(u8g2, "Technischer", "Fehler");
       break;
-  }
-
-  if (strlen(str) > 0) {
-    u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
-    int w = u8g2_GetStrWidth(u8g2, str);
-    u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, DISPLAY_HEIGHT - 4, str);
   }
 }
 

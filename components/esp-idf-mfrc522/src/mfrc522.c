@@ -426,7 +426,7 @@ StatusCode PCD_CommunicateWithPICC(
   // ~36ms, then consider the command as timed out.
 
   bool completed = false;
-  int deadline = esp_timer_get_time() + 36000;
+  int64_t deadline = esp_timer_get_time() + 36000;
   while (esp_timer_get_time() < deadline) {
     uint8_t n = PCD_ReadRegister(
         spi, ComIrqReg
@@ -439,7 +439,7 @@ StatusCode PCD_CommunicateWithPICC(
     if (n & 0x01) {  // Timer interrupt - nothing received in 25ms
       return STATUS_TIMEOUT;
     }
-    vTaskDelay(0);
+    taskYIELD();
   }
 
   // 35.7ms and nothing happend. Communication with the MFRC522 might be down.
@@ -491,26 +491,26 @@ StatusCode PCD_CommunicateWithPICC(
   }
   return STATUS_OK;
   // Perform CRC_A validation if requested.
-  //    if (backData && backLen && checkCRC) {
-  //        // In this case a MIFARE Classic NAK is not OK.
-  //        if (*backLen == 1 && _validBits == 4) {
-  //            return STATUS_MIFARE_NACK;
-  //        }
-  //        // We need at least the CRC_A value and all 8 bits of the last uint8_t must be received.
-  //        if (*backLen < 2 || _validBits != 0) {
-  //            return STATUS_CRC_WRONG;
-  //        }
-  //        // Verify CRC_A - do our own calculation and store the control in controlBuffer.
-  //        uint8_t controlBuffer[2];
-  //        uint8_t status = PCD_CalculateCRC(spi,&backData[0], *backLen - 2, &controlBuffer[0]);
-  //        if (status != STATUS_OK) {
-  //            return status;
-  //        }
-  //        if ((backData[*backLen - 2] != controlBuffer[0]) || (backData[*backLen - 1] !=
-  //        controlBuffer[1])) {
-  //            return STATUS_CRC_WRONG;
-  //        }
-  //    }
+  if (backData && backLen && checkCRC) {
+    // In this case a MIFARE Classic NAK is not OK.
+    if (*backLen == 1 && _validBits == 4) {
+      return STATUS_MIFARE_NACK;
+    }
+    // We need at least the CRC_A value and all 8 bits of the last uint8_t must be received.
+    if (*backLen < 2 || _validBits != 0) {
+      return STATUS_CRC_WRONG;
+    }
+    // Verify CRC_A - do our own calculation and store the control in controlBuffer.
+    uint8_t controlBuffer[2];
+    uint8_t status = PCD_CalculateCRC(spi, &backData[0], *backLen - 2, &controlBuffer[0]);
+    if (status != STATUS_OK) {
+      return status;
+    }
+    if ((backData[*backLen - 2] != controlBuffer[0]) ||
+        (backData[*backLen - 1] != controlBuffer[1])) {
+      return STATUS_CRC_WRONG;
+    }
+  }
 
 }  // End PCD_CommunicateWithPICC()
 
@@ -809,7 +809,7 @@ StatusCode PCD_CalculateCRC(
       result[1] = PCD_ReadRegister(spi, CRCResultRegH);
       return STATUS_OK;
     }
-    vTaskDelay(0);
+    taskYIELD();
   }
   // 89ms passed and nothing happend. Communication with the MFRC522 might be down.
   return STATUS_TIMEOUT;
@@ -901,8 +901,8 @@ StatusCode MIFARE_Read(
   }
 
   // Transmit the buffer and receive the response, validate CRC_A.
-  PCD_TransceiveData(spi, buffer, 4, buffer, bufferSize, NULL, 0, true);
-  return STATUS_OK;
+  return PCD_TransceiveData(spi, buffer, 4, buffer, bufferSize, NULL, 0, true);
+  // return STATUS_OK;
 }  // End MIFARE_Read()
 
 StatusCode MIFARE_Write(
