@@ -146,6 +146,9 @@ static mode_type card_detected(event_t event) {
   } else if (event == CARD_DETECTED_SKIPPED_SECUIRTY) {
     trigger_beep(BEEP_LONG);
     return CARD_WITH_PROBLEM;
+  } else if (event == CARD_DETECTED_OLD_CARD) {
+    trigger_beep(BEEP_LONG);
+    return CARD_WITH_PROBLEM;
   } else if (event != CARD_DETECTED_OK) {
     // should not happen
     // TODO: fatal error
@@ -560,6 +563,7 @@ static mode_type card_balance(event_t event) {
       return CARD_BALANCE;
     case CARD_DETECTED_NOT_READABLE:
     case CARD_DETECTED_SKIPPED_SECUIRTY:
+    case CARD_DETECTED_OLD_CARD:
       return card_detected(event);
     case CARD_REMOVED:
       return default_mode();
@@ -579,6 +583,7 @@ static mode_type privileged_cashout(event_t event) {
       return WRITE_CARD;
     case CARD_DETECTED_NOT_READABLE:
     case CARD_DETECTED_SKIPPED_SECUIRTY:
+    case CARD_DETECTED_OLD_CARD:
       return card_detected(event);
     case KEY_D:
     case TIMEOUT:
@@ -593,6 +598,7 @@ static mode_type card_with_problem(event_t event) {
     case CARD_DETECTED_OK:
     case CARD_DETECTED_NOT_READABLE:
     case CARD_DETECTED_SKIPPED_SECUIRTY:
+    case CARD_DETECTED_OLD_CARD:
       return card_detected(event);
     case CARD_REMOVED:
       return default_mode();

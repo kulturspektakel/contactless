@@ -273,6 +273,18 @@ void rfid(void* params) {
       continue;
     }
 
+    if (PICC_GetType(uid.sak) == PICC_TYPE_MIFARE_1K) {
+      uint8_t* buffer;
+      uint8_t size = sizeof(buffer);
+      if (MIFARE_Read(spi, 0, buffer, &size) == STATUS_OK) {
+        // TODO: check if card is valid
+        trigger_event(CARD_DETECTED_OLD_CARD);
+      } else {
+        trigger_event(CARD_DETECTED_NOT_READABLE);
+      }
+      continue;
+    }
+
     if (read_card(spi, &uid, false)) {
       trigger_event(CARD_DETECTED_OK);
     } else {
