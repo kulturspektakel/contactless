@@ -225,8 +225,8 @@ void PCD_Init(spi_device_handle_t spi, gpio_num_t cs);
 void PCD_AntennaOn(spi_device_handle_t spi);
 esp_err_t PCD_Version(spi_device_handle_t spi);
 bool PICC_IsNewCardPresent(spi_device_handle_t spi);
-uint8_t PICC_RequestA(spi_device_handle_t spi, uint8_t* bufferATQA, uint8_t* bufferSize);
-uint8_t PICC_REQA_or_WUPA(
+StatusCode PICC_RequestA(spi_device_handle_t spi, uint8_t* bufferATQA, uint8_t* bufferSize);
+StatusCode PICC_REQA_or_WUPA(
     spi_device_handle_t spi,
     uint8_t command,
     uint8_t* bufferATQA,

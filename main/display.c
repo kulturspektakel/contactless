@@ -457,23 +457,27 @@ static void balance(u8g2_t* u8g2, uint16_t balance, int y) {
 
 static void card_balance(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_profont29_tf);
-  char balance[6];
-  snprintf(balance, sizeof(balance), "%.2f", ((float)current_card.balance) / 100);
-  balance[current_card.balance >= 1000 ? 2 : 1] = ',';
-  int w = u8g2_GetStrWidth(u8g2, balance);
-  int e = 8;  // euro symbol width
+
+  uint16_t bal = current_card.balance;
+  uint8_t dep = current_card.deposit;
+  if (current_state.transaction_type == LogMessage_CardTransaction_TransactionType_CASHOUT) {
+    bal = current_state.data_before_write.balance;
+    dep = current_state.data_before_write.deposit;
+  }
+
+  char balance[7];
+  snprintf(balance, sizeof(balance), "%.2f=", ((float)bal) / 100);
+  int w = u8g2_GetStrWidth(u8g2, balance) + 6;
   int h = 36;
-  u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2 - e, h, balance);
+  int s = (DISPLAY_WIDTH - w) / 2;
+  u8g2_DrawStr(u8g2, s, h, balance);
+  u8g2_SetFontMode(u8g2, 1);
+  u8g2_DrawStr(u8g2, s + w - 16, h, "C");
+  u8g2_SetDrawColor(u8g2, 0);
+  u8g2_DrawBox(u8g2, s + w - 9, h - 14, 3, 9);
+  u8g2_SetDrawColor(u8g2, 1);
 
-  // Euro symbol
-  u8g2_DrawUTF8(u8g2, DISPLAY_WIDTH / 2 + w / 2 + 4 - e, h, "€");
-  // u8g2_SetDrawColor(u8g2, 0);
-  // u8g2_DrawBox(u8g2, DISPLAY_WIDTH / 2 + w / 2 + 7 - e, h - 15, 11, 11);
-  // u8g2_SetDrawColor(u8g2, 1);
-  // u8g2_DrawBox(u8g2, DISPLAY_WIDTH / 2 + w / 2 + 2 - e, h - 9, 10, 3);
-  // u8g2_DrawBox(u8g2, DISPLAY_WIDTH / 2 + w / 2 + 2 - e, h - 13, 10, 3);
-
-  deposit(u8g2, current_card.deposit, 52);
+  deposit(u8g2, dep, 52);
 }
 
 static void charge_without_card(u8g2_t* u8g2) {
@@ -533,7 +537,12 @@ static void privileged_topup(u8g2_t* u8g2) {
 
 static void privileged_cashout(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
-  u8g2_DrawStr(u8g2, 0, 17, "Auszahlung");
+  char* line1 = "Karte auszahlen";
+  int w = u8g2_GetStrWidth(u8g2, line1);
+  u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, 27, line1);
+  char* line2 = "und nullen?";
+  w = u8g2_GetStrWidth(u8g2, line2);
+  u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, 39, line2);
 }
 
 static void error_message(u8g2_t* u8g2, char* line1, char* line2) {

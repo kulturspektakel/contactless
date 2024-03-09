@@ -190,7 +190,7 @@ static bool write_card(spi_device_handle_t spi, mfrc522_uid* uid, ultralight_car
 
   int counter_diff = card->counter - current_card.counter;
   if (counter_diff < 0) {
-    ESP_LOGE(TAG, "Counter decreased");
+    ESP_LOGE(TAG, "Counter decreased: %d", counter_diff);
     return false;
   } else if (counter_diff > 3) {
     ESP_LOGE(TAG, "Counter diff to high: %d", counter_diff);
@@ -234,19 +234,15 @@ void rfid(void* params) {
 
   ESP_LOGI(TAG, "Start scanning for tags");
   int64_t card_seen_at = 0;
-  uint8_t size = 18;
-  uint8_t payload[18] = {0};
 
   while (1) {
     while (card_seen_at > 0) {
       vTaskDelay(100 / portTICK_PERIOD_MS);
-      size = 18;
-      ESP_LOG_BUFFER_HEX("tag", payload, 18);
-      ESP_LOGI("tag", "asd");
-      int a = MIFARE_Read(spi, 0, payload, &size);
-      ESP_LOGI("tag", "size %d", size);
-      ESP_LOGI("tag", "asd %d", a);
-      if (a != STATUS_OK) {
+      PICC_HaltA(spi);
+      uint8_t buffer[2];
+      uint8_t size = sizeof(buffer);
+
+      if (PICC_REQA_or_WUPA(spi, PICC_CMD_WUPA, buffer, &size) != STATUS_OK) {
         int64_t delay = (esp_timer_get_time() - card_seen_at) / 1000;
         card_seen_at = 0;
         vTaskDelay((delay < 500 ? 500 : 0) / portTICK_PERIOD_MS);

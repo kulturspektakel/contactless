@@ -11,7 +11,7 @@
 #include "logmessage.pb.h"
 #include "rfid.h"
 
-#define BOOTSCREEN_DELAY_MS 2000
+#define BOOTSCREEN_DELAY_MS 1500
 
 static const char* TAG = "state_machine";
 static TimerHandle_t timeout_handle;
@@ -571,6 +571,11 @@ static mode_type card_balance(event_t event) {
 static mode_type privileged_cashout(event_t event) {
   switch (event) {
     case CARD_DETECTED_OK:
+      current_state.data_to_write = current_card;
+      current_state.data_before_write = current_card;
+      current_state.data_to_write.balance = 0;
+      current_state.data_to_write.deposit = 0;
+      current_state.data_to_write.counter = current_card.counter + 1;
       return WRITE_CARD;
     case CARD_DETECTED_NOT_READABLE:
     case CARD_DETECTED_SKIPPED_SECUIRTY:

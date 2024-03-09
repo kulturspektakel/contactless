@@ -302,7 +302,7 @@ PICC_Type PICC_GetType(uint8_t sak  ///< The SAK byte returned from PICC_Select(
  *
  * @return STATUS_OK on success, STATUS_??? otherwise.
  */
-uint8_t PICC_RequestA(spi_device_handle_t spi, uint8_t* bufferATQA, uint8_t* bufferSize) {
+StatusCode PICC_RequestA(spi_device_handle_t spi, uint8_t* bufferATQA, uint8_t* bufferSize) {
   return PICC_REQA_or_WUPA(spi, PICC_CMD_REQA, bufferATQA, bufferSize);
 }
 /**
@@ -312,7 +312,7 @@ uint8_t PICC_RequestA(spi_device_handle_t spi, uint8_t* bufferATQA, uint8_t* buf
  *
  * @return STATUS_OK on success, STATUS_??? otherwise.
  */
-uint8_t PICC_REQA_or_WUPA(
+StatusCode PICC_REQA_or_WUPA(
     spi_device_handle_t spi,
     uint8_t command,
     uint8_t* bufferATQA,
@@ -1043,8 +1043,6 @@ StatusCode MIFARE_Ultralight_Write(
     uint8_t* buffer,    ///< The 4 bytes to write to the PICC
     uint8_t bufferSize  ///< Buffer size, must be at least 4 bytes. Exactly 4 bytes are written.
 ) {
-  StatusCode result;
-
   // Sanity check
   if (buffer == NULL || bufferSize < 4) {
     return STATUS_INVALID;
