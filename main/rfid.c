@@ -13,6 +13,10 @@
 
 static const char* TAG = "rfid";
 static gpio_num_t NUM_CS_PIN = 21;
+static MIFARE_Key NDEF_KEY_A = {{0xD3, 0xF7, 0xD3, 0xF7, 0xD3, 0xF7}};
+static uint8_t PAGE_4[16] =
+    {0x00, 0x00, 0x03, 0x2B, 0xD1, 0x01, 0x27, 0x55, 0x04, 0x6B, 0x75, 0x6C, 0x74, 0x2E, 0x63, 0x61
+};
 ultralight_card_info_t current_card = {0};
 
 #define OFFSET_COUNTER LENGTH_ID
@@ -210,6 +214,21 @@ static bool write_card(spi_device_handle_t spi, mfrc522_uid* uid, ultralight_car
   return true;
 }
 
+bool is_old_card(spi_device_handle_t spi, mfrc522_uid* uid) {
+  if (PICC_GetType(uid->sak) == PICC_TYPE_MIFARE_1K) {
+    uint8_t buffer[18];
+    uint8_t size = sizeof(buffer);
+    uint8_t block_addr = 4;
+    if (PCD_Authenticate(spi, PICC_CMD_MF_AUTH_KEY_A, block_addr, &NDEF_KEY_A, uid) == STATUS_OK &&
+        MIFARE_Read(spi, block_addr, buffer, &size) == STATUS_OK &&
+        memcmp(buffer, PAGE_4, sizeof(PAGE_4)) == 0) {
+      ESP_LOGI(TAG, "Old card present");
+      return true;
+    }
+  }
+  return false;
+}
+
 void rfid(void* params) {
   spi_device_handle_t spi;
   spi_bus_config_t buscfg = {
@@ -245,7 +264,7 @@ void rfid(void* params) {
       if (PICC_REQA_or_WUPA(spi, PICC_CMD_WUPA, buffer, &size) != STATUS_OK) {
         int64_t delay = (esp_timer_get_time() - card_seen_at) / 1000;
         card_seen_at = 0;
-        vTaskDelay((delay < 500 ? 500 : 0) / portTICK_PERIOD_MS);
+        vTaskDelay((delay < 1000 ? 1000 : 0) / portTICK_PERIOD_MS);
         trigger_event(CARD_REMOVED);
       }
     }
@@ -273,15 +292,8 @@ void rfid(void* params) {
       continue;
     }
 
-    if (PICC_GetType(uid.sak) == PICC_TYPE_MIFARE_1K) {
-      uint8_t* buffer;
-      uint8_t size = sizeof(buffer);
-      if (MIFARE_Read(spi, 0, buffer, &size) == STATUS_OK) {
-        // TODO: check if card is valid
-        trigger_event(CARD_DETECTED_OLD_CARD);
-      } else {
-        trigger_event(CARD_DETECTED_NOT_READABLE);
-      }
+    if (is_old_card(spi, &uid)) {
+      trigger_event(CARD_DETECTED_OLD_CARD);
       continue;
     }
 

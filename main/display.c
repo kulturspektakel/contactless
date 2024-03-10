@@ -545,7 +545,7 @@ static void privileged_cashout(u8g2_t* u8g2) {
   u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, 39, line2);
 }
 
-static void error_message(u8g2_t* u8g2, char* line1, char* line2) {
+static void display_error(u8g2_t* u8g2, char* line1, char* line2) {
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
   int r = 8;
   int x = 23;
@@ -573,40 +573,40 @@ static void error_message(u8g2_t* u8g2, char* line1, char* line2) {
   u8g2_DrawStr(u8g2, x, y - 1, line1);
 }
 
-static void card_with_problem(u8g2_t* u8g2) {
-  error_message(u8g2, "Karte defekt", NULL);
-
-  bool id_set = false;
+static bool has_card() {
   for (int i = 0; i < sizeof(current_card.id); i++) {
     if (current_card.id[i] != 0) {
-      id_set = true;
-      break;
+      return true;
     }
   }
-
-  if (id_set) {
-    balance(u8g2, current_card.balance, DISPLAY_HEIGHT - 16);
-    deposit(u8g2, current_card.deposit, DISPLAY_HEIGHT - 4);
-  }
+  return false;
 }
 
-static void write_failed(u8g2_t* u8g2) {
-  switch (current_state.write_failed_reason) {
+static void error_message(u8g2_t* u8g2) {
+  switch (current_state.card_error) {
     case NONE:
       break;
     case CARD_LIMIT_EXCEEDED:
-      error_message(u8g2, "Kartenlimit", "erreicht");
+      display_error(u8g2, "Kartenlimit", "erreicht");
       break;
     case INSUFFICIENT_FUNDS:
-      error_message(u8g2, "Nicht genug", "Guthaben");
+      display_error(u8g2, "Nicht genug", "Guthaben");
       balance(u8g2, current_card.balance, DISPLAY_HEIGHT - 4);
       break;
     case INSUFFICIENT_DEPOSIT:
-      error_message(u8g2, "Nicht genug", "Pfandmarken");
+      display_error(u8g2, "Nicht genug", "Pfandmarken");
       deposit(u8g2, current_card.deposit, DISPLAY_HEIGHT - 4);
       break;
+    case OLD_CARD:
+      display_error(u8g2, "Alte Karte", "austauschen");
+      break;
     case TECHNICAL_ERROR:
-      error_message(u8g2, "Technischer", "Fehler");
+    case INVALID_SIGNATURE:
+      display_error(u8g2, "Karte defekt", NULL);
+      if (has_card()) {
+        balance(u8g2, current_card.balance, DISPLAY_HEIGHT - 16);
+        deposit(u8g2, current_card.deposit, DISPLAY_HEIGHT - 4);
+      }
       break;
   }
 }
@@ -661,7 +661,7 @@ void display(void* params) {
         break;
       case WRITE_FAILED:
         status_bar(&u8g2);
-        write_failed(&u8g2);
+        error_message(&u8g2);
         break;
       case CARD_BALANCE:
         status_bar(&u8g2);
@@ -681,9 +681,9 @@ void display(void* params) {
         privileged_cashout(&u8g2);
         keypad_legend(&u8g2, false);
         break;
-      case CARD_WITH_PROBLEM:
+      case READ_FAILED:
         status_bar(&u8g2);
-        card_with_problem(&u8g2);
+        error_message(&u8g2);
         break;
       default:
         break;

@@ -141,14 +141,17 @@ static bool cart_is_empty() {
 
 static mode_type card_detected(event_t event) {
   if (event == CARD_DETECTED_NOT_READABLE) {
+    current_state.card_error = TECHNICAL_ERROR;
     trigger_beep(BEEP_LONG);
-    return CARD_WITH_PROBLEM;
+    return READ_FAILED;
   } else if (event == CARD_DETECTED_SKIPPED_SECUIRTY) {
+    current_state.card_error = INVALID_SIGNATURE;
     trigger_beep(BEEP_LONG);
-    return CARD_WITH_PROBLEM;
+    return READ_FAILED;
   } else if (event == CARD_DETECTED_OLD_CARD) {
+    current_state.card_error = OLD_CARD;
     trigger_beep(BEEP_LONG);
-    return CARD_WITH_PROBLEM;
+    return READ_FAILED;
   } else if (event != CARD_DETECTED_OK) {
     // should not happen
     // TODO: fatal error
@@ -183,22 +186,22 @@ static mode_type card_detected(event_t event) {
   }
 
   if (new_balance < 0) {
-    current_state.write_failed_reason = INSUFFICIENT_FUNDS;
+    current_state.card_error = INSUFFICIENT_FUNDS;
     trigger_beep(BEEP_LONG);
     return WRITE_FAILED;
   }
   if (new_deposit < 0) {
-    current_state.write_failed_reason = INSUFFICIENT_DEPOSIT;
+    current_state.card_error = INSUFFICIENT_DEPOSIT;
     trigger_beep(BEEP_LONG);
     return WRITE_FAILED;
   }
   if (new_deposit > 9) {
-    current_state.write_failed_reason = CARD_LIMIT_EXCEEDED;
+    current_state.card_error = CARD_LIMIT_EXCEEDED;
     trigger_beep(BEEP_LONG);
     return WRITE_FAILED;
   }
   if (new_balance + new_deposit * DEPOSIT_VALUE > 9999) {
-    current_state.write_failed_reason = CARD_LIMIT_EXCEEDED;
+    current_state.card_error = CARD_LIMIT_EXCEEDED;
     trigger_beep(BEEP_LONG);
     return WRITE_FAILED;
   }
@@ -358,6 +361,7 @@ static mode_type charge_list(event_t event) {
     case CARD_DETECTED_OK:
     case CARD_DETECTED_NOT_READABLE:
     case CARD_DETECTED_SKIPPED_SECUIRTY:
+    case CARD_DETECTED_OLD_CARD:
       return card_detected(event);
 
     // stay in same state
@@ -396,6 +400,7 @@ static mode_type write_failed(event_t event) {
       }
       break;
     case CARD_DETECTED_NOT_READABLE:
+    case CARD_DETECTED_OLD_CARD:
       return card_detected(event);
     case KEY_D:
       return default_mode();
@@ -426,6 +431,7 @@ static mode_type charge_manual(event_t event) {
     case CARD_DETECTED_OK:
     case CARD_DETECTED_NOT_READABLE:
     case CARD_DETECTED_SKIPPED_SECUIRTY:
+    case CARD_DETECTED_OLD_CARD:
       return card_detected(event);
 
     // stay in same state
@@ -474,6 +480,7 @@ static mode_type privileged_topup(event_t event) {
     case CARD_DETECTED_OK:
     case CARD_DETECTED_NOT_READABLE:
     case CARD_DETECTED_SKIPPED_SECUIRTY:
+    case CARD_DETECTED_OLD_CARD:
       return card_detected(event);
 
     // stay in same state
@@ -549,7 +556,7 @@ static mode_type write_card(event_t event) {
       return CARD_BALANCE;
     case WRITE_UNSUCCESSFUL:
       trigger_beep(BEEP_LONG);
-      current_state.write_failed_reason = TECHNICAL_ERROR;
+      current_state.card_error = TECHNICAL_ERROR;
       return WRITE_FAILED;
     default:
       break;
@@ -593,7 +600,7 @@ static mode_type privileged_cashout(event_t event) {
   }
 }
 
-static mode_type card_with_problem(event_t event) {
+static mode_type read_failed(event_t event) {
   switch (event) {
     case CARD_DETECTED_OK:
     case CARD_DETECTED_NOT_READABLE:
@@ -603,7 +610,7 @@ static mode_type card_with_problem(event_t event) {
     case CARD_REMOVED:
       return default_mode();
     default:
-      return CARD_WITH_PROBLEM;
+      return READ_FAILED;
   }
 }
 
@@ -635,8 +642,8 @@ static mode_type process_event(event_t event) {
       return card_balance(event);
       break;
 
-    case CARD_WITH_PROBLEM:
-      return card_with_problem(event);
+    case READ_FAILED:
+      return read_failed(event);
       break;
 
     case MAIN_MENU:

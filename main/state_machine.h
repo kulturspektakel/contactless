@@ -55,7 +55,7 @@ typedef enum {
 
   CARD_BALANCE,
 
-  CARD_WITH_PROBLEM
+  READ_FAILED
 } mode_type;
 
 typedef struct {
@@ -95,7 +95,9 @@ typedef enum {
   INSUFFICIENT_FUNDS,
   INSUFFICIENT_DEPOSIT,
   TECHNICAL_ERROR,
-} write_failed_reason_t;
+  OLD_CARD,
+  INVALID_SIGNATURE,
+} card_error_t;
 
 typedef struct {
   mode_type mode;
@@ -108,7 +110,7 @@ typedef struct {
   int manual_amount;
   ultralight_card_info_t data_to_write;
   ultralight_card_info_t data_before_write;
-  write_failed_reason_t write_failed_reason;
+  card_error_t card_error;
   int64_t expected_bootup_time;
 } state_t;
 
