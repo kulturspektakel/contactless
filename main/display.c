@@ -238,13 +238,14 @@ static void draw_amount(u8g2_t* u8g2, int amount, int y) {
 
 static void charge_total(u8g2_t* u8g2, int y) {
   char deposit[21];
-  if (current_state.cart.deposit < 0) {
-    snprintf(deposit, sizeof(deposit), "%d Rückgabe", current_state.cart.deposit * -1);
+  if ((current_state.is_privileged && current_state.cart.deposit >= 0) ||
+      (!current_state.is_privileged && current_state.cart.deposit < 0)) {
+    snprintf(deposit, sizeof(deposit), "%d Rückgabe", abs(current_state.cart.deposit));
   } else {
-    snprintf(deposit, sizeof(deposit), "%d Pfand", current_state.cart.deposit);
+    snprintf(deposit, sizeof(deposit), "%d Pfand", abs(current_state.cart.deposit));
   }
   u8g2_DrawUTF8(u8g2, 0, y, deposit);
-  draw_amount(u8g2, current_state.cart.deposit * 200, y);
+  draw_amount(u8g2, current_state.cart.deposit * DEPOSIT_VALUE, y);
   u8g2_DrawHLine(u8g2, 0, y + 2, DISPLAY_WIDTH);
   u8g2_DrawStr(u8g2, 0, y + 12, "Summe");
   draw_amount(u8g2, current_total(), y + 12);
@@ -425,10 +426,10 @@ static void write_card(u8g2_t* u8g2) {
 
 static void deposit(u8g2_t* u8g2, uint8_t deposit, int y) {
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
-  char* str = "0 Pfandmarken";
-  str[0] = '0' + deposit;
+  char str[16];
+  snprintf(str, sizeof(str), "%d Pfandmarken", deposit);
   if (deposit == 1) {
-    str[12] = '\0';
+    str[strlen(str) - 1] = '\0';
   }
   int w = u8g2_GetStrWidth(u8g2, str);
   u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, y, str);

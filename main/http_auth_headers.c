@@ -15,19 +15,17 @@ void create_sha1_hash(const char* input_data, size_t input_length, uint8_t* outp
 }
 
 void http_auth_headers(esp_http_client_handle_t client) {
-  uint8_t mac[6];
-  esp_efuse_mac_get_default(mac);
-  char mac_str[18];
-  sprintf(mac_str, "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-  esp_http_client_set_header(client, "x-ESP8266-STA-MAC", mac_str);
+  // TODO: version numbering
+  esp_http_client_set_header(client, "User-Agent", "Contactless/3.2");
   char hash_input[DEVICE_ID_LENGTH + SALT_LENGTH + 1];
+
+  esp_http_client_set_authtype(client, HTTP_AUTH_TYPE_BASIC);
 
   sprintf(hash_input, "%s%s", DEVICE_ID, SALT);
   uint8_t hash[20];
   create_sha1_hash(hash_input, strlen(hash_input), hash);
-  char authorization[48] = "Bearer ";
-  for (int i = 0; i < 20; i++) {
-    sprintf(authorization + 7 + (i * 2), "%02x", hash[i]);
-  }
+  char authorization[48];
+  // TODO base64 encode
+  snprintf(authorization, sizeof(authorization), "Basic %s:%s", DEVICE_ID, hash);
   esp_http_client_set_header(client, "Authorization", authorization);
 }

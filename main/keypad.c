@@ -44,7 +44,7 @@ static void IRAM_ATTR gpio_interrupt_handler(void* args) {
   int r = (int)(args);
   int64_t time_now_isr = esp_timer_get_time();
 
-  if (time_now_isr - time_old_isr >= 100000) {  // 100ms debounce
+  if (time_now_isr - time_old_isr >= 200000) {  // 200ms debounce
     turnon_cols();
     for (int c = 4; c < 8; c++) {
       if (!gpio_get_level(KEYPAD_PINS[c])) {
@@ -53,8 +53,8 @@ static void IRAM_ATTR gpio_interrupt_handler(void* args) {
       }
     }
     turnon_rows();
+    time_old_isr = time_now_isr;
   }
-  time_old_isr = time_now_isr;
 }
 
 void keypad(void* params) {

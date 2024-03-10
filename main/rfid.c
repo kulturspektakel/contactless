@@ -167,8 +167,6 @@ static bool write_card(spi_device_handle_t spi, mfrc522_uid* uid, ultralight_car
   // TODO overflow?!?!
   calculate_signature_ultralight(buffer + OFFSET_SIGNATURE, card);
 
-  ESP_LOG_BUFFER_HEX(TAG, buffer, len);
-
   // encode payload to base64
   uint8_t write_data[PAYLOAD_LENGTH + 2];
   size_t base64_len = sizeof(write_data);
@@ -262,9 +260,10 @@ void rfid(void* params) {
       uint8_t size = sizeof(buffer);
 
       if (PICC_REQA_or_WUPA(spi, PICC_CMD_WUPA, buffer, &size) != STATUS_OK) {
-        int64_t delay = (esp_timer_get_time() - card_seen_at) / 1000;
+        int64_t card_seen_for = (esp_timer_get_time() - card_seen_at) / 1000;
+        ESP_LOGI(TAG, "card seen for %lld", card_seen_for);
         card_seen_at = 0;
-        vTaskDelay((delay < 1000 ? 1000 : 0) / portTICK_PERIOD_MS);
+        vTaskDelay((card_seen_for < 1000 ? (1000 - card_seen_for) : 0) / portTICK_PERIOD_MS);
         trigger_event(CARD_REMOVED);
       }
     }

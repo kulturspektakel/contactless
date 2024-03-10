@@ -8,8 +8,8 @@
   },
   "idf.espIdfPath": "/Users/danielbuechele/esp/esp-idf",
   "idf.openOcdConfigs": ["board/esp32s3-builtin.cfg"],
-  "idf.port": "/dev/tty.usbmodem41201",
-  "idf.pythonBinPath": "/Users/danielbuechele/.espressif/python_env/idf5.1_py3.9_env/bin/python",
+  "idf.port": "/dev/tty.usbmodem2101",
+  "idf.pythonBinPath": "/Users/danielbuechele/.espressif/python_env/idf5.1_py3.11_env/bin/python",
   "idf.toolsPath": "/Users/danielbuechele/.espressif",
   "idf.flashType": "UART",
   "files.associations": {
@@ -57,6 +57,16 @@
     "adc_oneshot.h": "c",
     "chrono": "c",
     "limits": "c",
-    "power_management.h": "c"
+    "power_management.h": "c",
+    "cmath": "c",
+    "math.h": "c",
+    "*.inc": "c",
+    "http_auth_headers.h": "c",
+    "initializer_list": "c",
+    "functional": "c",
+    "bit": "c",
+    "istream": "c",
+    "numeric": "c",
+    "semaphore": "c"
   }
 }

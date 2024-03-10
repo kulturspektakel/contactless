@@ -173,7 +173,7 @@ static mode_type card_detected(event_t event) {
     new_counter++;
   } else if (current_state.mode == PRIVILEGED_TOPUP) {
     new_balance += current_total();
-    new_deposit += current_state.cart.deposit;
+    new_deposit -= current_state.cart.deposit;
     new_counter++;
   } else if (current_state.mode == PRIVILEGED_CASHOUT) {
     new_balance = 0;
@@ -402,7 +402,7 @@ static mode_type write_failed(event_t event) {
     case CARD_DETECTED_NOT_READABLE:
     case CARD_DETECTED_OLD_CARD:
       return card_detected(event);
-    case KEY_D:
+    case CARD_REMOVED:
       return default_mode();
     default:
       break;
@@ -497,10 +497,10 @@ static mode_type privileged_topup(event_t event) {
       add_digit(event - KEY_0);
       break;
     case KEY_A:
-      update_deposit(false);
+      update_deposit(true);
       break;
     case KEY_B:
-      update_deposit(true);
+      update_deposit(false);
       break;
     case KEY_C:
       remove_digit();
