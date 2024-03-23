@@ -34,6 +34,7 @@ typedef enum {
   WRITE_SUCCESSFUL,
   WRITE_UNSUCCESSFUL,
   SHOW_DEBUG_BAR,
+  FATAL_ERROR,
 } event_t;
 
 typedef enum {

@@ -51,7 +51,7 @@ void log_writer(void* params) {
       log_message->usb_voltage = usb_voltage;
       strncpy(log_message->device_id, DEVICE_ID, sizeof(log_message->device_id));
 
-      char filename[29];  // TODO: use strlen(LOG_DIR)
+      char filename[strlen(LOG_DIR) + 8 + 1 + 3 + 1];
       sprintf(filename, "%s/%.8s.log", LOG_DIR, log_message->client_id);
       ESP_LOGI(TAG, "Writing log file %s", filename);
 
@@ -64,13 +64,13 @@ void log_writer(void* params) {
             .bytes_written = 0,
         };
 
-        // if (pb_encode(&file_stream, LogMessage_fields, log_message)) {
-        //   ESP_LOGI(TAG, "Wrote log to %s", filename);
-        //   current_state.log_files_to_upload++;
-        //   xTaskNotifyGive(xTaskGetHandle("log_uploader"));
-        // } else {
-        //   ESP_LOGE(TAG, "Failed to write log to %s", filename);
-        // }
+        if (pb_encode(&file_stream, LogMessage_fields, log_message)) {
+          ESP_LOGI(TAG, "Wrote log to %s", filename);
+          current_state.log_files_to_upload++;
+          xTaskNotifyGive(xTaskGetHandle("log_uploader"));
+        } else {
+          ESP_LOGE(TAG, "Failed to write log to %s", filename);
+        }
 
         fclose(log_file);
       } else {

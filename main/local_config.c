@@ -132,7 +132,7 @@ void local_config(void* params) {
 
     if (active_config.list_id == -1) {
       ESP_LOGE(TAG, "failed to load product list");
-      // TODO fatal error
+      trigger_event(FATAL_ERROR);
     }
     xEventGroupClearBits(event_group, LOCAL_CONFIG_UPDATED);
     xEventGroupSetBits(event_group, LOCAL_CONFIG_LOADED | DISPLAY_NEEDS_UPDATE);

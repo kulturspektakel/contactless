@@ -61,7 +61,7 @@ void keypad(void* params) {
   keypad_queue = xQueueCreate(5, sizeof(event_t));
   if (keypad_queue == NULL) {
     ESP_LOGI(TAG, "Failed to create keypad queue");
-    // TODO fatal error
+    trigger_event(FATAL_ERROR);
     return;
   }
 

@@ -63,10 +63,11 @@ void fetch_config(void* params) {
   char etag[14];
   sprintf(etag, "\"%ld\"", all_lists_checksum);
   esp_http_client_set_header(client, "If-None-Match", etag);
+
   esp_err_t err = esp_http_client_perform(client);
 
   if (err != ESP_OK) {
-    // TODO: maybe retry? (e.g. timeout)
+    trigger_event(FATAL_ERROR);
     ESP_LOGE(TAG, "HTTP request failed: %s", esp_err_to_name(err));
     esp_http_client_cleanup(client);
     return vTaskDelete(NULL);

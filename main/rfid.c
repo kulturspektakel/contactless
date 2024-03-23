@@ -134,6 +134,27 @@ static void calculate_password(mfrc522_uid* uid, uint8_t* password, uint8_t* pac
   memcpy(pack, &hash[14], 2);
 }
 
+static int mbedtls_base64_encode_url_safe(
+    unsigned char* dst,
+    size_t dlen,
+    size_t* olen,
+    const unsigned char* src,
+    size_t slen
+) {
+  int ret = mbedtls_base64_encode(dst, dlen, olen, src, slen);
+  if (ret != 0) {
+    return ret;
+  }
+  for (size_t i = 0; i < *olen; i++) {
+    if (dst[i] == '+') {
+      dst[i] = '-';
+    } else if (dst[i] == '/') {
+      dst[i] = '_';
+    }
+  }
+  return 0;
+}
+
 static bool write_card(spi_device_handle_t spi, mfrc522_uid* uid, ultralight_card_info_t* card) {
   // authenticate
   uint8_t password[4] = {0xFF, 0xFF, 0xFF, 0xFF};
@@ -170,7 +191,7 @@ static bool write_card(spi_device_handle_t spi, mfrc522_uid* uid, ultralight_car
   // encode payload to base64
   uint8_t write_data[PAYLOAD_LENGTH + 2];
   size_t base64_len = sizeof(write_data);
-  if (mbedtls_base64_encode(write_data, base64_len, &base64_len, buffer, len) != 0) {
+  if (mbedtls_base64_encode_url_safe(write_data, base64_len, &base64_len, buffer, len) != 0) {
     ESP_LOGE(TAG, "Encoding payload failed");
     return false;
   }

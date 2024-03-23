@@ -100,7 +100,7 @@ void maybe_create_log_dir() {
     ESP_LOGI(TAG, "Creating directory %s", LOG_DIR);
     if (mkdir(LOG_DIR, 0777) != 0) {
       ESP_LOGE(TAG, "Failed to create directory");
-      // TODO this is a fatal error
+      trigger_event(FATAL_ERROR);
       vTaskDelete(NULL);
       return;
     }

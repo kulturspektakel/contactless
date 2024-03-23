@@ -154,8 +154,7 @@ static mode_type card_detected(event_t event) {
     return READ_FAILED;
   } else if (event != CARD_DETECTED_OK) {
     // should not happen
-    // TODO: fatal error
-    return current_state.mode;
+    return MAIN_FATAL;
   }
 
   if (cart_is_empty()) {
@@ -615,6 +614,10 @@ static mode_type read_failed(event_t event) {
 }
 
 static mode_type process_event(event_t event) {
+  if (event == FATAL_ERROR) {
+    return MAIN_FATAL;
+  }
+
   switch (current_state.mode) {
     case CHARGE_LIST:
       return charge_list(event);
@@ -710,7 +713,6 @@ void state_machine(void* params) {
           TAG, "Event %d changed state from %d to %d", event, previous_mode, current_state.mode
       );
     }
-    // taskEXIT_CRITICAL(&mutex);
     xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
   }
 }
