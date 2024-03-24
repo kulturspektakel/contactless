@@ -510,6 +510,8 @@ static mode_type privileged_topup(event_t event) {
       }
       reset_cart();
       break;
+    case KEY_STAR:
+      return PRIVILEGED_REPAIR;
     default:
       break;
   }
@@ -599,6 +601,24 @@ static mode_type privileged_cashout(event_t event) {
   }
 }
 
+static mode_type privileged_repair(event_t event) {
+  switch (event) {
+    case CARD_DETECTED_OK:
+    case CARD_DETECTED_SKIPPED_SECUIRTY:
+      current_state.data_to_write = current_card;
+      current_state.data_before_write = current_card;
+      current_state.data_to_write.counter = current_card.counter + 1;
+      return WRITE_CARD;
+    case CARD_DETECTED_NOT_READABLE:
+    case CARD_DETECTED_OLD_CARD:
+      return card_detected(event);
+    case KEY_D:
+      return default_mode();
+    default:
+      return PRIVILEGED_REPAIR;
+  }
+}
+
 static mode_type read_failed(event_t event) {
   switch (event) {
     case CARD_DETECTED_OK:
@@ -633,8 +653,7 @@ static mode_type process_event(event_t event) {
     case PRIVILEGED_CASHOUT:
       return privileged_cashout(event);
     case PRIVILEGED_REPAIR:
-      break;
-
+      return privileged_repair(event);
     case WRITE_CARD:
       return write_card(event);
     case WRITE_FAILED:

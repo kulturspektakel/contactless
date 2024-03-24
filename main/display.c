@@ -409,21 +409,6 @@ static void main_menu(u8g2_t* u8g2) {
   );
 }
 
-static void write_card(u8g2_t* u8g2) {
-  u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
-
-  int y = DISPLAY_HEIGHT / 2;
-  int h = 10;
-  int p = 5;
-  u8g2_DrawRFrame(u8g2, p, y, DISPLAY_WIDTH - 2 * p, h, 2);
-  static int64_t last_animation_tick = 0;
-  static int progress = 0;
-  if (animation_tick(50, &last_animation_tick)) {
-    progress = (progress + 1) % 100;
-  }
-  u8g2_DrawBox(u8g2, p + 1, y + 1, (DISPLAY_WIDTH - 2 * p - 2) * progress / 100, h - 2);
-}
-
 static void deposit(u8g2_t* u8g2, uint8_t deposit, int y) {
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
   char str[16];
@@ -457,19 +442,33 @@ static void balance(u8g2_t* u8g2, uint16_t balance, int y) {
 }
 
 static void card_balance(u8g2_t* u8g2) {
-  u8g2_SetFont(u8g2, u8g2_font_profont29_tf);
+  u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
 
   uint16_t bal = current_card.balance;
   uint8_t dep = current_card.deposit;
+  char* line1 = NULL;
   if (current_state.transaction_type == LogMessage_CardTransaction_TransactionType_CASHOUT) {
     bal = current_state.data_before_write.balance;
     dep = current_state.data_before_write.deposit;
+    line1 = "Karte genullt!";
+  }
+  // TODO: better UI for repair
+  // } else if (current_state.transaction_type == LogMessage_CardTransaction_TransactionType_REPAIR)
+  // {
+  //   char* line1 = "Karte repariert!";
+  // }
+
+  int h = 36;
+  if (line1 != NULL) {
+    int w = u8g2_GetStrWidth(u8g2, line1) + 6;
+    u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, 19, line1);
+    h += 10;
   }
 
+  u8g2_SetFont(u8g2, u8g2_font_profont29_tf);
   char balance[7];
   snprintf(balance, sizeof(balance), "%.2f=", ((float)bal) / 100);
   int w = u8g2_GetStrWidth(u8g2, balance) + 6;
-  int h = 36;
   int s = (DISPLAY_WIDTH - w) / 2;
   u8g2_DrawStr(u8g2, s, h, balance);
   u8g2_SetFontMode(u8g2, 1);
@@ -478,7 +477,7 @@ static void card_balance(u8g2_t* u8g2) {
   u8g2_DrawBox(u8g2, s + w - 9, h - 14, 3, 9);
   u8g2_SetDrawColor(u8g2, 1);
 
-  deposit(u8g2, dep, 52);
+  deposit(u8g2, dep, h + 14);
 }
 
 static void charge_without_card(u8g2_t* u8g2) {
@@ -544,6 +543,13 @@ static void privileged_cashout(u8g2_t* u8g2) {
   char* line2 = "und nullen?";
   w = u8g2_GetStrWidth(u8g2, line2);
   u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, 39, line2);
+}
+
+static void privileged_repair(u8g2_t* u8g2) {
+  u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
+  char* line1 = "Karte reparieren?";
+  int w = u8g2_GetStrWidth(u8g2, line1);
+  u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, 27, line1);
 }
 
 static void display_error(u8g2_t* u8g2, char* line1, char* line2) {
@@ -631,6 +637,11 @@ void display(void* params) {
   u8g2_SetPowerSave(&u8g2, 0);
 
   while (1) {
+    xEventGroupWaitBits(event_group, DISPLAY_NEEDS_UPDATE, pdTRUE, pdTRUE, portMAX_DELAY);
+    if (current_state.mode == WRITE_CARD) {
+      // do not update display while writing card
+      continue;
+    }
     u8g2_ClearBuffer(&u8g2);
 
     switch (current_state.mode) {
@@ -655,10 +666,6 @@ void display(void* params) {
         status_bar(&u8g2);
         main_menu(&u8g2);
         keypad_legend(&u8g2, true);
-        break;
-      case WRITE_CARD:
-        status_bar(&u8g2);
-        write_card(&u8g2);
         break;
       case WRITE_FAILED:
         status_bar(&u8g2);
@@ -686,11 +693,15 @@ void display(void* params) {
         status_bar(&u8g2);
         error_message(&u8g2);
         break;
+      case PRIVILEGED_REPAIR:
+        status_bar(&u8g2);
+        privileged_repair(&u8g2);
+        keypad_legend(&u8g2, false);
+        break;
       default:
         break;
     }
 
     u8g2_SendBuffer(&u8g2);
-    xEventGroupWaitBits(event_group, DISPLAY_NEEDS_UPDATE, pdTRUE, pdTRUE, portMAX_DELAY);
   }
 }

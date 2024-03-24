@@ -51,6 +51,27 @@ static bool is_privilege_token(mfrc522_uid* uid) {
   return false;
 }
 
+static int mbedtls_base64_encode_url_safe(
+    unsigned char* dst,
+    size_t dlen,
+    size_t* olen,
+    const unsigned char* src,
+    size_t slen
+) {
+  int ret = mbedtls_base64_encode(dst, dlen, olen, src, slen);
+  if (ret != 0) {
+    return ret;
+  }
+  for (size_t i = 0; i < *olen; i++) {
+    if (dst[i] == '+') {
+      dst[i] = '-';
+    } else if (dst[i] == '/') {
+      dst[i] = '_';
+    }
+  }
+  return 0;
+}
+
 static bool read_card(spi_device_handle_t spi, mfrc522_uid* uid, bool skip_security) {
   if (PICC_GetType(uid->sak) == PICC_TYPE_MIFARE_UL) {
     ultralight_card_info_t new_card = {0};
@@ -73,6 +94,15 @@ static bool read_card(spi_device_handle_t spi, mfrc522_uid* uid, bool skip_secur
       return false;
     }
     payload[PAYLOAD_LENGTH] = 0x3D;  // add padding for base64
+
+    // Convert web-safe base64 to standard base64
+    for (size_t i = 0; i < PAYLOAD_LENGTH; i++) {
+      if (payload[i] == '-') {
+        payload[i] = '+';
+      } else if (payload[i] == '_') {
+        payload[i] = '/';
+      }
+    }
 
     uint8_t decoded_payload[PAYLOAD_LENGTH + 1];
     size_t size_decoded = 0;
@@ -132,27 +162,6 @@ static void calculate_password(mfrc522_uid* uid, uint8_t* password, uint8_t* pac
   create_sha1_hash(data, sizeof(data), hash);
   memcpy(password, &hash[16], 4);
   memcpy(pack, &hash[14], 2);
-}
-
-static int mbedtls_base64_encode_url_safe(
-    unsigned char* dst,
-    size_t dlen,
-    size_t* olen,
-    const unsigned char* src,
-    size_t slen
-) {
-  int ret = mbedtls_base64_encode(dst, dlen, olen, src, slen);
-  if (ret != 0) {
-    return ret;
-  }
-  for (size_t i = 0; i < *olen; i++) {
-    if (dst[i] == '+') {
-      dst[i] = '-';
-    } else if (dst[i] == '/') {
-      dst[i] = '_';
-    }
-  }
-  return 0;
 }
 
 static bool write_card(spi_device_handle_t spi, mfrc522_uid* uid, ultralight_card_info_t* card) {
