@@ -67,7 +67,6 @@ void fetch_config(void* params) {
   esp_err_t err = esp_http_client_perform(client);
 
   if (err != ESP_OK) {
-    trigger_event(FATAL_ERROR);
     ESP_LOGE(TAG, "HTTP request failed: %s", esp_err_to_name(err));
     esp_http_client_cleanup(client);
     return vTaskDelete(NULL);

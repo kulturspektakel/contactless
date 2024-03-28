@@ -165,21 +165,17 @@ static mode_type card_detected(event_t event) {
   // stroing in ints because it could go negative
   int new_balance = current_card.balance;
   int new_deposit = current_card.deposit;
-  int new_counter = current_card.counter;
   if (current_state.mode == CHARGE_LIST || current_state.mode == CHARGE_MANUAL) {
     new_balance -= current_total();
     new_deposit += current_state.cart.deposit;
-    new_counter++;
   } else if (current_state.mode == PRIVILEGED_TOPUP) {
     new_balance += current_total();
     new_deposit -= current_state.cart.deposit;
-    new_counter++;
   } else if (current_state.mode == PRIVILEGED_CASHOUT) {
     new_balance = 0;
     new_deposit = 0;
-    new_counter++;
   } else if (current_state.mode == PRIVILEGED_REPAIR) {
-    // no changes, just rewrite current values
+    // no changes to balance/deposit, just rewrite current values
   } else {
     return current_state.mode;
   }
@@ -187,29 +183,29 @@ static mode_type card_detected(event_t event) {
   if (new_balance < 0) {
     current_state.card_error = INSUFFICIENT_FUNDS;
     trigger_beep(BEEP_LONG);
-    return WRITE_FAILED;
+    return WRITE_NOT_ATTEMPTED;
   }
   if (new_deposit < 0) {
     current_state.card_error = INSUFFICIENT_DEPOSIT;
     trigger_beep(BEEP_LONG);
-    return WRITE_FAILED;
+    return WRITE_NOT_ATTEMPTED;
   }
   if (new_deposit > 9) {
     current_state.card_error = CARD_LIMIT_EXCEEDED;
     trigger_beep(BEEP_LONG);
-    return WRITE_FAILED;
+    return WRITE_NOT_ATTEMPTED;
   }
   if (new_balance + new_deposit * DEPOSIT_VALUE > 9999) {
     current_state.card_error = CARD_LIMIT_EXCEEDED;
     trigger_beep(BEEP_LONG);
-    return WRITE_FAILED;
+    return WRITE_NOT_ATTEMPTED;
   }
 
   current_state.data_to_write = current_card;
   current_state.data_before_write = current_card;
   current_state.data_to_write.balance = new_balance;
   current_state.data_to_write.deposit = new_deposit;
-  current_state.data_to_write.counter = new_counter;
+  current_state.data_to_write.counter = current_card.counter + 1;
 
   return WRITE_CARD;
 }
@@ -390,18 +386,27 @@ static mode_type charge_list(event_t event) {
   return CHARGE_LIST;
 }
 
+static mode_type write_not_attemted(event_t event) {
+  switch (event) {
+    case CARD_REMOVED:
+      return default_mode();
+    default:
+      break;
+  }
+  return WRITE_NOT_ATTEMPTED;
+}
+
 static mode_type write_failed(event_t event) {
   switch (event) {
     case CARD_DETECTED_OK:
     case CARD_DETECTED_SKIPPED_SECUIRTY:
+    case CARD_DETECTED_NOT_READABLE:
       if (memcmp(&current_card.id, &current_state.data_to_write.id, LENGTH_ID) == 0) {
+        // same card detected, retry writing
         return WRITE_CARD;
       }
       break;
-    case CARD_DETECTED_NOT_READABLE:
-    case CARD_DETECTED_OLD_CARD:
-      return card_detected(event);
-    case CARD_REMOVED:
+    case KEY_D:
       return default_mode();
     default:
       break;
@@ -647,7 +652,6 @@ static mode_type process_event(event_t event) {
       return product_list(event);
     case CHARGE_WITHOUT_CARD:
       return charge_without_card(event);
-
     case PRIVILEGED_TOPUP:
       return privileged_topup(event);
     case PRIVILEGED_CASHOUT:
@@ -659,15 +663,15 @@ static mode_type process_event(event_t event) {
     case WRITE_FAILED:
       return write_failed(event);
       break;
-
     case CARD_BALANCE:
       return card_balance(event);
       break;
-
     case READ_FAILED:
       return read_failed(event);
       break;
-
+    case WRITE_NOT_ATTEMPTED:
+      return write_not_attemted(event);
+      break;
     case MAIN_MENU:
       return main_menu(event);
     case MAIN_STARTING_UP:
@@ -707,8 +711,6 @@ void state_machine(void* params) {
 
     // state manipulation should not be interrupted, to prevent inconsistent state
     taskENTER_CRITICAL(&mutex);
-    // state exit events
-
     current_state.mode = process_event(event);
     // state entry events
     switch (current_state.mode) {

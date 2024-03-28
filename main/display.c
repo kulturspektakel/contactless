@@ -552,11 +552,10 @@ static void privileged_repair(u8g2_t* u8g2) {
   u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, 27, line1);
 }
 
-static void display_error(u8g2_t* u8g2, char* line1, char* line2) {
+static void display_error(u8g2_t* u8g2, char* line1, char* line2, int y) {
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
   int r = 8;
   int x = 23;
-  int y = 21;
   u8g2_DrawDisc(u8g2, x, y, r, U8G2_DRAW_ALL);
   u8g2_SetDrawColor(u8g2, 0);
 
@@ -589,32 +588,41 @@ static bool has_card() {
   return false;
 }
 
-static void error_message(u8g2_t* u8g2) {
+static void old_card(u8g2_t* u8g2, int y) {
+  display_error(u8g2, "Alte Karte", "austauschen", y);
+}
+
+static void read_failed(u8g2_t* u8g2) {
+  int y = 21;
   switch (current_state.card_error) {
-    case NONE:
-      break;
-    case CARD_LIMIT_EXCEEDED:
-      display_error(u8g2, "Kartenlimit", "erreicht");
-      break;
-    case INSUFFICIENT_FUNDS:
-      display_error(u8g2, "Nicht genug", "Guthaben");
-      balance(u8g2, current_card.balance, DISPLAY_HEIGHT - 4);
-      break;
-    case INSUFFICIENT_DEPOSIT:
-      display_error(u8g2, "Nicht genug", "Pfandmarken");
-      deposit(u8g2, current_card.deposit, DISPLAY_HEIGHT - 4);
-      break;
     case OLD_CARD:
-      display_error(u8g2, "Alte Karte", "austauschen");
+      old_card(u8g2, y);
       break;
-    case TECHNICAL_ERROR:
-    case INVALID_SIGNATURE:
-      display_error(u8g2, "Karte defekt", NULL);
+    default:
+      display_error(u8g2, "Karte defekt", NULL, y);
       if (has_card()) {
         balance(u8g2, current_card.balance, DISPLAY_HEIGHT - 16);
         deposit(u8g2, current_card.deposit, DISPLAY_HEIGHT - 4);
       }
+  }
+}
+
+static void write_not_attemted(u8g2_t* u8g2) {
+  int y = 21;
+  switch (current_state.card_error) {
+    case CARD_LIMIT_EXCEEDED:
+      display_error(u8g2, "Kartenlimit", "erreicht", y);
       break;
+    case INSUFFICIENT_FUNDS:
+      display_error(u8g2, "Nicht genug", "Guthaben", y);
+      balance(u8g2, current_card.balance, DISPLAY_HEIGHT - 4);
+      break;
+    case INSUFFICIENT_DEPOSIT:
+      display_error(u8g2, "Nicht genug", "Pfandmarken", y);
+      deposit(u8g2, current_card.deposit, DISPLAY_HEIGHT - 4);
+      break;
+    default:
+      display_error(u8g2, "Karte nicht", "schreibbar", y);
   }
 }
 
@@ -669,7 +677,8 @@ void display(void* params) {
         break;
       case WRITE_FAILED:
         status_bar(&u8g2);
-        error_message(&u8g2);
+        display_error(&u8g2, "Erneut", "versuchen", 17);
+        keypad_legend(&u8g2, false);
         break;
       case CARD_BALANCE:
         status_bar(&u8g2);
@@ -691,7 +700,11 @@ void display(void* params) {
         break;
       case READ_FAILED:
         status_bar(&u8g2);
-        error_message(&u8g2);
+        read_failed(&u8g2);
+        break;
+      case WRITE_NOT_ATTEMPTED:
+        status_bar(&u8g2);
+        write_not_attemted(&u8g2);
         break;
       case PRIVILEGED_REPAIR:
         status_bar(&u8g2);

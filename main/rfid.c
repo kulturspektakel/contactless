@@ -72,26 +72,29 @@ static int mbedtls_base64_encode_url_safe(
   return 0;
 }
 
-static bool read_card(spi_device_handle_t spi, mfrc522_uid* uid, bool skip_security) {
-  if (PICC_GetType(uid->sak) == PICC_TYPE_MIFARE_UL) {
-    ultralight_card_info_t new_card = {0};
-    // read counter
-    uint8_t command[] = {0x39, 0x00, 0x1A, 0x7F};  // Read Counter 00 + CRC
-    uint8_t backData[8];                           // needs to be at least 8 bytes
-    uint8_t backLen = sizeof(backData);
-    if (PCD_TransceiveData(spi, command, sizeof(command), backData, &backLen, NULL, 0, true) !=
-        STATUS_OK) {
-      ESP_LOGE(TAG, "Reading counter failed");
-      return false;
-    }
+static bool read_counter(spi_device_handle_t spi, uint16_t* counter) {
+  // read counter
+  uint8_t command[] = {0x39, 0x00, 0x1A, 0x7F};  // Read Counter 00 + CRC
+  uint8_t backData[8];                           // needs to be at least 8 bytes
+  uint8_t backLen = sizeof(backData);
+  if (PCD_TransceiveData(spi, command, sizeof(command), backData, &backLen, NULL, 0, true) !=
+      STATUS_OK) {
+    ESP_LOGE(TAG, "Reading counter failed");
+    return false;
+  }
+  *counter = *(uint16_t*)backData;
+  return true;
+}
 
+static event_t read_card(spi_device_handle_t spi, mfrc522_uid* uid) {
+  if (PICC_GetType(uid->sak) == PICC_TYPE_MIFARE_UL) {
     uint8_t size = 18;
     uint8_t payload[16 + 2 + 16];  // two 16 byte blocks + CRC
 
     if (MIFARE_Read(spi, 9, payload, &size) != STATUS_OK ||
         MIFARE_Read(spi, 13, payload + 16, &size) != STATUS_OK) {
       ESP_LOGE(TAG, "Reading payload failed");
-      return false;
+      return CARD_DETECTED_NOT_READABLE;
     }
     payload[PAYLOAD_LENGTH] = 0x3D;  // add padding for base64
 
@@ -111,46 +114,53 @@ static bool read_card(spi_device_handle_t spi, mfrc522_uid* uid, bool skip_secur
     );
     if (decode_error != 0) {
       ESP_LOGE(TAG, "Decoding payload failed %d", decode_error);
-      return false;
+      return CARD_DETECTED_NOT_READABLE;
     } else if (size_decoded != 17) {
       ESP_LOGE(TAG, "Decoded payload has wrong size %d", size_decoded);
       ESP_LOG_BUFFER_HEX(TAG, decoded_payload, size_decoded);
-      return false;
+      return CARD_DETECTED_NOT_READABLE;
     }
 
-    new_card.counter = *((uint16_t*)backData);
-    uint16_t counter_from_payload = *(uint16_t*)(decoded_payload + OFFSET_COUNTER);
-    if (new_card.counter != counter_from_payload) {
-      ESP_LOGE(
-          TAG, "Counter mismatch: %d (card) != %d (payload)", new_card.counter, counter_from_payload
-      );
-      return false;
+    ultralight_card_info_t new_card = {0};
+    // The value from the physical counter is stored in new_card, so that cards can be repaired
+    // based on the actual counter value in write_card. The value from the payload is only used for
+    // verification.
+    if (!read_counter(spi, &new_card.counter)) {
+      return CARD_DETECTED_NOT_READABLE;
     }
+    uint16_t counter_from_payload = *(uint16_t*)(decoded_payload + OFFSET_COUNTER);
     memcpy(new_card.id, uid->uidByte, LENGTH_ID);
     new_card.deposit = *(uint8_t*)(decoded_payload + OFFSET_DEPOSIT);
     new_card.balance = *(uint16_t*)(decoded_payload + OFFSET_BALANCE);
     memcpy(new_card.signature, decoded_payload + OFFSET_SIGNATURE, LENGTH_SIGNATURE);
 
-    // verify signature
-    if (!skip_security) {
-      uint8_t hash[20];
-      calculate_signature_ultralight(hash, &new_card);
+    current_card = new_card;
 
-      if (memcmp(hash, new_card.signature, LENGTH_SIGNATURE) != 0) {
-        ESP_LOGE(TAG, "Signature mismatch: hash != signature");
-        ESP_LOG_BUFFER_HEX(TAG, hash, 5);
-        ESP_LOG_BUFFER_HEX(TAG, new_card.signature, 5);
-        return false;
-      }
+    // verify counter
+    if (new_card.counter != counter_from_payload) {
+      ESP_LOGE(
+          TAG, "Counter mismatch: %d (card) != %d (payload)", new_card.counter, counter_from_payload
+      );
+      return CARD_DETECTED_SKIPPED_SECUIRTY;
     }
 
-    current_card = new_card;
-    return true;
+    // verify signature
+    uint8_t hash[20];
+    calculate_signature_ultralight(hash, &new_card);
+
+    if (memcmp(hash, new_card.signature, LENGTH_SIGNATURE) != 0) {
+      ESP_LOGE(TAG, "Signature mismatch: hash != signature");
+      ESP_LOG_BUFFER_HEX(TAG, hash, 5);
+      ESP_LOG_BUFFER_HEX(TAG, new_card.signature, 5);
+      return CARD_DETECTED_SKIPPED_SECUIRTY;
+    }
+
+    return CARD_DETECTED_OK;
   } else {
     ESP_LOGE(TAG, "Unsupported card type: %d", PICC_GetType(uid->sak));
     ESP_LOG_BUFFER_HEX(TAG, uid->uidByte, uid->size);
   }
-  return false;
+  return CARD_DETECTED_NOT_READABLE;
 }
 
 static void calculate_password(mfrc522_uid* uid, uint8_t* password, uint8_t* pack) {
@@ -196,6 +206,14 @@ static bool write_card(spi_device_handle_t spi, mfrc522_uid* uid, ultralight_car
   memcpy(buffer + OFFSET_BALANCE, &card->balance, LENGTH_BALANCE);
   // TODO overflow?!?!
   calculate_signature_ultralight(buffer + OFFSET_SIGNATURE, card);
+
+  ESP_LOGI(
+      TAG,
+      "Write: balance %hu, deposit %hu, counter %hu",
+      card->balance,
+      card->deposit,
+      card->counter
+  );
 
   // encode payload to base64
   uint8_t write_data[PAYLOAD_LENGTH + 2];
@@ -326,15 +344,8 @@ void rfid(void* params) {
       continue;
     }
 
-    if (read_card(spi, &uid, false)) {
-      trigger_event(CARD_DETECTED_OK);
-    } else {
-      // try again with skipping security
-      bool success = read_card(spi, &uid, true);
-      trigger_event(success ? CARD_DETECTED_SKIPPED_SECUIRTY : CARD_DETECTED_NOT_READABLE);
-    }
-
     ESP_LOGI(TAG, "New card present");
+    trigger_event(read_card(spi, &uid));
 
     if (current_state.mode != WRITE_CARD) {
       continue;
@@ -345,37 +356,33 @@ void rfid(void* params) {
       continue;
     }
 
-    bool success = false;
-    for (int retries = 0; retries < 3 && !success; retries++) {
-      ESP_LOGI(TAG, "Write attempt %d", retries);
+    if (!write_card(spi, &uid, &current_state.data_to_write)) {
+      ESP_LOGE(TAG, "Writing card failed");
+      trigger_event(WRITE_UNSUCCESSFUL);
+      continue;
+    }
+    ESP_LOGI(TAG, "Card written successfully");
 
-      if (!write_card(spi, &uid, &current_state.data_to_write)) {
-        ESP_LOGE(TAG, "Writing card failed");
-        continue;
-      }
-
-      ESP_LOGI(TAG, "Card written successfully");
-      if (!read_card(spi, &uid, false)) {
-        ESP_LOGE(TAG, "Rereading card failed");
-        continue;
-      }
-
-      if (current_card.deposit != current_state.data_to_write.deposit ||
-          current_card.balance != current_state.data_to_write.balance) {
-        // reread mismatch
-        ESP_LOGE(
-            TAG,
-            "Reread mismatch: Balance (%d != %d), deposit (%d != %d)",
-            current_card.balance,
-            current_state.data_to_write.balance,
-            current_card.deposit,
-            current_state.data_to_write.deposit
-        );
-        continue;
-      }
-      success = true;
+    if (read_card(spi, &uid) != CARD_DETECTED_OK) {
+      ESP_LOGE(TAG, "Rereading card failed");
+      trigger_event(WRITE_UNSUCCESSFUL);
+      continue;
+    }
+    if (current_card.deposit != current_state.data_to_write.deposit ||
+        current_card.balance != current_state.data_to_write.balance) {
+      // reread mismatch
+      ESP_LOGE(
+          TAG,
+          "Reread mismatch: Balance (%d != %d), deposit (%d != %d)",
+          current_card.balance,
+          current_state.data_to_write.balance,
+          current_card.deposit,
+          current_state.data_to_write.deposit
+      );
+      trigger_event(WRITE_UNSUCCESSFUL);
+      continue;
     }
 
-    trigger_event(success ? WRITE_SUCCESSFUL : WRITE_UNSUCCESSFUL);
+    trigger_event(WRITE_SUCCESSFUL);
   }
 }
