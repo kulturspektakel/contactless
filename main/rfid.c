@@ -2,6 +2,7 @@
 #include <esp_log.h>
 #include <mbedtls/base64.h>
 #include <string.h>
+#include "constant_time_internal.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -96,7 +97,7 @@ static event_t read_card(spi_device_handle_t spi, mfrc522_uid* uid) {
       ESP_LOGE(TAG, "Reading payload failed");
       return CARD_DETECTED_NOT_READABLE;
     }
-    payload[PAYLOAD_LENGTH] = 0x3D;  // add padding for base64
+    payload[PAYLOAD_LENGTH] = '=';  // add padding for base64
 
     // Convert web-safe base64 to standard base64
     for (size_t i = 0; i < PAYLOAD_LENGTH; i++) {
@@ -104,6 +105,9 @@ static event_t read_card(spi_device_handle_t spi, mfrc522_uid* uid) {
         payload[i] = '+';
       } else if (payload[i] == '_') {
         payload[i] = '/';
+      } else if (mbedtls_ct_base64_dec_value(payload[i]) < 0) {
+        // fix invalid characters, so base64 decoding doesn't fail
+        payload[i] = '0';
       }
     }
 
@@ -113,7 +117,8 @@ static event_t read_card(spi_device_handle_t spi, mfrc522_uid* uid) {
         decoded_payload, sizeof(decoded_payload), &size_decoded, payload, PAYLOAD_LENGTH + 1
     );
     if (decode_error != 0) {
-      ESP_LOGE(TAG, "Decoding payload failed %d", decode_error);
+      ESP_LOGE(TAG, "Decoding payload failed. Error %d, decoded %d", decode_error, size_decoded);
+      ESP_LOG_BUFFER_HEX(TAG, decoded_payload, PAYLOAD_LENGTH);
       return CARD_DETECTED_NOT_READABLE;
     } else if (size_decoded != 17) {
       ESP_LOGE(TAG, "Decoded payload has wrong size %d", size_decoded);
