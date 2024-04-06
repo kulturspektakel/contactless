@@ -10,6 +10,7 @@
 #include "local_config.h"
 #include "mbedtls/sha1.h"
 #include "mfrc522.h"
+#include "pn532.h"
 #include "state_machine.h"
 
 static const char* TAG = "rfid";
@@ -294,100 +295,130 @@ void rfid(void* params) {
       .mode = 0,
       .spics_io_num = NUM_CS_PIN,
       .queue_size = 7,
+      .flags = SPI_DEVICE_BIT_LSBFIRST,
   };
-  mfrc522_uid uid;
 
   ESP_ERROR_CHECK(spi_bus_initialize(SPI3_HOST, &buscfg, SPI_DMA_DISABLED));
   ESP_ERROR_CHECK(spi_bus_add_device(SPI3_HOST, &devcfg, &spi));
 
-  PCD_Init(spi, NUM_CS_PIN);
+  begin(spi);
 
-  ESP_LOGI(TAG, "Start scanning for tags");
-  int64_t card_seen_at = 0;
+  uint32_t versiondata = getFirmwareVersion();
+  // Got ok data, print it out!
+  ESP_LOGI(TAG, "Found chip PN5%lx", (versiondata >> 24) & 0xFF);
+  ESP_LOGI(TAG, "Firmware ver. %ld.%ld", (versiondata >> 16) & 0xFF, (versiondata >> 8) & 0xFF);
 
   while (1) {
-    while (card_seen_at > 0) {
-      vTaskDelay(100 / portTICK_PERIOD_MS);
-      PICC_HaltA(spi);
-      uint8_t buffer[2];
-      uint8_t size = sizeof(buffer);
-
-      if (PICC_REQA_or_WUPA(spi, PICC_CMD_WUPA, buffer, &size) != STATUS_OK) {
-        int64_t card_seen_for = (esp_timer_get_time() - card_seen_at) / 1000;
-        ESP_LOGI(TAG, "card seen for %lld", card_seen_for);
-        card_seen_at = 0;
-        vTaskDelay((card_seen_for < 1000 ? (1000 - card_seen_for) : 0) / portTICK_PERIOD_MS);
-        trigger_event(CARD_REMOVED);
-      }
-    }
-
-    PICC_HaltA(spi);
-    PCD_StopCrypto1(spi);
-
-    // wait for card
-    if (!PICC_IsNewCardPresent(spi)) {
-      vTaskDelay(100 / portTICK_PERIOD_MS);
-      continue;
-    }
-
-    // reset current card
-    ultralight_card_info_t new_card = {0};
-    current_card = new_card;
-
-    if (PICC_Select(spi, &uid, 0) != STATUS_OK) {
-      continue;
-    }
-    card_seen_at = esp_timer_get_time();
-
-    if (is_privilege_token(&uid)) {
-      trigger_event(PRIVILEGE_TOKEN_DETECTED);
-      continue;
-    }
-
-    if (is_old_card(spi, &uid)) {
-      trigger_event(CARD_DETECTED_OLD_CARD);
-      continue;
-    }
-
-    ESP_LOGI(TAG, "New card present");
-    trigger_event(read_card(spi, &uid));
-
-    if (current_state.mode != WRITE_CARD) {
-      continue;
-    }
-
-    if (memcmp(&uid.uidByte, &current_state.data_to_write.id, LENGTH_ID) != 0) {
-      ESP_LOGE(TAG, "Card changed during write process");
-      continue;
-    }
-
-    if (!write_card(spi, &uid, &current_state.data_to_write)) {
-      ESP_LOGE(TAG, "Writing card failed");
-      trigger_event(WRITE_UNSUCCESSFUL);
-      continue;
-    }
-    ESP_LOGI(TAG, "Card written successfully");
-
-    if (read_card(spi, &uid) != CARD_DETECTED_OK) {
-      ESP_LOGE(TAG, "Rereading card failed");
-      trigger_event(WRITE_UNSUCCESSFUL);
-      continue;
-    }
-    if (current_card.deposit != current_state.data_to_write.deposit ||
-        current_card.balance != current_state.data_to_write.balance) {
-      // reread mismatch
-      ESP_LOGE(
-          TAG,
-          "Reread mismatch: Balance (%d != %d), deposit (%d != %d)",
-          current_card.balance,
-          current_state.data_to_write.balance,
-          current_card.deposit,
-          current_state.data_to_write.deposit
-      );
-      trigger_event(WRITE_UNSUCCESSFUL);
-      continue;
-    }
-
-    trigger_event(WRITE_SUCCESSFUL);
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
+
+  // spi_device_handle_t spi;
+  // spi_bus_config_t buscfg = {
+  //     .miso_io_num = 37,
+  //     .mosi_io_num = 35,
+  //     .sclk_io_num = 36,
+  //     .quadwp_io_num = -1,
+  //     .quadhd_io_num = -1,
+  // };
+  // spi_device_interface_config_t devcfg = {
+  //     .clock_speed_hz = 5000000,
+  //     .mode = 0,
+  //     .spics_io_num = NUM_CS_PIN,
+  //     .queue_size = 7,
+  // };
+
+  // mfrc522_uid uid;
+  // ESP_ERROR_CHECK(spi_bus_initialize(SPI3_HOST, &buscfg, SPI_DMA_DISABLED));
+  // ESP_ERROR_CHECK(spi_bus_add_device(SPI3_HOST, &devcfg, &spi));
+
+  // PCD_Init(spi, NUM_CS_PIN);
+
+  // ESP_LOGI(TAG, "Start scanning for tags");
+  // int64_t card_seen_at = 0;
+
+  // while (1) {
+  //   while (card_seen_at > 0) {
+  //     vTaskDelay(100 / portTICK_PERIOD_MS);
+  //     PICC_HaltA(spi);
+  //     uint8_t buffer[2];
+  //     uint8_t size = sizeof(buffer);
+
+  //     if (PICC_REQA_or_WUPA(spi, PICC_CMD_WUPA, buffer, &size) != STATUS_OK) {
+  //       int64_t card_seen_for = (esp_timer_get_time() - card_seen_at) / 1000;
+  //       ESP_LOGI(TAG, "card seen for %lld", card_seen_for);
+  //       card_seen_at = 0;
+  //       vTaskDelay((card_seen_for < 1000 ? (1000 - card_seen_for) : 0) / portTICK_PERIOD_MS);
+  //       trigger_event(CARD_REMOVED);
+  //     }
+  //   }
+
+  //   PICC_HaltA(spi);
+  //   PCD_StopCrypto1(spi);
+
+  //   // wait for card
+  //   if (!PICC_IsNewCardPresent(spi)) {
+  //     vTaskDelay(100 / portTICK_PERIOD_MS);
+  //     continue;
+  //   }
+
+  //   // reset current card
+  //   ultralight_card_info_t new_card = {0};
+  //   current_card = new_card;
+
+  //   if (PICC_Select(spi, &uid, 0) != STATUS_OK) {
+  //     continue;
+  //   }
+  //   card_seen_at = esp_timer_get_time();
+
+  //   if (is_privilege_token(&uid)) {
+  //     trigger_event(PRIVILEGE_TOKEN_DETECTED);
+  //     continue;
+  //   }
+
+  //   if (is_old_card(spi, &uid)) {
+  //     trigger_event(CARD_DETECTED_OLD_CARD);
+  //     continue;
+  //   }
+
+  //   ESP_LOGI(TAG, "New card present");
+  //   trigger_event(read_card(spi, &uid));
+
+  //   if (current_state.mode != WRITE_CARD) {
+  //     continue;
+  //   }
+
+  //   if (memcmp(&uid.uidByte, &current_state.data_to_write.id, LENGTH_ID) != 0) {
+  //     ESP_LOGE(TAG, "Card changed during write process");
+  //     continue;
+  //   }
+
+  //   if (!write_card(spi, &uid, &current_state.data_to_write)) {
+  //     ESP_LOGE(TAG, "Writing card failed");
+  //     trigger_event(WRITE_UNSUCCESSFUL);
+  //     continue;
+  //   }
+  //   ESP_LOGI(TAG, "Card written successfully");
+
+  //   if (read_card(spi, &uid) != CARD_DETECTED_OK) {
+  //     ESP_LOGE(TAG, "Rereading card failed");
+  //     trigger_event(WRITE_UNSUCCESSFUL);
+  //     continue;
+  //   }
+  //   if (current_card.deposit != current_state.data_to_write.deposit ||
+  //       current_card.balance != current_state.data_to_write.balance) {
+  //     // reread mismatch
+  //     ESP_LOGE(
+  //         TAG,
+  //         "Reread mismatch: Balance (%d != %d), deposit (%d != %d)",
+  //         current_card.balance,
+  //         current_state.data_to_write.balance,
+  //         current_card.deposit,
+  //         current_state.data_to_write.deposit
+  //     );
+  //     trigger_event(WRITE_UNSUCCESSFUL);
+  //     continue;
+  //   }
+
+  //   trigger_event(WRITE_SUCCESSFUL);
+  // }
 }
