@@ -282,33 +282,52 @@ bool is_old_card(spi_device_handle_t spi, mfrc522_uid* uid) {
 }
 
 void rfid(void* params) {
-  spi_device_handle_t spi;
-  spi_bus_config_t buscfg = {
-      .miso_io_num = 37,
-      .mosi_io_num = 35,
-      .sclk_io_num = 36,
-      .quadwp_io_num = -1,
-      .quadhd_io_num = -1,
-  };
-  spi_device_interface_config_t devcfg = {
-      .clock_speed_hz = 5000000,
-      .mode = 0,
-      .spics_io_num = NUM_CS_PIN,
-      .queue_size = 7,
-      .flags = SPI_DEVICE_BIT_LSBFIRST,
-  };
+  // spi_device_handle_t spi;
+  // spi_bus_config_t buscfg = {
+  //     .miso_io_num = 37,
+  //     .mosi_io_num = 35,
+  //     .sclk_io_num = 36,
+  //     .quadwp_io_num = -1,
+  //     .quadhd_io_num = -1,
+  // };
+  // spi_device_interface_config_t devcfg = {
+  //     .clock_speed_hz = 5000000,
+  //     .mode = 0,
+  //     .spics_io_num = NUM_CS_PIN,
+  //     .queue_size = 7,
+  //     .flags = SPI_DEVICE_BIT_LSBFIRST,
+  // };
 
-  ESP_ERROR_CHECK(spi_bus_initialize(SPI3_HOST, &buscfg, SPI_DMA_DISABLED));
-  ESP_ERROR_CHECK(spi_bus_add_device(SPI3_HOST, &devcfg, &spi));
+  // ESP_ERROR_CHECK(spi_bus_initialize(SPI3_HOST, &buscfg, SPI_DMA_DISABLED));
+  // ESP_ERROR_CHECK(spi_bus_add_device(SPI3_HOST, &devcfg, &spi));
 
-  begin(spi);
+  // begin(spi);
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
 
-  uint32_t versiondata = getFirmwareVersion();
+  bool init = false;
+  while (!init) {
+    init = init_PN532_I2C(35, 37, 48, 47, I2C_NUM_1);
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+  }
+
+  ESP_LOGI(TAG, "init");
+
+  uint32_t versiondata = getPN532FirmwareVersion();
   // Got ok data, print it out!
   ESP_LOGI(TAG, "Found chip PN5%lx", (versiondata >> 24) & 0xFF);
   ESP_LOGI(TAG, "Firmware ver. %ld.%ld", (versiondata >> 16) & 0xFF, (versiondata >> 8) & 0xFF);
 
+  uint8_t uid;
+  uint8_t uidLength;
+
+  bool a = false;
   while (1) {
+    a = readPassiveTargetID(PN532_MIFARE_ISO14443A, &uid, &uidLength, 0);
+    if (a) {
+      ESP_LOGI(TAG, "found");
+    } else {
+      ESP_LOGI(TAG, "not found");
+    }
     vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
 
