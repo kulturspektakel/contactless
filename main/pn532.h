@@ -159,8 +159,9 @@ bool SAMConfig(void);
 uint32_t getPN532FirmwareVersion(void);
 bool sendCommandCheckAck(uint8_t* cmd, uint8_t cmdlen, uint16_t timeout);
 bool writeGPIO(uint8_t pinstate);
-uint8_t readGPIO(void);
+bool readGPIO(void);
 bool setPassiveActivationRetries(uint8_t maxRetries);
+bool readdata(uint8_t* buff, uint8_t n);
 
 // ISO14443A functions
 bool readPassiveTargetID(
@@ -175,26 +176,26 @@ bool inListPassiveTarget();
 // Mifare Classic functions
 bool mifareclassic_IsFirstBlock(uint32_t uiBlock);
 bool mifareclassic_IsTrailerBlock(uint32_t uiBlock);
-uint8_t mifareclassic_AuthenticateBlock(
+bool mifareclassic_AuthenticateBlock(
     uint8_t* uid,
     uint8_t uidLen,
     uint32_t blockNumber,
     uint8_t keyNumber,
     uint8_t* keyData
 );
-uint8_t mifareclassic_ReadDataBlock(uint8_t blockNumber, uint8_t* data);
-uint8_t mifareclassic_WriteDataBlock(uint8_t blockNumber, uint8_t* data);
-uint8_t mifareclassic_FormatNDEF(void);
-uint8_t mifareclassic_WriteNDEFURI(uint8_t sectorNumber, uint8_t uriIdentifier, const char* url);
+bool mifareclassic_ReadDataBlock(uint8_t blockNumber, uint8_t* data);
+bool mifareclassic_WriteDataBlock(uint8_t blockNumber, uint8_t* data);
+bool mifareclassic_FormatNDEF(void);
+bool mifareclassic_WriteNDEFURI(uint8_t sectorNumber, uint8_t uriIdentifier, const char* url);
 
 // Mifare Ultralight functions
-uint8_t mifareultralight_ReadPage(uint8_t page, uint8_t* buffer);
-uint8_t mifareultralight_WritePage(uint8_t page, uint8_t* data);
+bool mifareultralight_ReadPage(uint8_t page, uint8_t* buffer, uint8_t bufferSize);
+bool mifareultralight_WritePage(uint8_t page, uint8_t* data);
 
 // NTAG2xx functions
-uint8_t ntag2xx_ReadPage(uint8_t page, uint8_t* buffer);
-uint8_t ntag2xx_WritePage(uint8_t page, uint8_t* data);
-uint8_t ntag2xx_WriteNDEFURI(uint8_t uriIdentifier, char* url, uint8_t dataLen);
+bool ntag2xx_ReadPage(uint8_t page, uint8_t* buffer);
+bool ntag2xx_WritePage(uint8_t page, uint8_t* data);
+bool ntag2xx_WriteNDEFURI(uint8_t uriIdentifier, char* url, uint8_t dataLen);
 
 // Target command
 bool initiate_as_target_106();

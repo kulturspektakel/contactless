@@ -9,13 +9,17 @@
 #include "http_auth_headers.h"
 #include "local_config.h"
 #include "mbedtls/sha1.h"
-#include "mfrc522.h"
 #include "pn532.h"
 #include "state_machine.h"
 
+typedef struct {
+  uint8_t bytes[10];
+  uint8_t length;
+} byte_array_t;
+
 static const char* TAG = "rfid";
 static gpio_num_t NUM_CS_PIN = 21;
-static MIFARE_Key NDEF_KEY_A = {{0xD3, 0xF7, 0xD3, 0xF7, 0xD3, 0xF7}};
+static uint8_t NDEF_KEY_A[6] = {0xD3, 0xF7, 0xD3, 0xF7, 0xD3, 0xF7};
 static uint8_t PAGE_4[16] =
     {0x00, 0x00, 0x03, 0x2B, 0xD1, 0x01, 0x27, 0x55, 0x04, 0x6B, 0x75, 0x6C, 0x74, 0x2E, 0x63, 0x61
 };
@@ -43,10 +47,10 @@ static void calculate_signature_ultralight(uint8_t* target, ultralight_card_info
   create_sha1_hash(hash_input, len, target);
 }
 
-static bool is_privilege_token(mfrc522_uid* uid) {
+static bool is_privilege_token(byte_array_t* uid) {
   for (int i = 0; i < MAX_PRIVILEGE_TOKENS; i++) {
-    if (uid->size == privilege_tokens[i].size &&
-        memcmp(uid->uidByte, privilege_tokens[i].bytes, privilege_tokens[i].size) == 0) {
+    if (uid->length == privilege_tokens[i].size &&
+        memcmp(uid->bytes, privilege_tokens[i].bytes, privilege_tokens[i].size) == 0) {
       return true;
     }
   }
@@ -74,113 +78,105 @@ static int mbedtls_base64_encode_url_safe(
   return 0;
 }
 
-static bool read_counter(spi_device_handle_t spi, uint16_t* counter) {
+static bool read_counter(uint16_t* counter) {
   // read counter
   uint8_t command[] = {0x39, 0x00, 0x1A, 0x7F};  // Read Counter 00 + CRC
   uint8_t backData[8];                           // needs to be at least 8 bytes
-  uint8_t backLen = sizeof(backData);
-  if (PCD_TransceiveData(spi, command, sizeof(command), backData, &backLen, NULL, 0, true) !=
-      STATUS_OK) {
-    ESP_LOGE(TAG, "Reading counter failed");
-    return false;
+
+  if (sendCommandCheckAck(command, sizeof(command), 1000) && readdata(backData, sizeof(backData))) {
+    *counter = *(uint16_t*)backData;
+    return true;
   }
-  *counter = *(uint16_t*)backData;
-  return true;
+  ESP_LOGE(TAG, "Reading counter failed");
+  return false;
 }
 
-static event_t read_card(spi_device_handle_t spi, mfrc522_uid* uid) {
-  if (PICC_GetType(uid->sak) == PICC_TYPE_MIFARE_UL) {
-    uint8_t size = 18;
-    uint8_t payload[16 + 2 + 16];  // two 16 byte blocks + CRC
+static event_t read_card(byte_array_t* uid) {
+  uint8_t payload[PAYLOAD_LENGTH + 1];
 
-    if (MIFARE_Read(spi, 9, payload, &size) != STATUS_OK ||
-        MIFARE_Read(spi, 13, payload + 16, &size) != STATUS_OK) {
-      ESP_LOGE(TAG, "Reading payload failed");
-      return CARD_DETECTED_NOT_READABLE;
+  if (!mifareultralight_ReadPage(9, payload, 16) ||
+      !mifareultralight_ReadPage(13, payload + 16, PAYLOAD_LENGTH - 16)) {
+    ESP_LOGE(TAG, "Reading payload failed");
+    return CARD_DETECTED_NOT_READABLE;
+  }
+  payload[PAYLOAD_LENGTH] = '=';  // add padding for base64
+
+  // Convert web-safe base64 to standard base64
+  for (size_t i = 0; i < PAYLOAD_LENGTH; i++) {
+    if (payload[i] == '-') {
+      payload[i] = '+';
+    } else if (payload[i] == '_') {
+      payload[i] = '/';
+    } else if (mbedtls_ct_base64_dec_value(payload[i]) < 0) {
+      // fix invalid characters, so base64 decoding doesn't fail
+      payload[i] = '0';
     }
-    payload[PAYLOAD_LENGTH] = '=';  // add padding for base64
+  }
 
-    // Convert web-safe base64 to standard base64
-    for (size_t i = 0; i < PAYLOAD_LENGTH; i++) {
-      if (payload[i] == '-') {
-        payload[i] = '+';
-      } else if (payload[i] == '_') {
-        payload[i] = '/';
-      } else if (mbedtls_ct_base64_dec_value(payload[i]) < 0) {
-        // fix invalid characters, so base64 decoding doesn't fail
-        payload[i] = '0';
-      }
-    }
+  uint8_t decoded_payload[17];
+  size_t size_decoded = 0;
+  int decode_error = mbedtls_base64_decode(
+      decoded_payload, sizeof(decoded_payload), &size_decoded, payload, sizeof(payload)
+  );
+  if (decode_error != 0) {
+    ESP_LOGE(TAG, "Decoding payload failed. Error %d, decoded %d", decode_error, size_decoded);
+    ESP_LOG_BUFFER_HEX(TAG, decoded_payload, PAYLOAD_LENGTH);
+    return CARD_DETECTED_NOT_READABLE;
+  } else if (size_decoded != sizeof(decoded_payload)) {
+    ESP_LOGE(TAG, "Decoded payload has wrong size %d", size_decoded);
+    ESP_LOG_BUFFER_HEX(TAG, decoded_payload, size_decoded);
+    return CARD_DETECTED_NOT_READABLE;
+  }
 
-    uint8_t decoded_payload[PAYLOAD_LENGTH + 1];
-    size_t size_decoded = 0;
-    int decode_error = mbedtls_base64_decode(
-        decoded_payload, sizeof(decoded_payload), &size_decoded, payload, PAYLOAD_LENGTH + 1
+  ultralight_card_info_t new_card = {0};
+  // The value from the physical counter is stored in new_card, so that cards can be repaired
+  // based on the actual counter value in write_card. The value from the payload is only used for
+  // verification.
+  if (!read_counter(&new_card.counter)) {
+    return CARD_DETECTED_NOT_READABLE;
+  }
+  uint16_t counter_from_payload = *(uint16_t*)(decoded_payload + OFFSET_COUNTER);
+  memcpy(new_card.id, uid->bytes, LENGTH_ID);
+  new_card.deposit = *(uint8_t*)(decoded_payload + OFFSET_DEPOSIT);
+  new_card.balance = *(uint16_t*)(decoded_payload + OFFSET_BALANCE);
+  memcpy(new_card.signature, decoded_payload + OFFSET_SIGNATURE, LENGTH_SIGNATURE);
+
+  current_card = new_card;
+
+  // verify counter
+  if (new_card.counter != counter_from_payload) {
+    ESP_LOGE(
+        TAG, "Counter mismatch: %d (card) != %d (payload)", new_card.counter, counter_from_payload
     );
-    if (decode_error != 0) {
-      ESP_LOGE(TAG, "Decoding payload failed. Error %d, decoded %d", decode_error, size_decoded);
-      ESP_LOG_BUFFER_HEX(TAG, decoded_payload, PAYLOAD_LENGTH);
-      return CARD_DETECTED_NOT_READABLE;
-    } else if (size_decoded != 17) {
-      ESP_LOGE(TAG, "Decoded payload has wrong size %d", size_decoded);
-      ESP_LOG_BUFFER_HEX(TAG, decoded_payload, size_decoded);
-      return CARD_DETECTED_NOT_READABLE;
-    }
-
-    ultralight_card_info_t new_card = {0};
-    // The value from the physical counter is stored in new_card, so that cards can be repaired
-    // based on the actual counter value in write_card. The value from the payload is only used for
-    // verification.
-    if (!read_counter(spi, &new_card.counter)) {
-      return CARD_DETECTED_NOT_READABLE;
-    }
-    uint16_t counter_from_payload = *(uint16_t*)(decoded_payload + OFFSET_COUNTER);
-    memcpy(new_card.id, uid->uidByte, LENGTH_ID);
-    new_card.deposit = *(uint8_t*)(decoded_payload + OFFSET_DEPOSIT);
-    new_card.balance = *(uint16_t*)(decoded_payload + OFFSET_BALANCE);
-    memcpy(new_card.signature, decoded_payload + OFFSET_SIGNATURE, LENGTH_SIGNATURE);
-
-    current_card = new_card;
-
-    // verify counter
-    if (new_card.counter != counter_from_payload) {
-      ESP_LOGE(
-          TAG, "Counter mismatch: %d (card) != %d (payload)", new_card.counter, counter_from_payload
-      );
-      return CARD_DETECTED_SKIPPED_SECUIRTY;
-    }
-
-    // verify signature
-    uint8_t hash[20];
-    calculate_signature_ultralight(hash, &new_card);
-
-    if (memcmp(hash, new_card.signature, LENGTH_SIGNATURE) != 0) {
-      ESP_LOGE(TAG, "Signature mismatch: hash != signature");
-      ESP_LOG_BUFFER_HEX(TAG, hash, 5);
-      ESP_LOG_BUFFER_HEX(TAG, new_card.signature, 5);
-      return CARD_DETECTED_SKIPPED_SECUIRTY;
-    }
-
-    return CARD_DETECTED_OK;
-  } else {
-    ESP_LOGE(TAG, "Unsupported card type: %d", PICC_GetType(uid->sak));
-    ESP_LOG_BUFFER_HEX(TAG, uid->uidByte, uid->size);
+    return CARD_DETECTED_SKIPPED_SECUIRTY;
   }
-  return CARD_DETECTED_NOT_READABLE;
+
+  // verify signature
+  uint8_t hash[20];
+  calculate_signature_ultralight(hash, &new_card);
+
+  if (memcmp(hash, new_card.signature, LENGTH_SIGNATURE) != 0) {
+    ESP_LOGE(TAG, "Signature mismatch: hash != signature");
+    ESP_LOG_BUFFER_HEX(TAG, hash, 5);
+    ESP_LOG_BUFFER_HEX(TAG, new_card.signature, 5);
+    return CARD_DETECTED_SKIPPED_SECUIRTY;
+  }
+
+  return CARD_DETECTED_OK;
 }
 
-static void calculate_password(mfrc522_uid* uid, uint8_t* password, uint8_t* pack) {
+static void calculate_password(byte_array_t* uid, uint8_t* password, uint8_t* pack) {
   size_t len = LENGTH_ID + SALT_LENGTH;
   char data[len];
   uint8_t hash[20];
-  memcpy(data, uid->uidByte, LENGTH_ID);
+  memcpy(data, uid->bytes, LENGTH_ID);
   memcpy(&data[LENGTH_ID], SALT, SALT_LENGTH);
   create_sha1_hash(data, sizeof(data), hash);
   memcpy(password, &hash[16], 4);
   memcpy(pack, &hash[14], 2);
 }
 
-static bool write_card(spi_device_handle_t spi, mfrc522_uid* uid, ultralight_card_info_t* card) {
+static bool write_card(byte_array_t* uid, ultralight_card_info_t* card) {
   // authenticate
   uint8_t password[4] = {0xFF, 0xFF, 0xFF, 0xFF};
   uint8_t pack[2] = {0x00, 0x00};
@@ -238,7 +234,7 @@ static bool write_card(spi_device_handle_t spi, mfrc522_uid* uid, ultralight_car
   // write payload
   for (size_t i = 2; i < base64_len / 4; i++) {  // skip first two bytes, because ID did not
                                                  // change
-    if (MIFARE_Ultralight_Write(spi, i + 9, &write_data[4 * i], 4) != STATUS_OK) {
+    if (!mifareultralight_WritePage(i + 9, &write_data[4 * i])) {
       ESP_LOGE(TAG, "Writing payload failed at block %d", i);
       return false;
     }
@@ -266,13 +262,13 @@ static bool write_card(spi_device_handle_t spi, mfrc522_uid* uid, ultralight_car
   return true;
 }
 
-bool is_old_card(spi_device_handle_t spi, mfrc522_uid* uid) {
-  if (PICC_GetType(uid->sak) == PICC_TYPE_MIFARE_1K) {
-    uint8_t buffer[18];
-    uint8_t size = sizeof(buffer);
+bool is_old_card(byte_array_t* uid) {
+  if (uid->length == 4) {
+    uint8_t buffer[16];
     uint8_t block_addr = 4;
-    if (PCD_Authenticate(spi, PICC_CMD_MF_AUTH_KEY_A, block_addr, &NDEF_KEY_A, uid) == STATUS_OK &&
-        MIFARE_Read(spi, block_addr, buffer, &size) == STATUS_OK &&
+
+    if (mifareclassic_AuthenticateBlock(uid->bytes, uid->length, block_addr, 0, &NDEF_KEY_A) == 1 &&
+        mifareclassic_ReadDataBlock(block_addr, buffer) == 1 &&
         memcmp(buffer, PAGE_4, sizeof(PAGE_4)) == 0) {
       ESP_LOGI(TAG, "Old card present");
       return true;
@@ -282,162 +278,99 @@ bool is_old_card(spi_device_handle_t spi, mfrc522_uid* uid) {
 }
 
 void rfid(void* params) {
-  // spi_device_handle_t spi;
-  // spi_bus_config_t buscfg = {
-  //     .miso_io_num = 37,
-  //     .mosi_io_num = 35,
-  //     .sclk_io_num = 36,
-  //     .quadwp_io_num = -1,
-  //     .quadhd_io_num = -1,
-  // };
-  // spi_device_interface_config_t devcfg = {
-  //     .clock_speed_hz = 5000000,
-  //     .mode = 0,
-  //     .spics_io_num = NUM_CS_PIN,
-  //     .queue_size = 7,
-  //     .flags = SPI_DEVICE_BIT_LSBFIRST,
-  // };
-
-  // ESP_ERROR_CHECK(spi_bus_initialize(SPI3_HOST, &buscfg, SPI_DMA_DISABLED));
-  // ESP_ERROR_CHECK(spi_bus_add_device(SPI3_HOST, &devcfg, &spi));
-
-  // begin(spi);
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
-
-  bool init = false;
-  while (!init) {
-    init = init_PN532_I2C(35, 37, 48, 47, I2C_NUM_1);
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+  if (!init_PN532_I2C(35, 37, 48, 47, I2C_NUM_1)) {
+    ESP_LOGE(TAG, "PN532 init failed");
+    trigger_event(FATAL_ERROR);
   }
 
-  ESP_LOGI(TAG, "init");
+  SAMConfig();
 
   uint32_t versiondata = getPN532FirmwareVersion();
   // Got ok data, print it out!
   ESP_LOGI(TAG, "Found chip PN5%lx", (versiondata >> 24) & 0xFF);
   ESP_LOGI(TAG, "Firmware ver. %ld.%ld", (versiondata >> 16) & 0xFF, (versiondata >> 8) & 0xFF);
 
-  uint8_t uid;
-  uint8_t uidLength;
+  byte_array_t uid = {};
 
-  bool a = false;
+  ESP_LOGI(TAG, "Start scanning for tags");
+  int64_t card_seen_at = 0;
+
   while (1) {
-    a = readPassiveTargetID(PN532_MIFARE_ISO14443A, &uid, &uidLength, 0);
-    if (a) {
-      ESP_LOGI(TAG, "found");
-    } else {
-      ESP_LOGI(TAG, "not found");
+    while (card_seen_at > 0) {
+      vTaskDelay(100 / portTICK_PERIOD_MS);
+
+      if (!inListPassiveTarget()) {
+        int64_t card_seen_for = (esp_timer_get_time() - card_seen_at) / 1000;
+        ESP_LOGI(TAG, "card seen for %lld", card_seen_for);
+        card_seen_at = 0;
+        vTaskDelay((card_seen_for < 1000 ? (1000 - card_seen_for) : 0) / portTICK_PERIOD_MS);
+        trigger_event(CARD_REMOVED);
+      }
     }
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+    // wait for card
+    readPassiveTargetID(PN532_MIFARE_ISO14443A, uid.bytes, &uid.length, 0);
+
+    // reset current card
+    ultralight_card_info_t new_card = {0};
+    current_card = new_card;
+    card_seen_at = esp_timer_get_time();
+
+    if (is_privilege_token(&uid)) {
+      trigger_event(PRIVILEGE_TOKEN_DETECTED);
+      continue;
+    }
+
+    if (is_old_card(&uid)) {
+      trigger_event(CARD_DETECTED_OLD_CARD);
+      continue;
+    }
+
+    if (uid.length != 7) {
+      ESP_LOGE(TAG, "Invalid UID length: %d", uid.length);
+      trigger_event(CARD_DETECTED_NOT_READABLE);
+      continue;
+    }
+
+    ESP_LOGI(TAG, "New card present");
+    trigger_event(read_card(&uid));
+
+    if (current_state.mode != WRITE_CARD) {
+      continue;
+    }
+
+    if (memcmp(uid.bytes, current_state.data_to_write.id, LENGTH_ID) != 0) {
+      ESP_LOGE(TAG, "Card changed during write process");
+      continue;
+    }
+
+    if (!write_card(&uid, &current_state.data_to_write)) {
+      ESP_LOGE(TAG, "Writing card failed");
+      trigger_event(WRITE_UNSUCCESSFUL);
+      continue;
+    }
+    ESP_LOGI(TAG, "Card written successfully");
+
+    if (read_card(&uid) != CARD_DETECTED_OK) {
+      ESP_LOGE(TAG, "Rereading card failed");
+      trigger_event(WRITE_UNSUCCESSFUL);
+      continue;
+    }
+    if (current_card.deposit != current_state.data_to_write.deposit ||
+        current_card.balance != current_state.data_to_write.balance) {
+      // reread mismatch
+      ESP_LOGE(
+          TAG,
+          "Reread mismatch: Balance (%d != %d), deposit (%d != %d)",
+          current_card.balance,
+          current_state.data_to_write.balance,
+          current_card.deposit,
+          current_state.data_to_write.deposit
+      );
+      trigger_event(WRITE_UNSUCCESSFUL);
+      continue;
+    }
+
+    trigger_event(WRITE_SUCCESSFUL);
   }
-
-  // spi_device_handle_t spi;
-  // spi_bus_config_t buscfg = {
-  //     .miso_io_num = 37,
-  //     .mosi_io_num = 35,
-  //     .sclk_io_num = 36,
-  //     .quadwp_io_num = -1,
-  //     .quadhd_io_num = -1,
-  // };
-  // spi_device_interface_config_t devcfg = {
-  //     .clock_speed_hz = 5000000,
-  //     .mode = 0,
-  //     .spics_io_num = NUM_CS_PIN,
-  //     .queue_size = 7,
-  // };
-
-  // mfrc522_uid uid;
-  // ESP_ERROR_CHECK(spi_bus_initialize(SPI3_HOST, &buscfg, SPI_DMA_DISABLED));
-  // ESP_ERROR_CHECK(spi_bus_add_device(SPI3_HOST, &devcfg, &spi));
-
-  // PCD_Init(spi, NUM_CS_PIN);
-
-  // ESP_LOGI(TAG, "Start scanning for tags");
-  // int64_t card_seen_at = 0;
-
-  // while (1) {
-  //   while (card_seen_at > 0) {
-  //     vTaskDelay(100 / portTICK_PERIOD_MS);
-  //     PICC_HaltA(spi);
-  //     uint8_t buffer[2];
-  //     uint8_t size = sizeof(buffer);
-
-  //     if (PICC_REQA_or_WUPA(spi, PICC_CMD_WUPA, buffer, &size) != STATUS_OK) {
-  //       int64_t card_seen_for = (esp_timer_get_time() - card_seen_at) / 1000;
-  //       ESP_LOGI(TAG, "card seen for %lld", card_seen_for);
-  //       card_seen_at = 0;
-  //       vTaskDelay((card_seen_for < 1000 ? (1000 - card_seen_for) : 0) / portTICK_PERIOD_MS);
-  //       trigger_event(CARD_REMOVED);
-  //     }
-  //   }
-
-  //   PICC_HaltA(spi);
-  //   PCD_StopCrypto1(spi);
-
-  //   // wait for card
-  //   if (!PICC_IsNewCardPresent(spi)) {
-  //     vTaskDelay(100 / portTICK_PERIOD_MS);
-  //     continue;
-  //   }
-
-  //   // reset current card
-  //   ultralight_card_info_t new_card = {0};
-  //   current_card = new_card;
-
-  //   if (PICC_Select(spi, &uid, 0) != STATUS_OK) {
-  //     continue;
-  //   }
-  //   card_seen_at = esp_timer_get_time();
-
-  //   if (is_privilege_token(&uid)) {
-  //     trigger_event(PRIVILEGE_TOKEN_DETECTED);
-  //     continue;
-  //   }
-
-  //   if (is_old_card(spi, &uid)) {
-  //     trigger_event(CARD_DETECTED_OLD_CARD);
-  //     continue;
-  //   }
-
-  //   ESP_LOGI(TAG, "New card present");
-  //   trigger_event(read_card(spi, &uid));
-
-  //   if (current_state.mode != WRITE_CARD) {
-  //     continue;
-  //   }
-
-  //   if (memcmp(&uid.uidByte, &current_state.data_to_write.id, LENGTH_ID) != 0) {
-  //     ESP_LOGE(TAG, "Card changed during write process");
-  //     continue;
-  //   }
-
-  //   if (!write_card(spi, &uid, &current_state.data_to_write)) {
-  //     ESP_LOGE(TAG, "Writing card failed");
-  //     trigger_event(WRITE_UNSUCCESSFUL);
-  //     continue;
-  //   }
-  //   ESP_LOGI(TAG, "Card written successfully");
-
-  //   if (read_card(spi, &uid) != CARD_DETECTED_OK) {
-  //     ESP_LOGE(TAG, "Rereading card failed");
-  //     trigger_event(WRITE_UNSUCCESSFUL);
-  //     continue;
-  //   }
-  //   if (current_card.deposit != current_state.data_to_write.deposit ||
-  //       current_card.balance != current_state.data_to_write.balance) {
-  //     // reread mismatch
-  //     ESP_LOGE(
-  //         TAG,
-  //         "Reread mismatch: Balance (%d != %d), deposit (%d != %d)",
-  //         current_card.balance,
-  //         current_state.data_to_write.balance,
-  //         current_card.deposit,
-  //         current_state.data_to_write.deposit
-  //     );
-  //     trigger_event(WRITE_UNSUCCESSFUL);
-  //     continue;
-  //   }
-
-  //   trigger_event(WRITE_SUCCESSFUL);
-  // }
 }
