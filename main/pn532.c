@@ -116,7 +116,7 @@ void writecommand(uint8_t* cmd, uint8_t cmdlen) {
   i2c_master_stop(i2ccmd);
 
   ESP_LOG_LEVEL(PN532_LOG_LEVEL, TAG, "%s Sending :", __func__);
-  ESP_LOG_BUFFER_HEX_LEVEL(PN532_LOG_LEVEL, TAG, command, cmdlen + 9);
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, command, cmdlen + 9, PN532_LOG_LEVEL);
 
   esp_err_t result = ESP_OK;
   result = i2c_master_cmd_begin(PN532_I2C_PORT, i2ccmd, I2C_WRITE_TIMEOUT / portTICK_PERIOD_MS);
@@ -301,7 +301,7 @@ bool readdata(uint8_t* buff, uint8_t n) {
   memcpy(buff, buffer + 1, n);
   // Start read (n+1 to take into account leading 0x01 with I2C)
   ESP_LOG_LEVEL(PN532_LOG_LEVEL, TAG, "Reading: ");
-  ESP_LOG_BUFFER_HEX_LEVEL(PN532_LOG_LEVEL, TAG, buffer, n + 3);
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, buffer, n + 3, PN532_LOG_LEVEL);
   free(buffer);
 
   return true;
@@ -491,7 +491,7 @@ bool writeGPIO(uint8_t pinstate) {
   readdata(pn532_packetbuffer, 8);
 
   ESP_LOG_LEVEL(PN532_LOG_LEVEL, TAG, "Received: ");
-  ESP_LOG_BUFFER_HEX_LEVEL(PN532_LOG_LEVEL, TAG, pn532_packetbuffer, 8);
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, pn532_packetbuffer, 8, PN532_LOG_LEVEL);
 
   int offset = 6;
   return (pn532_packetbuffer[offset] == 0x0F);
@@ -535,7 +535,7 @@ uint8_t readGPIO(void) {
   int p3offset = 7;
 
   ESP_LOG_LEVEL(PN532_LOG_LEVEL, TAG, "Received: ");
-  ESP_LOG_BUFFER_HEX_LEVEL(PN532_LOG_LEVEL, TAG, pn532_packetbuffer, 11);
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, pn532_packetbuffer, 11, PN532_LOG_LEVEL);
   ESP_LOG_LEVEL(PN532_LOG_LEVEL, TAG, "P3 GPIO: 0x%.2X", pn532_packetbuffer[p3offset]);
   ESP_LOG_LEVEL(PN532_LOG_LEVEL, TAG, "P7 GPIO: 0x%.2X", pn532_packetbuffer[p3offset + 1]);
   ESP_LOG_LEVEL(PN532_LOG_LEVEL, TAG, "P10 GPIO: 0x%.2X", pn532_packetbuffer[p3offset + 2]);
@@ -1253,6 +1253,34 @@ bool mifareultralight_WritePage(uint8_t page, uint8_t* data) {
   return true;
 }
 
+bool mifareultralight_IncrementCounter(uint8_t counter) {
+  /* Prepare the first command */
+  pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE;
+  pn532_packetbuffer[1] = 1; /* Card number */
+  pn532_packetbuffer[2] =
+      MIFARE_ULTRALIGHT_CMD_INCREMENT; /* Mifare Ultralight increment command = 0xA5 */
+  pn532_packetbuffer[3] = counter;     /* Counter number */
+  // increment value, only the 3 least significant bytes are relevant
+  pn532_packetbuffer[4] = 0x01;
+  pn532_packetbuffer[5] = 0x00;
+  pn532_packetbuffer[6] = 0x00;
+  pn532_packetbuffer[7] = 0x00;
+
+  /* Send the command */
+  if (!sendCommandCheckAck(pn532_packetbuffer, 8, I2C_WRITE_TIMEOUT)) {
+    ESP_LOGE(TAG, "Failed to receive ACK for write command");
+    // Return Failed Signal
+    return false;
+  }
+  vTaskDelay(10 / portTICK_PERIOD_MS);
+
+  /* Read the response packet */
+  readdata(pn532_packetbuffer, 26);
+
+  // Return OK Signal
+  return true;
+}
+
 /***** NTAG2xx Functions ******/
 
 /**************************************************************************/
@@ -1479,5 +1507,25 @@ bool ntag2xx_WriteNDEFURI(uint8_t uriIdentifier, char* url, uint8_t dataLen) {
   }
 
   // Seems that everything was OK (?!)
+  return true;
+}
+
+bool ntag2xx_Authenticate(uint8_t* pwd, uint8_t* pack) {
+  // Prepare the authentication command //
+  pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE; /* Data Exchange Header */
+  pn532_packetbuffer[1] = 1;                            /* Max card numbers */
+  pn532_packetbuffer[2] = MIFARE_PWD_AUTH_COMMAND;
+  memcpy(pn532_packetbuffer + 3, pwd, 4);
+
+  if (!sendCommandCheckAck(pn532_packetbuffer, 9, I2C_WRITE_TIMEOUT)) {
+    return false;
+  }
+
+  // Read the response packet
+  readdata(pn532_packetbuffer, 26);
+
+  // Copy the pack bytes to the output buffer
+  memcpy(pack, pn532_packetbuffer, 2);
+
   return true;
 }

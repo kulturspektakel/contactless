@@ -183,7 +183,7 @@ static bool write_card(byte_array_t* uid, ultralight_card_info_t* card) {
   uint8_t pack_read[2] = {0x01, 0x01};  // initialize with different values than pack
   calculate_password(uid, password, pack);
 
-  if (PCD_NTAG216_Auth(spi, password, pack_read) != STATUS_OK) {
+  if (!ntag2xx_Authenticate(password, pack_read)) {
     ESP_LOGE(TAG, "Authentication failed");
     return false;
   }
@@ -250,8 +250,7 @@ static bool write_card(byte_array_t* uid, ultralight_card_info_t* card) {
   }
   ESP_LOGI(TAG, "Incrementing counter by %d", counter_diff);
   while (counter_diff > 0) {
-    uint8_t command[] = {0xA5, 0x00, 0x01, 0x00, 0x00, 0x00};  // Increment counter 00
-    if (PCD_MIFARE_Transceive(spi, command, sizeof(command), false) != STATUS_OK) {
+    if (!mifareultralight_IncrementCounter(0)) {
       ESP_LOGE(TAG, "Incrementing counter failed");
       return false;
     }

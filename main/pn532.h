@@ -94,6 +94,8 @@
 #define MIFARE_CMD_INCREMENT (0xC1)
 #define MIFARE_CMD_STORE (0xC2)
 #define MIFARE_ULTRALIGHT_CMD_WRITE (0xA2)
+#define MIFARE_ULTRALIGHT_CMD_INCREMENT (0xA5)
+#define MIFARE_PWD_AUTH_COMMAND (0x1B)
 
 // Prefixes for NDEF Records (to identify record type)
 #define NDEF_URIPREFIX_NONE (0x00)
@@ -159,7 +161,7 @@ bool SAMConfig(void);
 uint32_t getPN532FirmwareVersion(void);
 bool sendCommandCheckAck(uint8_t* cmd, uint8_t cmdlen, uint16_t timeout);
 bool writeGPIO(uint8_t pinstate);
-bool readGPIO(void);
+uint8_t readGPIO(void);
 bool setPassiveActivationRetries(uint8_t maxRetries);
 bool readdata(uint8_t* buff, uint8_t n);
 
@@ -191,11 +193,13 @@ bool mifareclassic_WriteNDEFURI(uint8_t sectorNumber, uint8_t uriIdentifier, con
 // Mifare Ultralight functions
 bool mifareultralight_ReadPage(uint8_t page, uint8_t* buffer, uint8_t bufferSize);
 bool mifareultralight_WritePage(uint8_t page, uint8_t* data);
+bool mifareultralight_IncrementCounter(uint8_t counter);
 
 // NTAG2xx functions
 bool ntag2xx_ReadPage(uint8_t page, uint8_t* buffer);
 bool ntag2xx_WritePage(uint8_t page, uint8_t* data);
 bool ntag2xx_WriteNDEFURI(uint8_t uriIdentifier, char* url, uint8_t dataLen);
+bool ntag2xx_Authenticate(uint8_t* pwd, uint8_t* pack);
 
 // Target command
 bool initiate_as_target_106();
