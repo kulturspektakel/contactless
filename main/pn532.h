@@ -94,7 +94,6 @@
 #define MIFARE_CMD_INCREMENT (0xC1)
 #define MIFARE_CMD_STORE (0xC2)
 #define MIFARE_ULTRALIGHT_CMD_WRITE (0xA2)
-#define MIFARE_ULTRALIGHT_CMD_INCREMENT (0xA5)
 #define MIFARE_PWD_AUTH_COMMAND (0x1B)
 
 // Prefixes for NDEF Records (to identify record type)
@@ -174,6 +173,8 @@ bool readPassiveTargetID(
 );  // timeout 0 means no timeout - will block forever.
 bool inDataExchange(uint8_t* send, uint8_t sendLength, uint8_t* response, uint8_t* responseLength);
 bool inListPassiveTarget();
+bool inAutoPoll(uint8_t period);
+bool inDeselect();
 
 // Mifare Classic functions
 bool mifareclassic_IsFirstBlock(uint32_t uiBlock);
@@ -193,7 +194,8 @@ bool mifareclassic_WriteNDEFURI(uint8_t sectorNumber, uint8_t uriIdentifier, con
 // Mifare Ultralight functions
 bool mifareultralight_ReadPage(uint8_t page, uint8_t* buffer, uint8_t bufferSize);
 bool mifareultralight_WritePage(uint8_t page, uint8_t* data);
-bool mifareultralight_IncrementCounter(uint8_t counter);
+bool mifareultralight_IncrementCounter(uint8_t counter, uint8_t value);
+bool mifareultralight_ReadCounter(uint8_t counter, uint16_t* value);
 
 // NTAG2xx functions
 bool ntag2xx_ReadPage(uint8_t page, uint8_t* buffer);

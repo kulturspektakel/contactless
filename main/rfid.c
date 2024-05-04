@@ -78,19 +78,6 @@ static int mbedtls_base64_encode_url_safe(
   return 0;
 }
 
-static bool read_counter(uint16_t* counter) {
-  // read counter
-  uint8_t command[] = {0x39, 0x00, 0x1A, 0x7F};  // Read Counter 00 + CRC
-  uint8_t backData[8];                           // needs to be at least 8 bytes
-
-  if (sendCommandCheckAck(command, sizeof(command), 1000) && readdata(backData, sizeof(backData))) {
-    *counter = *(uint16_t*)backData;
-    return true;
-  }
-  ESP_LOGE(TAG, "Reading counter failed");
-  return false;
-}
-
 static event_t read_card(byte_array_t* uid) {
   uint8_t payload[PAYLOAD_LENGTH + 1];
 
@@ -132,7 +119,7 @@ static event_t read_card(byte_array_t* uid) {
   // The value from the physical counter is stored in new_card, so that cards can be repaired
   // based on the actual counter value in write_card. The value from the payload is only used for
   // verification.
-  if (!read_counter(&new_card.counter)) {
+  if (!mifareultralight_ReadCounter(0, &new_card.counter)) {
     return CARD_DETECTED_NOT_READABLE;
   }
   uint16_t counter_from_payload = *(uint16_t*)(decoded_payload + OFFSET_COUNTER);
@@ -249,12 +236,9 @@ static bool write_card(byte_array_t* uid, ultralight_card_info_t* card) {
     return false;
   }
   ESP_LOGI(TAG, "Incrementing counter by %d", counter_diff);
-  while (counter_diff > 0) {
-    if (!mifareultralight_IncrementCounter(0)) {
-      ESP_LOGE(TAG, "Incrementing counter failed");
-      return false;
-    }
-    counter_diff--;
+  if (!mifareultralight_IncrementCounter(0, counter_diff)) {
+    ESP_LOGE(TAG, "Incrementing counter failed");
+    return false;
   }
 
   ESP_LOGI(TAG, "Write successful");
@@ -295,20 +279,26 @@ void rfid(void* params) {
   int64_t card_seen_at = 0;
 
   while (1) {
-    while (card_seen_at > 0) {
-      vTaskDelay(100 / portTICK_PERIOD_MS);
-
-      if (!inListPassiveTarget()) {
-        int64_t card_seen_for = (esp_timer_get_time() - card_seen_at) / 1000;
-        ESP_LOGI(TAG, "card seen for %lld", card_seen_for);
-        card_seen_at = 0;
-        vTaskDelay((card_seen_for < 1000 ? (1000 - card_seen_for) : 0) / portTICK_PERIOD_MS);
-        trigger_event(CARD_REMOVED);
+    if (card_seen_at > 0) {
+      inDeselect();
+      while (inAutoPoll(1)) {
+        taskYIELD();
       }
+      // card removed
+      int64_t card_seen_for = (esp_timer_get_time() - card_seen_at) / 1000;
+      ESP_LOGI(TAG, "card seen for %lld", card_seen_for);
+      card_seen_at = 0;
+      vTaskDelay((card_seen_for < 1000 ? (1000 - card_seen_for) : 0) / portTICK_PERIOD_MS);
+      trigger_event(CARD_REMOVED);
     }
 
     // wait for card
-    readPassiveTargetID(PN532_MIFARE_ISO14443A, uid.bytes, &uid.length, 0);
+    if (!readPassiveTargetID(PN532_MIFARE_ISO14443A, uid.bytes, &uid.length, 0)) {
+      continue;
+    }
+
+    ESP_LOGI(TAG, "Card detected:");
+    ESP_LOG_BUFFER_HEX(TAG, uid.bytes, uid.length);
 
     // reset current card
     ultralight_card_info_t new_card = {0};

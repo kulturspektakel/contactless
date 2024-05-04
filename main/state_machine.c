@@ -245,7 +245,8 @@ static mode_type product_list(event_t event) {
         if (current_state.product_selection.current_index > 0) {
           current_state.product_selection.current_index--;
         }
-      } else if (current_state.product_selection.first_digit > -1 && current_state.product_selection.second_digit == -1) {
+      } else if (current_state.product_selection.first_digit > -1 &&
+                 current_state.product_selection.second_digit == -1) {
         int no = current_state.product_selection.first_digit * 10 + event - KEY_0;
         if (no > active_config.products_count || no < 1) {
           break;
