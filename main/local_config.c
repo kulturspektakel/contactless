@@ -10,10 +10,11 @@
 #include "pb_decode.h"
 
 static const char* TAG = "local_config";
-static int32_t lists_count = 0;
+int32_t lists_count = 0;
 DeviceConfig active_config = DeviceConfig_init_default;
 AllLists_privilege_tokens_t privilege_tokens[MAX_PRIVILEGE_TOKENS];
 int32_t all_lists_checksum = -1;
+product_list_t* product_lists = NULL;
 
 bool pb_from_file_stream(pb_istream_t* stream, uint8_t* buffer, size_t count) {
   FILE* file = (FILE*)stream->state;
@@ -129,7 +130,7 @@ void local_config(void* params) {
     AllLists all_lists = read_local_config(callback);
     all_lists_checksum = all_lists.checksum;
     memcpy(privilege_tokens, all_lists.privilege_tokens, sizeof(privilege_tokens));
-
+    // TODO select first list if no list is selected
     if (active_config.list_id == -1) {
       ESP_LOGE(TAG, "failed to load product list");
       trigger_event(FATAL_ERROR);
