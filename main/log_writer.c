@@ -78,6 +78,7 @@ void log_writer(void* params) {
       }
 
       vPortFree(log_message);
+      log_message = NULL;
     }
   }
 }

@@ -15,6 +15,7 @@ DeviceConfig active_config = DeviceConfig_init_default;
 AllLists_privilege_tokens_t privilege_tokens[MAX_PRIVILEGE_TOKENS];
 int32_t all_lists_checksum = -1;
 product_list_t* product_lists = NULL;
+QueueHandle_t config_update_queue = NULL;
 
 bool pb_from_file_stream(pb_istream_t* stream, uint8_t* buffer, size_t count) {
   FILE* file = (FILE*)stream->state;
@@ -53,20 +54,23 @@ static bool decode_product_list(pb_istream_t* stream, const pb_field_t* field, v
     active_config = product_list;
   }
 
-  product_list_t* new_product_lists =
-      (product_list_t*)pvPortMalloc(lists_count * sizeof(product_list_t));
-  if (product_lists != NULL) {
-    memcpy(new_product_lists, product_lists, (lists_count - 1) * sizeof(product_list_t));
-    vPortFree(product_lists);
-  }
-  product_lists = new_product_lists;
+  pb_release(DeviceConfig_fields, &product_list);
+  return true;
+}
 
-  product_lists[lists_count - 1] = (product_list_t){
+static bool decode_product_list_names(pb_istream_t* stream, const pb_field_t* field, void** arg) {
+  DeviceConfig product_list = DeviceConfig_init_default;
+  if (!pb_decode(stream, DeviceConfig_fields, &product_list)) {
+    ESP_LOGE(TAG, "failed to decode product list");
+    return false;
+  }
+
+  int* i_ptr = *(int32_t**)arg;
+  product_lists[*i_ptr] = (product_list_t){
       .id = product_list.list_id,
   };
-  strncpy(product_lists[lists_count - 1].name, product_list.name, MAX_LIST_NAME_LENGTH);
-
-  pb_release(DeviceConfig_fields, &product_list);
+  strncpy(product_lists[*i_ptr].name, product_list.name, MAX_LIST_NAME_LENGTH);
+  *i_ptr += 1;
   return true;
 }
 
@@ -95,22 +99,27 @@ static AllLists read_local_config(pb_callback_t callback) {
   return all_lists;
 }
 
-void select_list(int list_id) {
+static void select_list(int32_t list_id) {
+  if (list_id < 0) {
+    return;
+  }
   nvs_handle_t nvs_handle;
   ESP_ERROR_CHECK(nvs_open(NVS_DEVICE_CONFIG, NVS_READWRITE, &nvs_handle));
   ESP_ERROR_CHECK(nvs_set_i32(nvs_handle, NVS_PRODUCT_LIST, list_id));
   ESP_ERROR_CHECK(nvs_commit(nvs_handle));
   nvs_close(nvs_handle);
-  xEventGroupSetBits(event_group, LOCAL_CONFIG_UPDATED);
 }
 
 void local_config(void* params) {
+  config_update_queue = xQueueCreate(1, sizeof(int));
+
   while (1) {
     int32_t product_list_id = read_product_list_id();
     active_config.list_id = -1;
 
     if (product_lists != NULL) {
       vPortFree(product_lists);
+      product_lists = NULL;
     }
 
     // load active product list, products and privilege tokens
@@ -121,17 +130,27 @@ void local_config(void* params) {
     all_lists_checksum = all_lists.checksum;
     memcpy(privilege_tokens, all_lists.privilege_tokens, sizeof(privilege_tokens));
 
+    product_lists = (product_list_t*)pvPortMalloc(lists_count * sizeof(product_list_t));
+    int i = 0;
+    read_local_config((pb_callback_t){
+        .funcs.decode = decode_product_list_names,
+        .arg = &i,
+    });
+
     if (active_config.list_id == -1 && lists_count > 0) {
       ESP_LOGI(TAG, "No product list selected, selecting first list");
       select_list(product_lists[0].id);
       continue;
     }
 
-    xEventGroupClearBits(event_group, LOCAL_CONFIG_UPDATED);
     if (active_config.list_id > -1) {
       xEventGroupSetBits(event_group, LOCAL_CONFIG_LOADED | DISPLAY_NEEDS_UPDATE);
     }
-    xEventGroupWaitBits(event_group, LOCAL_CONFIG_UPDATED, pdTRUE, pdTRUE, portMAX_DELAY);
+    int new_list_id = -1;
+    if (xQueueReceive(config_update_queue, &new_list_id, portMAX_DELAY) == pdPASS) {
+      // update if new list is selected
+      select_list(new_list_id);
+    }
   }
   vTaskDelete(NULL);
 }

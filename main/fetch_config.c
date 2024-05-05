@@ -97,7 +97,8 @@ void fetch_config(void* params) {
       size_t files_written = fwrite(buffer, bytes_written, 1, config_file);
       ESP_LOGI(TAG, "written %d files", files_written);
       fclose(config_file);
-      xEventGroupSetBits(event_group, LOCAL_CONFIG_UPDATED);
+      int new_list_id = -1;
+      xQueueSend(config_update_queue, &new_list_id, 0);
       break;
     default:
       ESP_LOGI(TAG, "HTTP status code %d", status_code);

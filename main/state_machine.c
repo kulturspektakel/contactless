@@ -311,7 +311,7 @@ static void write_log(LogMessage_Order_PaymentMethod payment) {
     log->card_transaction.deposit_after = current_state.data_to_write.deposit;
   }
 
-  xQueueSend(log_queue, &log, portMAX_DELAY);
+  xQueueSendFromISR(log_queue, &log, NULL);
 }
 
 static mode_type charge_without_card(event_t event) {
@@ -346,6 +346,7 @@ static mode_type charge_without_card(event_t event) {
 static mode_type charge_list(event_t event) {
   switch (event) {
     case KEY_TRIPPLE_D:
+      current_state.selected_main_menu_item = 0;
       return MAIN_MENU;
     case KEY_STAR:
       return current_state.cart.item_count > 0 ? CHARGE_WITHOUT_CARD : CHARGE_MANUAL;
@@ -537,7 +538,9 @@ static mode_type main_menu(event_t event) {
       break;
     case KEY_HASH:
       reset_cart();
-      select_list(product_lists[current_state.selected_main_menu_item].id);
+      xQueueSendFromISR(
+          config_update_queue, &product_lists[current_state.selected_main_menu_item].id, NULL
+      );
       timeout(400);
       break;
     case KEY_D:

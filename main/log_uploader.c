@@ -71,6 +71,7 @@ log_uploader_event_t upload_file(char* filename) {
   esp_http_client_set_post_field(client, buffer, file_size);
   esp_err_t err = esp_http_client_perform(client);
   vPortFree(buffer);
+  buffer = NULL;
 
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "Request failed (Error: %s)", esp_err_to_name(err));
