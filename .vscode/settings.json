@@ -71,6 +71,8 @@
     "string.h": "c",
     "event_groups.h": "c",
     "condition_variable": "c",
-    "future": "c"
+    "future": "c",
+    "esp_littlefs.h": "c",
+    "event_group.h": "c"
   }
 }

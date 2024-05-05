@@ -72,12 +72,6 @@ typedef struct {
 } menu_item_t;
 
 typedef struct {
-  menu_item_t* items;
-  size_t count;
-  int8_t active_item;
-} menu_items_t;
-
-typedef struct {
   int8_t first_digit;
   int8_t second_digit;
   uint8_t current_index;
@@ -106,8 +100,8 @@ typedef struct {
   bool is_privileged;
   cart_t cart;
   product_selection_t product_selection;
-  menu_items_t main_menu;
   LogMessage_CardTransaction_TransactionType transaction_type;
+  uint8_t selected_main_menu_item;
   int log_files_to_upload;
   int manual_amount;
   ultralight_card_info_t data_to_write;

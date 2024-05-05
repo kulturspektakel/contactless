@@ -20,7 +20,6 @@ static QueueHandle_t state_events;
 state_t current_state = {
     .mode = MAIN_STARTING_UP,
     .is_privileged = false,
-    .main_menu = {.count = 0},
     .log_files_to_upload = -1,
     .manual_amount = 0,
     .product_selection =
@@ -347,7 +346,6 @@ static mode_type charge_without_card(event_t event) {
 static mode_type charge_list(event_t event) {
   switch (event) {
     case KEY_TRIPPLE_D:
-      current_state.main_menu = initialize_main_menu();
       return MAIN_MENU;
     case KEY_STAR:
       return current_state.cart.item_count > 0 ? CHARGE_WITHOUT_CARD : CHARGE_MANUAL;
@@ -528,24 +526,22 @@ static mode_type privileged_topup(event_t event) {
 static mode_type main_menu(event_t event) {
   switch (event) {
     case KEY_A:
-      if (current_state.main_menu.active_item > 0) {
-        current_state.main_menu.active_item--;
+      if (current_state.selected_main_menu_item > 0) {
+        current_state.selected_main_menu_item--;
       }
       break;
     case KEY_B:
-      if (current_state.main_menu.active_item < current_state.main_menu.count - 1) {
-        current_state.main_menu.active_item++;
+      if (current_state.selected_main_menu_item < lists_count - 1) {
+        current_state.selected_main_menu_item++;
       }
       break;
     case KEY_HASH:
       reset_cart();
-      select_list(current_state.main_menu.items[current_state.main_menu.active_item].list_id);
+      select_list(product_lists[current_state.selected_main_menu_item].id);
       timeout(400);
       break;
     case KEY_D:
     case TIMEOUT:
-      current_state.main_menu.count = 0;
-      vPortFree(current_state.main_menu.items);
       return default_mode();
 
     // stay in same state

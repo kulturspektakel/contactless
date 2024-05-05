@@ -404,24 +404,20 @@ static void product_list(u8g2_t* u8g2) {
 }
 
 static void main_menu_cb(u8g2_t* u8g2, int i, int x, int y) {
-  u8g2_DrawUTF8(u8g2, x, y, current_state.main_menu.items[i].name);
+  u8g2_DrawUTF8(u8g2, x, y, product_lists[i].name);
 }
 
 static void main_menu(u8g2_t* u8g2) {
   int active_config_index = -1;
-  for (int i = 0; i < current_state.main_menu.count; i++) {
-    if (current_state.main_menu.items[i].list_id == active_config.list_id) {
+  for (int i = 0; i < lists_count; i++) {
+    if (product_lists[i].id == active_config.list_id) {
       active_config_index = i;
       break;
     }
   }
 
   scrollable_list(
-      u8g2,
-      main_menu_cb,
-      current_state.main_menu.count,
-      current_state.main_menu.active_item,
-      active_config_index
+      u8g2, main_menu_cb, lists_count, current_state.selected_main_menu_item, active_config_index
   );
 }
 

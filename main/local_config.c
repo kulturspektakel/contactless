@@ -40,39 +40,31 @@ int32_t read_product_list_id() {
   return product_list_id;
 }
 
-static bool load_active_product_list(pb_istream_t* stream, const pb_field_t* field, void** arg) {
+static bool decode_product_list(pb_istream_t* stream, const pb_field_t* field, void** arg) {
   DeviceConfig product_list = DeviceConfig_init_default;
   if (!pb_decode(stream, DeviceConfig_fields, &product_list)) {
     ESP_LOGE(TAG, "failed to decode product list");
     return false;
   }
+  lists_count++;
 
-  int32_t* argg = *(int32_t**)arg;
-  if (product_list.list_id == *argg) {
+  if (product_list.list_id == (*(*(int32_t**)arg))) {
     ESP_LOGI(TAG, "Loaded product list: %s", product_list.name);
     active_config = product_list;
   }
-  lists_count++;
-  pb_release(DeviceConfig_fields, &product_list);
-  return true;
-}
 
-static bool load_menu_items(pb_istream_t* stream, const pb_field_t* field, void** arg) {
-  DeviceConfig product_list = DeviceConfig_init_default;
-  if (!pb_decode(stream, DeviceConfig_fields, &product_list)) {
-    ESP_LOGE(TAG, "failed to decode product list");
-    return false;
+  product_list_t* new_product_lists =
+      (product_list_t*)pvPortMalloc(lists_count * sizeof(product_list_t));
+  if (product_lists != NULL) {
+    memcpy(new_product_lists, product_lists, (lists_count - 1) * sizeof(product_list_t));
+    vPortFree(product_lists);
   }
+  product_lists = new_product_lists;
 
-  menu_item_t item = {0};
-  item.list_id = product_list.list_id;
-  snprintf(item.name, sizeof(item.name), "%s", product_list.name);
-
-  menu_items_t* args = *(menu_items_t**)arg;
-  args->items[args->count++] = item;
-  if (product_list.list_id == active_config.list_id) {
-    args->active_item = args->count - 1;
-  }
+  product_lists[lists_count - 1] = (product_list_t){
+      .id = product_list.list_id,
+  };
+  strncpy(product_lists[lists_count - 1].name, product_list.name, MAX_LIST_NAME_LENGTH);
 
   pb_release(DeviceConfig_fields, &product_list);
   return true;
@@ -103,16 +95,6 @@ static AllLists read_local_config(pb_callback_t callback) {
   return all_lists;
 }
 
-menu_items_t initialize_main_menu() {
-  menu_items_t args = {
-      .count = 0,
-      .items = (menu_item_t*)pvPortMalloc(lists_count * sizeof(menu_item_t)),
-      .active_item = 0,
-  };
-  read_local_config((pb_callback_t){.funcs.decode = load_menu_items, .arg = &args});
-  return args;
-}
-
 void select_list(int list_id) {
   nvs_handle_t nvs_handle;
   ESP_ERROR_CHECK(nvs_open(NVS_DEVICE_CONFIG, NVS_READWRITE, &nvs_handle));
@@ -126,17 +108,29 @@ void local_config(void* params) {
   while (1) {
     int32_t product_list_id = read_product_list_id();
     active_config.list_id = -1;
-    pb_callback_t callback = {.funcs.decode = load_active_product_list, .arg = &product_list_id};
-    AllLists all_lists = read_local_config(callback);
+
+    if (product_lists != NULL) {
+      vPortFree(product_lists);
+    }
+
+    // load active product list, products and privilege tokens
+    AllLists all_lists = read_local_config((pb_callback_t){
+        .funcs.decode = decode_product_list,
+        .arg = &product_list_id,
+    });
     all_lists_checksum = all_lists.checksum;
     memcpy(privilege_tokens, all_lists.privilege_tokens, sizeof(privilege_tokens));
-    // TODO select first list if no list is selected
-    if (active_config.list_id == -1) {
-      ESP_LOGE(TAG, "failed to load product list");
-      trigger_event(FATAL_ERROR);
+
+    if (active_config.list_id == -1 && lists_count > 0) {
+      ESP_LOGI(TAG, "No product list selected, selecting first list");
+      select_list(product_lists[0].id);
+      continue;
     }
+
     xEventGroupClearBits(event_group, LOCAL_CONFIG_UPDATED);
-    xEventGroupSetBits(event_group, LOCAL_CONFIG_LOADED | DISPLAY_NEEDS_UPDATE);
+    if (active_config.list_id > -1) {
+      xEventGroupSetBits(event_group, LOCAL_CONFIG_LOADED | DISPLAY_NEEDS_UPDATE);
+    }
     xEventGroupWaitBits(event_group, LOCAL_CONFIG_UPDATED, pdTRUE, pdTRUE, portMAX_DELAY);
   }
   vTaskDelete(NULL);
