@@ -322,7 +322,12 @@ void rfid(void* params) {
     }
 
     ESP_LOGI(TAG, "New card present");
-    trigger_event(read_card(&uid));
+    event_t read_status = read_card(&uid);
+    if (read_status == CARD_DETECTED_NOT_READABLE) {
+      // don't proceed if card is not readable
+      continue;
+    }
+    trigger_event(read_status);
 
     if (current_state.mode != WRITE_CARD) {
       continue;

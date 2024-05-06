@@ -294,8 +294,9 @@ static void charge_list(u8g2_t* u8g2) {
         current_state.cart.items[i].product.name
     );
     int w = u8g2_GetUTF8Width(u8g2, product);
-    if (w > DISPLAY_WIDTH - 40) {
+    if (w > DISPLAY_WIDTH - 40 && strlen(current_state.cart.items[i].product.name) > 15) {
       product[16] = 0x85;  // ellipsis
+      product[17] = '\0';
     }
     u8g2_DrawUTF8(u8g2, 0, 17 + (i * LINE_HEIGHT), product);
     draw_amount(

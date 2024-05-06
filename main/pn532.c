@@ -1335,8 +1335,13 @@ bool mifareultralight_ReadCounter(uint8_t counter, uint16_t* value) {
   vTaskDelay(10 / portTICK_PERIOD_MS);
 
   readdata(pn532_packetbuffer, 16);
-  *value = (uint16_t)pn532_packetbuffer[8] | ((uint16_t)pn532_packetbuffer[9] << 8);
+  if (pn532_packetbuffer[7] != 0x00) {
+    ESP_LOGE(TAG, "Unexpected response reading block: ");
+    ESP_LOG_BUFFER_HEX(TAG, pn532_packetbuffer, 16);
+    return false;
+  }
 
+  *value = (uint16_t)pn532_packetbuffer[8] | ((uint16_t)pn532_packetbuffer[9] << 8);
   return true;
 }
 
