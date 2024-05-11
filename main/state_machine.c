@@ -9,6 +9,7 @@
 #include "local_config.h"
 #include "log_writer.h"
 #include "logmessage.pb.h"
+#include "power_management.h"
 #include "rfid.h"
 
 #define BOOTSCREEN_DELAY_MS 1500
@@ -560,6 +561,10 @@ static mode_type write_card(event_t event) {
       trigger_beep(BEEP_SHORT);
       write_log(LogMessage_Order_PaymentMethod_KULT_CARD);
       reset_cart();
+      if (usb_voltage <= USB_VOLTAGE_THRESHOLD) {
+        // if running on battery, exit privileged mode after transaction
+        current_state.is_privileged = false;
+      }
       return CARD_BALANCE;
     case WRITE_UNSUCCESSFUL:
       trigger_beep(BEEP_LONG);
@@ -642,6 +647,13 @@ static mode_type read_failed(event_t event) {
 static mode_type process_event(event_t event) {
   if (event == FATAL_ERROR) {
     return MAIN_FATAL;
+  }
+
+  if (event == KEY_0 || event == KEY_1 || event == KEY_2 || event == KEY_3 || event == KEY_4 ||
+      event == KEY_5 || event == KEY_6 || event == KEY_7 || event == KEY_8 || event == KEY_9 ||
+      event == KEY_A || event == KEY_B || event == KEY_C || event == KEY_D || event == KEY_STAR ||
+      event == KEY_HASH) {
+    reset_power_off_timer();
   }
 
   switch (current_state.mode) {

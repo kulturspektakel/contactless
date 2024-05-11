@@ -11,7 +11,7 @@
 
 static const char* TAG = "wifi_connect";
 static TimerHandle_t signal_strength_timer;
-static int backoff_counter = 1;
+static uint8_t backoff_counter = 1;
 int8_t wifi_rssi = 0;
 wifi_status_t wifi_status = DISCONNECTED;
 

@@ -56,7 +56,7 @@ static void animation_timer_cb(TimerHandle_t timer) {
 static void battery(u8g2_t* u8g2) {
   int offset = DISPLAY_WIDTH - 1;
 
-  if (usb_voltage > 1000) {
+  if (usb_voltage > USB_VOLTAGE_THRESHOLD) {
     // charger icon
     u8g2_DrawHLine(u8g2, offset - 2, 1, 2);
     u8g2_DrawHLine(u8g2, offset - 2, 3, 2);
@@ -193,7 +193,7 @@ static void keypad_legend(u8g2_t* u8g2, bool with_navigation) {
 static void status_bar(u8g2_t* u8g2) {
   battery(u8g2);
   wifi_strength(u8g2);
-  // pending_uploads(u8g2);
+  pending_uploads(u8g2);
   time_display(u8g2);
 }
 

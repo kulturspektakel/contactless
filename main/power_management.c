@@ -1,13 +1,16 @@
 #include "power_management.h"
 #include "driver/gpio.h"
+#include "driver/rtc_io.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_event.h"
 #include "esp_log.h"
+#include "esp_sleep.h"
 #include "event_group.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "keypad.h"
 #include "math.h"
 
 #define TAG "power_management"
@@ -18,6 +21,9 @@
 #define BATTERY_MAX 2070
 #define BATTERY_MIN 1500
 
+#define UPDATE_INTERVAL 60000
+#define POWER_OFF_TIMEOUT 900000  // 15 minutes
+
 #define LED_BLUE_PIN GPIO_NUM_40
 #define LED_GREEN_PIN GPIO_NUM_41
 #define LED_RED_PIN GPIO_NUM_42
@@ -25,6 +31,7 @@
 int battery_voltage = 0;
 int usb_voltage = 0;
 static TaskHandle_t task_handle;
+static TimerHandle_t power_off_timer_handle = NULL;
 
 int battery_percentage() {
   // https://www.desmos.com/calculator/jymu8kltny
@@ -58,12 +65,12 @@ static void IRAM_ATTR gpio_interrupt_handler(void* args) {
 }
 
 static void update_leds() {
-  // if (battery_voltage > BATTERY_MAX && usb_voltage > 1000) {
+  // if (battery_voltage > BATTERY_MAX && usb_voltage > USB_VOLTAGE_THRESHOLD) {
   //   // green
   //   gpio_set_level(LED_BLUE_PIN, 1);
   //   gpio_set_level(LED_GREEN_PIN, 0);
   //   gpio_set_level(LED_RED_PIN, 1);
-  // } else if (usb_voltage > 1000) {
+  // } else if (usb_voltage > USB_VOLTAGE_THRESHOLD) {
   //   // orange
   //   gpio_set_level(LED_BLUE_PIN, 0);
   //   gpio_set_level(LED_GREEN_PIN, 1);
@@ -79,6 +86,42 @@ static void update_leds() {
     gpio_set_level(LED_BLUE_PIN, 1);
     gpio_set_level(LED_GREEN_PIN, 1);
     gpio_set_level(LED_RED_PIN, 1);
+  }
+}
+
+static void power_off_timer_callback(TimerHandle_t xTimer) {
+  ESP_LOGI(TAG, "Powering off");
+  if (usb_voltage > USB_VOLTAGE_THRESHOLD) {
+    ESP_LOGI(TAG, "USB still connected, not powering off");
+    return;
+  }
+
+  // Initialize and configure each RTC GPIO pin in a loop
+  uint64_t rtc_gpio_mask = 0;
+  for (int i = 0; i < 4; i++) {
+    gpio_num_t pin = KEYPAD_ROWS[i];
+    rtc_gpio_init(pin);
+    rtc_gpio_set_direction(pin, RTC_GPIO_MODE_INPUT_ONLY);
+    rtc_gpio_pullup_en(pin);     // Enable pull-up if required
+    rtc_gpio_pulldown_dis(pin);  // Disable pull-down if not required
+    rtc_gpio_mask |= (1ULL << pin);
+
+    // Set the pin level to high
+    pin = KEYPAD_COLS[i];
+    rtc_gpio_init(pin);
+    rtc_gpio_set_direction(pin, RTC_GPIO_MODE_INPUT_OUTPUT);
+    rtc_gpio_pullup_en(pin);
+    rtc_gpio_set_level(pin, 1);  // Set output level to high
+  }
+
+  esp_sleep_enable_ext1_wakeup(rtc_gpio_mask, ESP_EXT1_WAKEUP_ANY_HIGH);
+
+  esp_deep_sleep_start();
+}
+
+void reset_power_off_timer() {
+  if (power_off_timer_handle != NULL) {
+    xTimerReset(power_off_timer_handle, pdMS_TO_TICKS(POWER_OFF_TIMEOUT));
   }
 }
 
@@ -148,10 +191,11 @@ void power_management(void* params) {
       .pull_down_en = 1,
   };
 
-  TimerHandle_t voltage_update_timer =
-      xTimerCreate("voltage_update_timer", pdMS_TO_TICKS(60000), pdTRUE, 0, gpio_interrupt_handler);
+  TimerHandle_t voltage_update_timer = xTimerCreate(
+      "voltage_update_timer", pdMS_TO_TICKS(UPDATE_INTERVAL), pdTRUE, 0, gpio_interrupt_handler
+  );
   if (voltage_update_timer != NULL) {
-    xTimerStart(voltage_update_timer, pdMS_TO_TICKS(60000));
+    xTimerStart(voltage_update_timer, pdMS_TO_TICKS(UPDATE_INTERVAL));
   }
 
   while (true) {
@@ -166,7 +210,27 @@ void power_management(void* params) {
     ulTaskNotifyTake(pdTRUE, 0);  // clear remaining interrupt notifications
 
     vTaskDelay(200 / portTICK_PERIOD_MS);
+    int old_usb_voltage = usb_voltage;
     read_voltages();
+
+    if (old_usb_voltage < USB_VOLTAGE_THRESHOLD && usb_voltage > USB_VOLTAGE_THRESHOLD) {
+      // USB was just plugged in, start power off timer
+      if (power_off_timer_handle == NULL) {
+        power_off_timer_handle = xTimerCreate(
+            "power_off_timer",
+            pdMS_TO_TICKS(POWER_OFF_TIMEOUT),
+            pdFALSE,
+            0,
+            power_off_timer_callback
+        );
+      }
+      reset_power_off_timer();
+    } else if (old_usb_voltage > USB_VOLTAGE_THRESHOLD && usb_voltage < USB_VOLTAGE_THRESHOLD) {
+      // USB was just unplugged, disable power off timer
+      xTimerDelete(power_off_timer_handle, 0);
+      power_off_timer_handle = NULL;
+    }
+
     ESP_LOGI(TAG, "USB %dmV, battery %dmV", usb_voltage, battery_voltage);
     xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
   }
