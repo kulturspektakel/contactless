@@ -647,6 +647,8 @@ static mode_type read_failed(event_t event) {
 static mode_type process_event(event_t event) {
   if (event == FATAL_ERROR) {
     return MAIN_FATAL;
+  } else if (event == ENTER_POWER_SAVE) {
+    return POWER_SAVE;
   }
 
   if (event == KEY_0 || event == KEY_1 || event == KEY_2 || event == KEY_3 || event == KEY_4 ||
@@ -690,6 +692,8 @@ static mode_type process_event(event_t event) {
     case MAIN_STARTING_UP:
       return main_starting_up(event);
     case MAIN_FATAL:
+    case POWER_SAVE:
+      // cannot leave these states
       break;
   }
   return current_state.mode;

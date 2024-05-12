@@ -35,6 +35,7 @@ typedef enum {
   WRITE_UNSUCCESSFUL,
   SHOW_DEBUG_BAR,
   FATAL_ERROR,
+  ENTER_POWER_SAVE,
 } event_t;
 
 typedef enum {
@@ -57,7 +58,9 @@ typedef enum {
 
   CARD_BALANCE,
 
-  READ_FAILED
+  READ_FAILED,
+
+  POWER_SAVE
 } mode_type;
 
 typedef struct {

@@ -741,6 +741,9 @@ void display(void* params) {
       case WRITE_CARD:
         // do not update display while writing card
         break;
+      case POWER_SAVE:
+        u8g2_SetPowerSave(&u8g2, 1);
+        break;
     }
 
     u8g2_SendBuffer(&u8g2);

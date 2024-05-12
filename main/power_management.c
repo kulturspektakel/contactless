@@ -12,6 +12,7 @@
 #include "freertos/task.h"
 #include "keypad.h"
 #include "math.h"
+#include "state_machine.h"
 
 #define TAG "power_management"
 #define USB_CHANNEL ADC_CHANNEL_0
@@ -93,28 +94,33 @@ static void power_off_timer_callback(TimerHandle_t xTimer) {
   ESP_LOGI(TAG, "Powering off");
   if (usb_voltage > USB_VOLTAGE_THRESHOLD) {
     ESP_LOGI(TAG, "USB still connected, not powering off");
-    return;
+    // return;
   }
+
+  trigger_event(ENTER_POWER_SAVE);
 
   // Initialize and configure each RTC GPIO pin in a loop
   uint64_t rtc_gpio_mask = 0;
   for (int i = 0; i < 4; i++) {
+    // input
     gpio_num_t pin = KEYPAD_ROWS[i];
+    gpio_isr_handler_remove(pin);
+    gpio_reset_pin(pin);
     rtc_gpio_init(pin);
     rtc_gpio_set_direction(pin, RTC_GPIO_MODE_INPUT_ONLY);
-    rtc_gpio_pullup_en(pin);     // Enable pull-up if required
-    rtc_gpio_pulldown_dis(pin);  // Disable pull-down if not required
+    rtc_gpio_pulldown_en(pin);
     rtc_gpio_mask |= (1ULL << pin);
 
-    // Set the pin level to high
+    // output
     pin = KEYPAD_COLS[i];
+    gpio_isr_handler_remove(pin);
+    gpio_reset_pin(pin);
     rtc_gpio_init(pin);
-    rtc_gpio_set_direction(pin, RTC_GPIO_MODE_INPUT_OUTPUT);
-    rtc_gpio_pullup_en(pin);
-    rtc_gpio_set_level(pin, 1);  // Set output level to high
+    rtc_gpio_set_direction(pin, RTC_GPIO_MODE_OUTPUT_ONLY);
+    rtc_gpio_set_level(pin, 1);
   }
 
-  esp_sleep_enable_ext1_wakeup(rtc_gpio_mask, ESP_EXT1_WAKEUP_ANY_HIGH);
+  esp_sleep_enable_ext0_wakeup(rtc_gpio_mask, ESP_EXT1_WAKEUP_ANY_HIGH);
 
   esp_deep_sleep_start();
 }
@@ -212,6 +218,13 @@ void power_management(void* params) {
     vTaskDelay(200 / portTICK_PERIOD_MS);
     int old_usb_voltage = usb_voltage;
     read_voltages();
+
+    // ----
+
+    vTaskDelay(2000 / portTICK_PERIOD_MS);
+    power_off_timer_callback(power_off_timer_handle);
+
+    // ----
 
     if (old_usb_voltage < USB_VOLTAGE_THRESHOLD && usb_voltage > USB_VOLTAGE_THRESHOLD) {
       // USB was just plugged in, start power off timer
