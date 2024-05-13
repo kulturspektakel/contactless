@@ -19,6 +19,12 @@
 #define BATTERY_CHANNEL ADC_CHANNEL_1
 #define USB_PIN GPIO_NUM_1
 
+// TODO: disabled because it needs to be a RTC GPIO pin (14 or 21)
+// Reset and Power-Down: When low, internal current sources are switched off, the oscillator is
+// disabled, and input pads are disconnected from the outside world. The internal reset phase
+// starts on the negative edge on this pin.
+#define RSTPDN_PIN GPIO_NUM_36
+
 #define BATTERY_MAX 2070
 #define BATTERY_MIN 1500
 
@@ -94,10 +100,18 @@ static void power_off_timer_callback(TimerHandle_t xTimer) {
   ESP_LOGI(TAG, "Powering off");
   if (usb_voltage > USB_VOLTAGE_THRESHOLD) {
     ESP_LOGI(TAG, "USB still connected, not powering off");
-    // return;
+    return;
   }
 
   trigger_event(ENTER_POWER_SAVE);
+  gpio_config_t io_conf;
+  io_conf.intr_type = GPIO_INTR_DISABLE;
+  io_conf.mode = GPIO_MODE_OUTPUT;
+  io_conf.pin_bit_mask = (1ULL << RSTPDN_PIN);
+  io_conf.pull_down_en = 1;
+  io_conf.pull_up_en = 0;
+  gpio_config(&io_conf);
+  gpio_set_level(RSTPDN_PIN, 0);
 
   // Initialize and configure each RTC GPIO pin in a loop
   uint64_t rtc_gpio_mask = 0;
@@ -108,6 +122,7 @@ static void power_off_timer_callback(TimerHandle_t xTimer) {
     gpio_reset_pin(pin);
     rtc_gpio_init(pin);
     rtc_gpio_set_direction(pin, RTC_GPIO_MODE_INPUT_ONLY);
+    rtc_gpio_pullup_dis(pin);
     rtc_gpio_pulldown_en(pin);
     rtc_gpio_mask |= (1ULL << pin);
 
@@ -120,8 +135,8 @@ static void power_off_timer_callback(TimerHandle_t xTimer) {
     rtc_gpio_set_level(pin, 1);
   }
 
-  esp_sleep_enable_ext0_wakeup(rtc_gpio_mask, ESP_EXT1_WAKEUP_ANY_HIGH);
-
+  esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+  esp_sleep_enable_ext1_wakeup(rtc_gpio_mask, ESP_EXT1_WAKEUP_ANY_HIGH);
   esp_deep_sleep_start();
 }
 
@@ -218,13 +233,6 @@ void power_management(void* params) {
     vTaskDelay(200 / portTICK_PERIOD_MS);
     int old_usb_voltage = usb_voltage;
     read_voltages();
-
-    // ----
-
-    vTaskDelay(2000 / portTICK_PERIOD_MS);
-    power_off_timer_callback(power_off_timer_handle);
-
-    // ----
 
     if (old_usb_voltage < USB_VOLTAGE_THRESHOLD && usb_voltage > USB_VOLTAGE_THRESHOLD) {
       // USB was just plugged in, start power off timer
