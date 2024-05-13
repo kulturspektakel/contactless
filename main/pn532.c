@@ -37,13 +37,11 @@ uint8_t _inListedTag;  // Tg number of inlisted tag.
 // IRQ Event handler
 #define ESP_INTR_FLAG_DEFAULT 0
 static QueueHandle_t IRQQueue = NULL;
-// Uncomment these lines to enable debug output for PN532(SPI) and/or MIFARE related code
 
+// Uncomment these lines to enable debug output for PN532(SPI) and/or MIFARE related code
 #define PN532_LOG_LEVEL ESP_LOG_VERBOSE
 #define MIFARE_LEVEL ESP_LOG_VERBOSE
 #define CONFIG_ENABLE_IRQ_ISR
-// #define CONFIG_IRQDEBUG
-// #define CONFIG_MIFAREDEBUG
 
 #define PN532_PACKBUFFSIZ 64
 uint8_t pn532_packetbuffer[PN532_PACKBUFFSIZ];
@@ -334,9 +332,7 @@ bool readack() {
 bool isready() {
   // I2C check if status is ready by IRQ line being pulled low.
   uint8_t x = gpio_get_level(IRQ_PIN);
-#ifdef CONFIG_IRQDEBUG
-  ESP_LOGI(TAG, "IRQ: %d", x);
-#endif
+  ESP_LOG_LEVEL(PN532_LOG_LEVEL, TAG, "IRQ: %d", x);
   return (x == 0);
 }
 
@@ -599,9 +595,7 @@ bool setPassiveActivationRetries(uint8_t maxRetries) {
   pn532_packetbuffer[3] = 0x01;  // MxRtyPSL (default = 0x01)
   pn532_packetbuffer[4] = maxRetries;
 
-#ifdef CONFIG_MIFAREDEBUG
-  ESP_LOGI(TAG, "Setting MxRtyPassiveActivation to %d", maxRetries);
-#endif
+  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Setting MxRtyPassiveActivation to %d", maxRetries);
 
   return sendCommandCheckAck(pn532_packetbuffer, 5, I2C_WRITE_TIMEOUT);
 }
@@ -653,9 +647,7 @@ bool readPassiveTargetID(uint8_t cardbaudrate, uint8_t* uid, uint8_t* uidLength,
    b12             NFCID Length
    b13..NFCIDLen   NFCID                                      */
 
-#ifdef CONFIG_MIFAREDEBUG
-  ESP_LOGI(TAG, "Found %u tags", pn532_packetbuffer[7]);
-#endif
+  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Found %u tags", pn532_packetbuffer[7]);
   if (pn532_packetbuffer[7] != 1) {
     return false;
   }
@@ -663,20 +655,17 @@ bool readPassiveTargetID(uint8_t cardbaudrate, uint8_t* uid, uint8_t* uidLength,
   uint16_t sens_res = pn532_packetbuffer[9];
   sens_res <<= 8;
   sens_res |= pn532_packetbuffer[10];
-#ifdef CONFIG_MIFAREDEBUG
-  ESP_LOGI(TAG, "ATQA: 0x%.2X", sens_res);
-  ESP_LOGI(TAG, "SAK: 0x%.2X", pn532_packetbuffer[11]);
-#endif
+  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "ATQA: 0x%.2X", sens_res);
+  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "SAK: 0x%.2X", pn532_packetbuffer[11]);
 
   /* Card appears to be Mifare Classic */
   *uidLength = pn532_packetbuffer[12];
   for (uint8_t i = 0; i < pn532_packetbuffer[12]; i++) {
     uid[i] = pn532_packetbuffer[13 + i];
   }
-#ifdef CONFIG_MIFAREDEBUG
-  ESP_LOGI(TAG, "UID:");
-  ESP_LOG_BUFFER_HEX(TAG, uid, *uidLength);
-#endif
+
+  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "UID:");
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, uid, *uidLength, MIFARE_LEVEL);
 
   return true;
 }
@@ -915,12 +904,10 @@ bool mifareclassic_AuthenticateBlock(
   memcpy(_uid, uid, uidLen);
   _uidLen = uidLen;
 
-#ifdef CONFIG_MIFAREDEBUG
-  ESP_LOGI(TAG, "Trying to authenticate card ");
-  esp_log_buffer_hex(TAG, _uid, _uidLen);
-  ESP_LOGI(TAG, "Using authentication KEY %c :", keyNumber ? 'B' : 'A');
-  esp_log_buffer_hex(TAG, _key, 6);
-#endif
+  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Trying to authenticate card ");
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, _uid, _uidLen, MIFARE_LEVEL);
+  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Using authentication KEY %c :", keyNumber ? 'B' : 'A');
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, _key, 6, MIFARE_LEVEL);
 
   // Prepare the authentication command //
   pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE; /* Data Exchange Header */
@@ -965,9 +952,7 @@ bool mifareclassic_AuthenticateBlock(
  */
 /**************************************************************************/
 bool mifareclassic_ReadDataBlock(uint8_t blockNumber, uint8_t* data) {
-#ifdef CONFIG_MIFAREDEBUG
-  ESP_LOGI(TAG, "Trying to read 16 bytes from block %d", blockNumber);
-#endif
+  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Trying to read 16 bytes from block %d", blockNumber);
 
   /* Prepare the command */
   pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE;
@@ -996,10 +981,8 @@ bool mifareclassic_ReadDataBlock(uint8_t blockNumber, uint8_t* data) {
   memcpy(data, pn532_packetbuffer + 8, 16);
 
   /* Display data for debug if requested */
-#ifdef CONFIG_MIFAREDEBUG
-  ESP_LOGI(TAG, "Block %d", blockNumber);
-  esp_log_buffer_hex(TAG, data, 16);
-#endif
+  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Block %d", blockNumber);
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, data, 16, MIFARE_LEVEL);
 
   return true;
 }
@@ -1017,9 +1000,7 @@ bool mifareclassic_ReadDataBlock(uint8_t blockNumber, uint8_t* data) {
  */
 /**************************************************************************/
 bool mifareclassic_WriteDataBlock(uint8_t blockNumber, uint8_t* data) {
-#ifdef CONFIG_MIFAREDEBUG
-  ESP_LOGI(TAG, "Trying to write 16 bytes to block %d", blockNumber);
-#endif
+  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Trying to write 16 bytes to block %d", blockNumber);
 
   /* Prepare the first command */
   pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE;
@@ -1207,9 +1188,7 @@ bool mifareultralight_ReadPage(uint8_t page, uint8_t* buffer, uint8_t bufferSize
     return false;
   }
 
-#ifdef CONFIG_MIFAREDEBUG
-  ESP_LOGI(TAG, "Reading page %d", page);
-#endif
+  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Reading page %d", page);
 
   /* Prepare the command */
   pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE;
@@ -1225,10 +1204,8 @@ bool mifareultralight_ReadPage(uint8_t page, uint8_t* buffer, uint8_t bufferSize
 
   /* Read the response packet */
   readdata(pn532_packetbuffer, 26);
-#ifdef CONFIG_MIFAREDEBUG
-  ESP_LOGI(TAG, "Received: ");
-  ESP_LOG_BUFFER_HEX(TAG, pn532_packetbuffer, 26);
-#endif
+  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Received: ");
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, pn532_packetbuffer, 26, MIFARE_LEVEL);
 
   /* If byte 8 isn't 0x00 we probably have an error */
   if (pn532_packetbuffer[7] == 0x00) {
@@ -1240,10 +1217,8 @@ bool mifareultralight_ReadPage(uint8_t page, uint8_t* buffer, uint8_t bufferSize
   }
 
   /* Display data for debug if requested */
-#ifdef CONFIG_MIFAREDEBUG
-  ESP_LOGI(TAG, "Page %d", page);
-  esp_log_buffer_hex(TAG, buffer, bufferSize);
-#endif
+  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Page %d", page);
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, buffer, bufferSize, MIFARE_LEVEL);
 
   // Return OK signal
   return true;
@@ -1268,9 +1243,7 @@ bool mifareultralight_WritePage(uint8_t page, uint8_t* data) {
     return false;
   }
 
-#ifdef CONFIG_MIFAREDEBUG
-  ESP_LOGI(TAG, "Trying to write 4 byte page %d", page);
-#endif
+  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Trying to write 4 byte page %d", page);
 
   /* Prepare the first command */
   pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE;
@@ -1369,9 +1342,7 @@ bool ntag2xx_ReadPage(uint8_t page, uint8_t* buffer) {
     return false;
   }
 
-#ifdef CONFIG_MIFAREDEBUG
-  ESP_LOGI(TAG, "Reading page %d", page);
-#endif
+  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Reading page %d", page);
 
   /* Prepare the command */
   pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE;
@@ -1387,10 +1358,8 @@ bool ntag2xx_ReadPage(uint8_t page, uint8_t* buffer) {
 
   /* Read the response packet */
   readdata(pn532_packetbuffer, 26);
-#ifdef CONFIG_MIFAREDEBUG
-  ESP_LOGI(TAG, "Received: ");
-  esp_log_buffer_hex(TAG, pn532_packetbuffer, 26);
-#endif
+  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Received: ");
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, pn532_packetbuffer, 26, MIFARE_LEVEL);
 
   /* If byte 8 isn't 0x00 we probably have an error */
   if (pn532_packetbuffer[7] == 0x00) {
@@ -1406,11 +1375,8 @@ bool ntag2xx_ReadPage(uint8_t page, uint8_t* buffer) {
     return false;
   }
 
-  /* Display data for debug if requested */
-#ifdef CONFIG_MIFAREDEBUG
-  ESP_LOGI(TAG, "Page %d", page);
-  esp_log_buffer_hex(TAG, buffer, 4);
-#endif
+  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Page %d", page);
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, buffer, 4, MIFARE_LEVEL);
 
   // Return OK signal
   return true;
@@ -1442,9 +1408,7 @@ bool ntag2xx_WritePage(uint8_t page, uint8_t* data) {
     return false;
   }
 
-#ifdef CONFIG_MIFAREDEBUG
-  ESP_LOGI(TAG, "Trying to write 4 byte page %d", page);
-#endif
+  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Trying to write 4 byte page %d", page);
 
   /* Prepare the first command */
   pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE;
