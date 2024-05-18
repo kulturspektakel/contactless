@@ -18,7 +18,6 @@ typedef struct {
 } byte_array_t;
 
 static const char* TAG = "rfid";
-static gpio_num_t NUM_CS_PIN = 21;
 static uint8_t NDEF_KEY_A[6] = {0xD3, 0xF7, 0xD3, 0xF7, 0xD3, 0xF7};
 static uint8_t PAGE_4[16] =
     {0x00, 0x00, 0x03, 0x2B, 0xD1, 0x01, 0x27, 0x55, 0x04, 0x6B, 0x75, 0x6C, 0x74, 0x2E, 0x63, 0x61
@@ -81,8 +80,7 @@ static int mbedtls_base64_encode_url_safe(
 static event_t read_card(byte_array_t* uid) {
   uint8_t payload[PAYLOAD_LENGTH + 1];
 
-  if (!mifareultralight_ReadPage(9, payload, 16) ||
-      !mifareultralight_ReadPage(13, payload + 16, PAYLOAD_LENGTH - 16)) {
+  if (!mfu_read_page(9, payload, 16) || !mfu_read_page(13, payload + 16, PAYLOAD_LENGTH - 16)) {
     ESP_LOGE(TAG, "Reading payload failed");
     return CARD_DETECTED_NOT_READABLE;
   }
@@ -119,7 +117,7 @@ static event_t read_card(byte_array_t* uid) {
   // The value from the physical counter is stored in new_card, so that cards can be repaired
   // based on the actual counter value in write_card. The value from the payload is only used for
   // verification.
-  if (!mifareultralight_ReadCounter(0, &new_card.counter)) {
+  if (!mfu_read_counter(0, &new_card.counter)) {
     return CARD_DETECTED_NOT_READABLE;
   }
   uint16_t counter_from_payload = *(uint16_t*)(decoded_payload + OFFSET_COUNTER);
@@ -170,7 +168,7 @@ static bool write_card(byte_array_t* uid, ultralight_card_info_t* card) {
   uint8_t pack_read[2] = {0x01, 0x01};  // initialize with different values than pack
   calculate_password(uid, password, pack);
 
-  if (!ntag2xx_Authenticate(password, pack_read)) {
+  if (!ntag2xx_authenticate(password, pack_read)) {
     ESP_LOGE(TAG, "Authentication failed");
     return false;
   }
@@ -221,7 +219,7 @@ static bool write_card(byte_array_t* uid, ultralight_card_info_t* card) {
   // write payload
   for (size_t i = 2; i < base64_len / 4; i++) {  // skip first two bytes, because ID did not
                                                  // change
-    if (!mifareultralight_WritePage(i + 9, &write_data[4 * i])) {
+    if (!mfu_write_page(i + 9, &write_data[4 * i])) {
       ESP_LOGE(TAG, "Writing payload failed at block %d", i);
       return false;
     }
@@ -236,7 +234,7 @@ static bool write_card(byte_array_t* uid, ultralight_card_info_t* card) {
     return false;
   }
   ESP_LOGI(TAG, "Incrementing counter by %d", counter_diff);
-  if (!mifareultralight_IncrementCounter(0, counter_diff)) {
+  if (!mfu_increment_counter(0, counter_diff)) {
     ESP_LOGE(TAG, "Incrementing counter failed");
     return false;
   }
@@ -250,9 +248,8 @@ bool is_old_card(byte_array_t* uid) {
     uint8_t buffer[16];
     uint8_t block_addr = 4;
 
-    if (mifareclassic_AuthenticateBlock(uid->bytes, uid->length, block_addr, 0, &NDEF_KEY_A) == 1 &&
-        mifareclassic_ReadDataBlock(block_addr, buffer) == 1 &&
-        memcmp(buffer, PAGE_4, sizeof(PAGE_4)) == 0) {
+    if (mfc_authenticate_block(uid->bytes, uid->length, block_addr, 0, NDEF_KEY_A) &&
+        mfc_read_data_block(block_addr, buffer) && memcmp(buffer, PAGE_4, sizeof(PAGE_4)) == 0) {
       ESP_LOGI(TAG, "Old card present");
       return true;
     }
@@ -261,14 +258,14 @@ bool is_old_card(byte_array_t* uid) {
 }
 
 void rfid(void* params) {
-  if (!init_PN532_I2C(35, 37, 48, 47, I2C_NUM_1)) {
+  if (!pn532_init(35, 37, 48, 47, I2C_NUM_1)) {
     ESP_LOGE(TAG, "PN532 init failed");
     trigger_event(FATAL_ERROR);
   }
 
-  SAMConfig();
+  pn532_sam_configuration();
 
-  uint32_t versiondata = getPN532FirmwareVersion();
+  uint32_t versiondata = pn532_get_firmware_version();
   // Got ok data, print it out!
   ESP_LOGI(TAG, "Found chip PN5%lx", (versiondata >> 24) & 0xFF);
   ESP_LOGI(TAG, "Firmware ver. %ld.%ld", (versiondata >> 16) & 0xFF, (versiondata >> 8) & 0xFF);
@@ -280,8 +277,8 @@ void rfid(void* params) {
 
   while (1) {
     if (card_seen_at > 0) {
-      inDeselect();
-      while (inAutoPoll(1)) {
+      iso14443a_in_deselect();
+      while (iso14443a_in_auto_poll(1)) {
         taskYIELD();
       }
       // card removed
@@ -293,7 +290,7 @@ void rfid(void* params) {
     }
 
     // wait for card
-    if (!readPassiveTargetID(PN532_MIFARE_ISO14443A, uid.bytes, &uid.length, 0)) {
+    if (!iso14443a_read_passive_target_id(PN532_MIFARE_ISO14443A, uid.bytes, &uid.length, 0)) {
       continue;
     }
 
@@ -317,7 +314,6 @@ void rfid(void* params) {
 
     if (uid.length != 7) {
       ESP_LOGE(TAG, "Invalid UID length: %d", uid.length);
-      trigger_event(CARD_DETECTED_NOT_READABLE);
       continue;
     }
 

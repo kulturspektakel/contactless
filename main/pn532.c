@@ -53,7 +53,7 @@ uint8_t NACK_PACKET[] = {0x0, 0x0, 0xFF, 0xFF, 0x0, 0x0};
 #endif
 
 // Def only
-bool SAMConfig(void);
+bool pn532_sam_configuration(void);
 
 /**
  * Send the reset signal to PN532
@@ -169,13 +169,7 @@ static void IRAM_ATTR IRQHandler(void* arg) {
  @return true if hw setup OK, false otherwise
  */
 /**************************************************************************/
-bool init_PN532_I2C(
-    uint8_t sda,
-    uint8_t scl,
-    uint8_t reset,
-    uint8_t irq,
-    i2c_port_t i2c_port_number
-) {
+bool pn532_init(uint8_t sda, uint8_t scl, uint8_t reset, uint8_t irq, i2c_port_t i2c_port_number) {
   SCL_PIN = scl;
   SDA_PIN = sda;
   RESET_PIN = reset;
@@ -272,7 +266,7 @@ bool init_PN532_I2C(
  @return true if read success, false otherwise
  */
 /**************************************************************************/
-bool readdata(uint8_t* buff, uint8_t n) {
+bool pn532_read_data(uint8_t* buff, uint8_t n) {
   i2c_cmd_handle_t i2ccmd;
   uint8_t* buffer = malloc(n + 3);
 
@@ -318,7 +312,7 @@ bool readdata(uint8_t* buff, uint8_t n) {
 bool readack() {
   uint8_t ackbuff[6];
 
-  readdata(ackbuff, 6);
+  pn532_read_data(ackbuff, 6);
 
   return (0 == memcmp((char*)ackbuff, (char*)pn532ack, 6));
 }
@@ -387,7 +381,7 @@ bool waitready(uint16_t timeout) {
  */
 /**************************************************************************/
 // default timeout of one second
-bool sendCommandCheckAck(uint8_t* cmd, uint8_t cmdlen, uint16_t timeout) {
+bool pn532_send_cmd_check_ack(uint8_t* cmd, uint8_t cmdlen, uint16_t timeout) {
   // write the command
   writecommand(cmd, cmdlen);
 
@@ -419,17 +413,17 @@ bool sendCommandCheckAck(uint8_t* cmd, uint8_t cmdlen, uint16_t timeout) {
  @returns  The chip's firmware version and ID
  */
 /**************************************************************************/
-uint32_t getPN532FirmwareVersion(void) {
+uint32_t pn532_get_firmware_version(void) {
   uint32_t response;
 
   pn532_packetbuffer[0] = PN532_COMMAND_GETFIRMWAREVERSION;
 
-  if (!sendCommandCheckAck(pn532_packetbuffer, 1, I2C_WRITE_TIMEOUT)) {
+  if (!pn532_send_cmd_check_ack(pn532_packetbuffer, 1, I2C_WRITE_TIMEOUT)) {
     return false;
   }
 
   // read data packet
-  readdata(pn532_packetbuffer, 12);
+  pn532_read_data(pn532_packetbuffer, 12);
 
   // check some basic stuff
   if (0 != strncmp((char*)pn532_packetbuffer, (char*)pn532response_firmwarevers, 6)) {
@@ -470,7 +464,7 @@ uint32_t getPN532FirmwareVersion(void) {
  @returns 1 if everything executed properly, 0 for an error
  */
 /**************************************************************************/
-bool writeGPIO(uint8_t pinstate) {
+bool pn532_write_gpio(uint8_t pinstate) {
   // Make sure pinstate does not try to toggle P32 or P34
   pinstate |= (1 << PN532_GPIO_P32) | (1 << PN532_GPIO_P34);
 
@@ -482,12 +476,12 @@ bool writeGPIO(uint8_t pinstate) {
   ESP_LOG_LEVEL(PN532_LOG_LEVEL, TAG, "Writing P3 GPIO: 0x%.2X", pn532_packetbuffer[1]);
 
   // Send the WRITEGPIO command (0x0E)
-  if (!sendCommandCheckAck(pn532_packetbuffer, 3, I2C_WRITE_TIMEOUT)) {
+  if (!pn532_send_cmd_check_ack(pn532_packetbuffer, 3, I2C_WRITE_TIMEOUT)) {
     return false;
   }
 
   // Read response packet (00 FF PLEN PLENCHECKSUM D5 CMD+1(0x0F) DATACHECKSUM 00)
-  readdata(pn532_packetbuffer, 8);
+  pn532_read_data(pn532_packetbuffer, 8);
 
   ESP_LOG_LEVEL(PN532_LOG_LEVEL, TAG, "Received: ");
   ESP_LOG_BUFFER_HEX_LEVEL(TAG, pn532_packetbuffer, 8, PN532_LOG_LEVEL);
@@ -510,16 +504,16 @@ bool writeGPIO(uint8_t pinstate) {
  pinState[5]  = P35
  */
 /**************************************************************************/
-uint8_t readGPIO(void) {
+uint8_t pn532_read_gpio(void) {
   pn532_packetbuffer[0] = PN532_COMMAND_READGPIO;
 
   // Send the READGPIO command (0x0C)
-  if (!sendCommandCheckAck(pn532_packetbuffer, 1, I2C_WRITE_TIMEOUT)) {
+  if (!pn532_send_cmd_check_ack(pn532_packetbuffer, 1, I2C_WRITE_TIMEOUT)) {
     return 0x0;
   }
 
   // Read response packet (00 FF PLEN PLENCHECKSUM D5 CMD+1(0x0D) P3 P7 IO1 DATACHECKSUM 00)
-  readdata(pn532_packetbuffer, 50);
+  pn532_read_data(pn532_packetbuffer, 50);
 
   /* READGPIO response should be in the following format:
 
@@ -561,18 +555,18 @@ uint8_t readGPIO(void) {
  @brief  Configures the SAM (Secure Access Module)
  */
 /**************************************************************************/
-bool SAMConfig(void) {
-  pn532_packetbuffer[0] = PN532_COMMAND_SAMCONFIGURATION;
+bool pn532_sam_configuration(void) {
+  pn532_packetbuffer[0] = PN532_COMMAND_pn532_sam_configurationURATION;
   pn532_packetbuffer[1] = 0x01;  // normal mode;
   pn532_packetbuffer[2] = 0x14;  // timeout 50ms * 20 = 1 second
   pn532_packetbuffer[3] = 0x01;  // use IRQ pin!
 
-  if (!sendCommandCheckAck(pn532_packetbuffer, 4, I2C_WRITE_TIMEOUT)) {
+  if (!pn532_send_cmd_check_ack(pn532_packetbuffer, 4, I2C_WRITE_TIMEOUT)) {
     return false;
   }
 
   // read data packet
-  readdata(pn532_packetbuffer, 50);
+  pn532_read_data(pn532_packetbuffer, 50);
 
   int offset = 6;
   return (pn532_packetbuffer[offset] == 0x15);
@@ -582,22 +576,22 @@ bool SAMConfig(void) {
 /*!
  Sets the MxRtyPassiveActivation byte of the RFConfiguration register
 
- @param  maxRetries    0xFF to wait forever, 0x00..0xFE to timeout
+ @param  max_retries    0xFF to wait forever, 0x00..0xFE to timeout
  after mxRetries
 
  @returns 1 if everything executed properly, 0 for an error
  */
 /**************************************************************************/
-bool setPassiveActivationRetries(uint8_t maxRetries) {
+bool pn532_set_passive_activation_retries(uint8_t max_retries) {
   pn532_packetbuffer[0] = PN532_COMMAND_RFCONFIGURATION;
   pn532_packetbuffer[1] = 5;     // Config item 5 (MaxRetries)
   pn532_packetbuffer[2] = 0xFF;  // MxRtyATR (default = 0xFF)
   pn532_packetbuffer[3] = 0x01;  // MxRtyPSL (default = 0x01)
-  pn532_packetbuffer[4] = maxRetries;
+  pn532_packetbuffer[4] = max_retries;
 
-  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Setting MxRtyPassiveActivation to %d", maxRetries);
+  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Setting MxRtyPassiveActivation to %d", max_retries);
 
-  return sendCommandCheckAck(pn532_packetbuffer, 5, I2C_WRITE_TIMEOUT);
+  return pn532_send_cmd_check_ack(pn532_packetbuffer, 5, I2C_WRITE_TIMEOUT);
 }
 
 /***** ISO14443A Commands ******/
@@ -609,18 +603,23 @@ bool setPassiveActivationRetries(uint8_t maxRetries) {
  @param  cardBaudRate  Baud rate of the card
  @param  uid           Pointer to the array that will be populated
  with the card's UID (up to 7 bytes)
- @param  uidLength     Pointer to the variable that will hold the
+ @param  uid_len     Pointer to the variable that will hold the
  length of the card's UID.
 
  @returns 1 if everything executed properly, 0 for an error
  */
 /**************************************************************************/
-bool readPassiveTargetID(uint8_t cardbaudrate, uint8_t* uid, uint8_t* uidLength, uint16_t timeout) {
+bool iso14443a_read_passive_target_id(
+    uint8_t cardbaudrate,
+    uint8_t* uid,
+    uint8_t* uid_len,
+    uint16_t timeout
+) {
   pn532_packetbuffer[0] = PN532_COMMAND_INLISTPASSIVETARGET;
   pn532_packetbuffer[1] = 1;  // max 1 cards at once (we can set this to 2 later)
   pn532_packetbuffer[2] = cardbaudrate;
 
-  if (!sendCommandCheckAck(pn532_packetbuffer, 3, I2C_WRITE_TIMEOUT)) {
+  if (!pn532_send_cmd_check_ack(pn532_packetbuffer, 3, I2C_WRITE_TIMEOUT)) {
     ESP_LOG_LEVEL(PN532_LOG_LEVEL, TAG, "No card(s) read");
     return false;  // no cards read
   }
@@ -632,7 +631,7 @@ bool readPassiveTargetID(uint8_t cardbaudrate, uint8_t* uid, uint8_t* uidLength,
   }
 
   // read data packet
-  readdata(pn532_packetbuffer, 20);
+  pn532_read_data(pn532_packetbuffer, 20);
   // check some basic stuff
 
   /* ISO14443A card response should be in the following format:
@@ -659,13 +658,13 @@ bool readPassiveTargetID(uint8_t cardbaudrate, uint8_t* uid, uint8_t* uidLength,
   ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "SAK: 0x%.2X", pn532_packetbuffer[11]);
 
   /* Card appears to be Mifare Classic */
-  *uidLength = pn532_packetbuffer[12];
+  *uid_len = pn532_packetbuffer[12];
   for (uint8_t i = 0; i < pn532_packetbuffer[12]; i++) {
     uid[i] = pn532_packetbuffer[13 + i];
   }
 
   ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "UID:");
-  ESP_LOG_BUFFER_HEX_LEVEL(TAG, uid, *uidLength, MIFARE_LEVEL);
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, uid, *uid_len, MIFARE_LEVEL);
 
   return true;
 }
@@ -675,13 +674,18 @@ bool readPassiveTargetID(uint8_t cardbaudrate, uint8_t* uid, uint8_t* uidLength,
  @brief  Exchanges an APDU with the currently inlisted peer
 
  @param  send            Pointer to data to send
- @param  sendLength      Length of the data to send
+ @param  send_len      Length of the data to send
  @param  response        Pointer to response data
- @param  responseLength  Pointer to the response data length
+ @param  response_len  Pointer to the response data length
  */
 /**************************************************************************/
-bool inDataExchange(uint8_t* send, uint8_t sendLength, uint8_t* response, uint8_t* responseLength) {
-  if (sendLength > PN532_PACKBUFFSIZ - 2) {
+bool iso14443a_in_data_exchange(
+    uint8_t* send,
+    uint8_t send_len,
+    uint8_t* response,
+    uint8_t* response_len
+) {
+  if (send_len > PN532_PACKBUFFSIZ - 2) {
     ESP_LOGE(TAG, "APDU length too long for packet buffer");
     return false;
   }
@@ -689,11 +693,11 @@ bool inDataExchange(uint8_t* send, uint8_t sendLength, uint8_t* response, uint8_
 
   pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE;
   pn532_packetbuffer[1] = _inListedTag;
-  for (i = 0; i < sendLength; ++i) {
+  for (i = 0; i < send_len; ++i) {
     pn532_packetbuffer[i + 2] = send[i];
   }
 
-  if (!sendCommandCheckAck(pn532_packetbuffer, sendLength + 2, I2C_WRITE_TIMEOUT)) {
+  if (!pn532_send_cmd_check_ack(pn532_packetbuffer, send_len + 2, I2C_WRITE_TIMEOUT)) {
     ESP_LOGE(TAG, "Could not send APDU");
     return false;
   }
@@ -703,7 +707,7 @@ bool inDataExchange(uint8_t* send, uint8_t sendLength, uint8_t* response, uint8_
     return false;
   }
 
-  readdata(pn532_packetbuffer, sizeof(pn532_packetbuffer));
+  pn532_read_data(pn532_packetbuffer, sizeof(pn532_packetbuffer));
 
   if (pn532_packetbuffer[0] == 0 && pn532_packetbuffer[1] == 0 && pn532_packetbuffer[2] == 0xff) {
     uint8_t length = pn532_packetbuffer[3];
@@ -720,14 +724,14 @@ bool inDataExchange(uint8_t* send, uint8_t sendLength, uint8_t* response, uint8_
 
       length -= 3;
 
-      if (length > *responseLength) {
-        length = *responseLength;  // silent truncation...
+      if (length > *response_len) {
+        length = *response_len;  // silent truncation...
       }
 
       for (i = 0; i < length; ++i) {
         response[i] = pn532_packetbuffer[8 + i];
       }
-      *responseLength = length;
+      *response_len = length;
 
       return true;
     } else {
@@ -740,13 +744,13 @@ bool inDataExchange(uint8_t* send, uint8_t sendLength, uint8_t* response, uint8_
   }
 }
 
-bool inDeselect() {
+bool iso14443a_in_deselect() {
   pn532_packetbuffer[0] = PN532_COMMAND_INDESELECT;
   pn532_packetbuffer[1] = 0x00;  // 0x00 is a specific value indicating all targets
 
   ESP_LOG_LEVEL(PN532_LOG_LEVEL, TAG, "About to inDeselect");
 
-  if (!sendCommandCheckAck(pn532_packetbuffer, 2, I2C_WRITE_TIMEOUT)) {
+  if (!pn532_send_cmd_check_ack(pn532_packetbuffer, 2, I2C_WRITE_TIMEOUT)) {
     ESP_LOGE(TAG, "Could not send inlist message");
     return false;
   }
@@ -754,13 +758,13 @@ bool inDeselect() {
   return true;
 }
 
-bool inAutoPoll(uint8_t period) {
+bool iso14443a_in_auto_poll(uint8_t period) {
   pn532_packetbuffer[0] = PN532_COMMAND_INAUTOPOLL;
   pn532_packetbuffer[1] = 0x01;    // PollNr
   pn532_packetbuffer[2] = period;  // Period
   pn532_packetbuffer[3] = 0x00;    // Type A
 
-  if (!sendCommandCheckAck(pn532_packetbuffer, 4, I2C_WRITE_TIMEOUT)) {
+  if (!pn532_send_cmd_check_ack(pn532_packetbuffer, 4, I2C_WRITE_TIMEOUT)) {
     ESP_LOGE(TAG, "Could not send inlist message");
     return false;
   }
@@ -772,7 +776,7 @@ bool inAutoPoll(uint8_t period) {
   // Value determined by trail and error, 50ms seems to be enough, 25ms not
   vTaskDelay(50 / portTICK_PERIOD_MS);
 
-  if (!readdata(pn532_packetbuffer, 16)) {
+  if (!pn532_read_data(pn532_packetbuffer, 16)) {
     return false;
   }
 
@@ -788,14 +792,14 @@ bool inAutoPoll(uint8_t period) {
  peer acting as card/responder.
  */
 /**************************************************************************/
-bool inListPassiveTarget() {
+bool iso14443a_in_list_passive_targers() {
   pn532_packetbuffer[0] = PN532_COMMAND_INLISTPASSIVETARGET;
   pn532_packetbuffer[1] = 1;
   pn532_packetbuffer[2] = 0;
 
   ESP_LOG_LEVEL(PN532_LOG_LEVEL, TAG, "About to inList passive target");
 
-  if (!sendCommandCheckAck(pn532_packetbuffer, 3, I2C_WRITE_TIMEOUT)) {
+  if (!pn532_send_cmd_check_ack(pn532_packetbuffer, 3, I2C_WRITE_TIMEOUT)) {
     ESP_LOGE(TAG, "Could not send inlist message");
     return false;
   }
@@ -804,7 +808,7 @@ bool inListPassiveTarget() {
     return false;
   }
 
-  readdata(pn532_packetbuffer, sizeof(pn532_packetbuffer));
+  pn532_read_data(pn532_packetbuffer, sizeof(pn532_packetbuffer));
 
   if (pn532_packetbuffer[0] == 0 && pn532_packetbuffer[1] == 0 && pn532_packetbuffer[2] == 0xff) {
     uint8_t length = pn532_packetbuffer[3];
@@ -848,7 +852,7 @@ bool inListPassiveTarget() {
  in the sector (block 0 relative to the current sector)
  */
 /**************************************************************************/
-bool mifareclassic_IsFirstBlock(uint32_t uiBlock) {
+bool mfc_is_first_block(uint32_t uiBlock) {
   // Test if we are in the small or big sectors
   if (uiBlock < 128) {
     return ((uiBlock) % 4 == 0);
@@ -862,7 +866,7 @@ bool mifareclassic_IsFirstBlock(uint32_t uiBlock) {
  Indicates whether the specified block number is the sector trailer
  */
 /**************************************************************************/
-bool mifareclassic_IsTrailerBlock(uint32_t uiBlock) {
+bool mfc_is_trailer_block(uint32_t uiBlock) {
   // Test if we are in the small or big sectors
   if (uiBlock < 128) {
     return ((uiBlock + 1) % 4 == 0);
@@ -880,51 +884,51 @@ bool mifareclassic_IsTrailerBlock(uint32_t uiBlock) {
  @param  uid           Pointer to a byte array containing the card UID
  @param  uidLen        The length (in bytes) of the card's UID (Should
  be 4 for MIFARE Classic)
- @param  blockNumber   The block number to authenticate.  (0..63 for
+ @param  block_num   The block number to authenticate.  (0..63 for
  1KB cards, and 0..255 for 4KB cards).
- @param  keyNumber     Which key type to use during authentication
+ @param  key_num     Which key type to use during authentication
  (0 = MIFARE_CMD_AUTH_A, 1 = MIFARE_CMD_AUTH_B)
- @param  keyData       Pointer to a byte array containing the 6 byte
+ @param  key_data       Pointer to a byte array containing the 6 byte
  key value
 
  @returns 1 if everything executed properly, 0 for an error
  */
 /**************************************************************************/
-bool mifareclassic_AuthenticateBlock(
+bool mfc_authenticate_block(
     uint8_t* uid,
     uint8_t uidLen,
-    uint32_t blockNumber,
-    uint8_t keyNumber,
-    uint8_t* keyData
+    uint32_t block_num,
+    uint8_t key_num,
+    uint8_t* key_data
 ) {
   uint8_t i;
 
   // Hang on to the key and uid data
-  memcpy(_key, keyData, 6);
+  memcpy(_key, key_data, 6);
   memcpy(_uid, uid, uidLen);
   _uidLen = uidLen;
 
   ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Trying to authenticate card ");
   ESP_LOG_BUFFER_HEX_LEVEL(TAG, _uid, _uidLen, MIFARE_LEVEL);
-  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Using authentication KEY %c :", keyNumber ? 'B' : 'A');
+  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Using authentication KEY %c :", key_num ? 'B' : 'A');
   ESP_LOG_BUFFER_HEX_LEVEL(TAG, _key, 6, MIFARE_LEVEL);
 
   // Prepare the authentication command //
   pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE; /* Data Exchange Header */
   pn532_packetbuffer[1] = 1;                            /* Max card numbers */
-  pn532_packetbuffer[2] = (keyNumber) ? MIFARE_CMD_AUTH_B : MIFARE_CMD_AUTH_A;
-  pn532_packetbuffer[3] = blockNumber; /* Block Number (1K = 0..63, 4K = 0..255 */
+  pn532_packetbuffer[2] = (key_num) ? MIFARE_CMD_AUTH_B : MIFARE_CMD_AUTH_A;
+  pn532_packetbuffer[3] = block_num; /* Block Number (1K = 0..63, 4K = 0..255 */
   memcpy(pn532_packetbuffer + 4, _key, 6);
   for (i = 0; i < _uidLen; i++) {
     pn532_packetbuffer[10 + i] = _uid[i]; /* 4 byte card ID */
   }
 
-  if (!sendCommandCheckAck(pn532_packetbuffer, 10 + _uidLen, I2C_WRITE_TIMEOUT)) {
+  if (!pn532_send_cmd_check_ack(pn532_packetbuffer, 10 + _uidLen, I2C_WRITE_TIMEOUT)) {
     return false;
   }
 
   // Read the response packet
-  readdata(pn532_packetbuffer, 12);
+  pn532_read_data(pn532_packetbuffer, 12);
 
   // check if the response is valid and we are authenticated???
   // for an auth success it should be bytes 5-7: 0xD5 0x41 0x00
@@ -943,7 +947,7 @@ bool mifareclassic_AuthenticateBlock(
  Tries to read an entire 16-byte data block at the specified block
  address.
 
- @param  blockNumber   The block number to authenticate.  (0..63 for
+ @param  block_num   The block number to authenticate.  (0..63 for
  1KB cards, and 0..255 for 4KB cards).
  @param  data          Pointer to the byte array that will hold the
  retrieved data (if any)
@@ -951,23 +955,23 @@ bool mifareclassic_AuthenticateBlock(
  @returns 1 if everything executed properly, 0 for an error
  */
 /**************************************************************************/
-bool mifareclassic_ReadDataBlock(uint8_t blockNumber, uint8_t* data) {
-  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Trying to read 16 bytes from block %d", blockNumber);
+bool mfc_read_data_block(uint8_t block_num, uint8_t* data) {
+  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Trying to read 16 bytes from block %d", block_num);
 
   /* Prepare the command */
   pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE;
   pn532_packetbuffer[1] = 1;               /* Card number */
   pn532_packetbuffer[2] = MIFARE_CMD_READ; /* Mifare Read command = 0x30 */
-  pn532_packetbuffer[3] = blockNumber;     /* Block Number (0..63 for 1K, 0..255 for 4K) */
+  pn532_packetbuffer[3] = block_num;       /* Block Number (0..63 for 1K, 0..255 for 4K) */
 
   /* Send the command */
-  if (!sendCommandCheckAck(pn532_packetbuffer, 4, I2C_WRITE_TIMEOUT)) {
+  if (!pn532_send_cmd_check_ack(pn532_packetbuffer, 4, I2C_WRITE_TIMEOUT)) {
     ESP_LOGE(TAG, "Failed to receive ACK for read command");
     return false;
   }
 
   /* Read the response packet */
-  readdata(pn532_packetbuffer, 26);
+  pn532_read_data(pn532_packetbuffer, 26);
 
   /* If byte 8 isn't 0x00 we probably have an error */
   if (pn532_packetbuffer[7] != 0x00) {
@@ -981,7 +985,7 @@ bool mifareclassic_ReadDataBlock(uint8_t blockNumber, uint8_t* data) {
   memcpy(data, pn532_packetbuffer + 8, 16);
 
   /* Display data for debug if requested */
-  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Block %d", blockNumber);
+  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Block %d", block_num);
   ESP_LOG_BUFFER_HEX_LEVEL(TAG, data, 16, MIFARE_LEVEL);
 
   return true;
@@ -992,32 +996,32 @@ bool mifareclassic_ReadDataBlock(uint8_t blockNumber, uint8_t* data) {
  Tries to write an entire 16-byte data block at the specified block
  address.
 
- @param  blockNumber   The block number to authenticate.  (0..63 for
+ @param  block_num   The block number to authenticate.  (0..63 for
  1KB cards, and 0..255 for 4KB cards).
  @param  data          The byte array that contains the data to write.
 
  @returns 1 if everything executed properly, 0 for an error
  */
 /**************************************************************************/
-bool mifareclassic_WriteDataBlock(uint8_t blockNumber, uint8_t* data) {
-  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Trying to write 16 bytes to block %d", blockNumber);
+bool mfc_write_data_block(uint8_t block_num, uint8_t* data) {
+  ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Trying to write 16 bytes to block %d", block_num);
 
   /* Prepare the first command */
   pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE;
   pn532_packetbuffer[1] = 1;                /* Card number */
   pn532_packetbuffer[2] = MIFARE_CMD_WRITE; /* Mifare Write command = 0xA0 */
-  pn532_packetbuffer[3] = blockNumber;      /* Block Number (0..63 for 1K, 0..255 for 4K) */
+  pn532_packetbuffer[3] = block_num;        /* Block Number (0..63 for 1K, 0..255 for 4K) */
   memcpy(pn532_packetbuffer + 4, data, 16); /* Data Payload */
 
   /* Send the command */
-  if (!sendCommandCheckAck(pn532_packetbuffer, 20, I2C_WRITE_TIMEOUT)) {
+  if (!pn532_send_cmd_check_ack(pn532_packetbuffer, 20, I2C_WRITE_TIMEOUT)) {
     ESP_LOGE(TAG, "Failed to receive ACK for write command");
     return false;
   }
   vTaskDelay(10 / portTICK_PERIOD_MS);
 
   /* Read the response packet */
-  readdata(pn532_packetbuffer, 26);
+  pn532_read_data(pn532_packetbuffer, 26);
 
   return true;
 }
@@ -1029,7 +1033,7 @@ bool mifareclassic_WriteDataBlock(uint8_t blockNumber, uint8_t* data) {
  @returns 1 if everything executed properly, 0 for an error
  */
 /**************************************************************************/
-bool mifareclassic_FormatNDEF(void) {
+bool mfc_format_ndef(void) {
   uint8_t sectorbuffer1[16] = {
       0x14, 0x01, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1, 0x03, 0xE1
   };
@@ -1044,14 +1048,14 @@ bool mifareclassic_FormatNDEF(void) {
   // for the MAD sector in NDEF records (sector 0)
 
   // Write block 1 and 2 to the card
-  if (!(mifareclassic_WriteDataBlock(1, sectorbuffer1))) {
+  if (!(mfc_write_data_block(1, sectorbuffer1))) {
     return false;
   }
-  if (!(mifareclassic_WriteDataBlock(2, sectorbuffer2))) {
+  if (!(mfc_write_data_block(2, sectorbuffer2))) {
     return false;
   }
   // Write key A and access rights card
-  if (!(mifareclassic_WriteDataBlock(3, sectorbuffer3))) {
+  if (!(mfc_write_data_block(3, sectorbuffer3))) {
     return false;
   }
 
@@ -1068,21 +1072,21 @@ bool mifareclassic_FormatNDEF(void) {
  file system.  You can use the NXP TagWriter app on Android to
  properly format cards for this.
 
- @param  sectorNumber  The sector that the URI record should be written
+ @param  sector_num  The sector that the URI record should be written
  to (can be 1..15 for a 1K card)
- @param  uriIdentifier The uri identifier code (0 = none, 0x01 =
+ @param  uri_identifier The uri identifier code (0 = none, 0x01 =
  "http://www.", etc.)
  @param  url           The uri text to write (max 38 characters).
 
  @returns 1 if everything executed properly, 0 for an error
  */
 /**************************************************************************/
-bool mifareclassic_WriteNDEFURI(uint8_t sectorNumber, uint8_t uriIdentifier, const char* url) {
+bool mfc_write_ndef_uri(uint8_t sector_num, uint8_t uri_identifier, const char* url) {
   // Figure out how long the string is
   uint8_t len = strlen(url);
 
   // Make sure we're within a 1K limit for the sector number
-  if ((sectorNumber < 1) || (sectorNumber > 15)) {
+  if ((sector_num < 1) || (sector_num > 15)) {
     return false;
   }
 
@@ -1104,7 +1108,7 @@ bool mifareclassic_WriteNDEFURI(uint8_t sectorNumber, uint8_t uriIdentifier, con
       0x01,
       len + 1,
       0x55,
-      uriIdentifier,
+      uri_identifier,
       0x00,
       0x00,
       0x00,
@@ -1149,16 +1153,16 @@ bool mifareclassic_WriteNDEFURI(uint8_t sectorNumber, uint8_t uriIdentifier, con
   }
 
   // Now write all three blocks back to the card
-  if (!(mifareclassic_WriteDataBlock(sectorNumber * 4, sectorbuffer1))) {
+  if (!(mfc_write_data_block(sector_num * 4, sectorbuffer1))) {
     return false;
   }
-  if (!(mifareclassic_WriteDataBlock((sectorNumber * 4) + 1, sectorbuffer2))) {
+  if (!(mfc_write_data_block((sector_num * 4) + 1, sectorbuffer2))) {
     return false;
   }
-  if (!(mifareclassic_WriteDataBlock((sectorNumber * 4) + 2, sectorbuffer3))) {
+  if (!(mfc_write_data_block((sector_num * 4) + 2, sectorbuffer3))) {
     return false;
   }
-  if (!(mifareclassic_WriteDataBlock((sectorNumber * 4) + 3, sectorbuffer4))) {
+  if (!(mfc_write_data_block((sector_num * 4) + 3, sectorbuffer4))) {
     return false;
   }
 
@@ -1177,13 +1181,13 @@ bool mifareclassic_WriteNDEFURI(uint8_t sectorNumber, uint8_t uriIdentifier, con
  retrieved data (if any)
  */
 /**************************************************************************/
-bool mifareultralight_ReadPage(uint8_t page, uint8_t* buffer, uint8_t bufferSize) {
+bool mfu_read_page(uint8_t page, uint8_t* buffer, uint8_t buffer_size) {
   if (page >= 64) {
     ESP_LOGE(TAG, "Page value out of range");
     return false;
   }
 
-  if (bufferSize > 16 || bufferSize < 4) {
+  if (buffer_size > 16 || buffer_size < 4) {
     ESP_LOGE(TAG, "Invalid buffer size");
     return false;
   }
@@ -1197,19 +1201,19 @@ bool mifareultralight_ReadPage(uint8_t page, uint8_t* buffer, uint8_t bufferSize
   pn532_packetbuffer[3] = page;            /* Page Number (0..63 in most cases) */
 
   /* Send the command */
-  if (!sendCommandCheckAck(pn532_packetbuffer, 4, I2C_WRITE_TIMEOUT)) {
+  if (!pn532_send_cmd_check_ack(pn532_packetbuffer, 4, I2C_WRITE_TIMEOUT)) {
     ESP_LOGE(TAG, "Failed to receive ACK for write command");
     return false;
   }
 
   /* Read the response packet */
-  readdata(pn532_packetbuffer, 26);
+  pn532_read_data(pn532_packetbuffer, 26);
   ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Received: ");
   ESP_LOG_BUFFER_HEX_LEVEL(TAG, pn532_packetbuffer, 26, MIFARE_LEVEL);
 
   /* If byte 8 isn't 0x00 we probably have an error */
   if (pn532_packetbuffer[7] == 0x00) {
-    memcpy(buffer, pn532_packetbuffer + 8, bufferSize);
+    memcpy(buffer, pn532_packetbuffer + 8, buffer_size);
   } else {
     ESP_LOGE(TAG, "Unexpected response reading block: ");
     ESP_LOG_BUFFER_HEX(TAG, pn532_packetbuffer, 26);
@@ -1218,7 +1222,7 @@ bool mifareultralight_ReadPage(uint8_t page, uint8_t* buffer, uint8_t bufferSize
 
   /* Display data for debug if requested */
   ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Page %d", page);
-  ESP_LOG_BUFFER_HEX_LEVEL(TAG, buffer, bufferSize, MIFARE_LEVEL);
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, buffer, buffer_size, MIFARE_LEVEL);
 
   // Return OK signal
   return true;
@@ -1236,7 +1240,7 @@ bool mifareultralight_ReadPage(uint8_t page, uint8_t* buffer, uint8_t bufferSize
  @returns 1 if everything executed properly, 0 for an error
  */
 /**************************************************************************/
-bool mifareultralight_WritePage(uint8_t page, uint8_t* data) {
+bool mfu_write_page(uint8_t page, uint8_t* data) {
   if (page >= 64) {
     ESP_LOGE(TAG, "Page value out of range");
     // Return Failed Signal
@@ -1253,7 +1257,7 @@ bool mifareultralight_WritePage(uint8_t page, uint8_t* data) {
   memcpy(pn532_packetbuffer + 4, data, 4);             /* Data Payload */
 
   /* Send the command */
-  if (!sendCommandCheckAck(pn532_packetbuffer, 8, I2C_WRITE_TIMEOUT)) {
+  if (!pn532_send_cmd_check_ack(pn532_packetbuffer, 8, I2C_WRITE_TIMEOUT)) {
     ESP_LOGE(TAG, "Failed to receive ACK for write command");
     // Return Failed Signal
     return false;
@@ -1262,13 +1266,13 @@ bool mifareultralight_WritePage(uint8_t page, uint8_t* data) {
   /* Read the response packet */
   // TODO: how to check if the command was successful?
   // vTaskDelay(10 / portTICK_PERIOD_MS);
-  // readdata(pn532_packetbuffer, 26);
+  // pn532_read_data(pn532_packetbuffer, 26);
 
   // Return OK Signal
   return true;
 }
 
-bool mifareultralight_IncrementCounter(uint8_t counter, uint8_t value) {
+bool mfu_increment_counter(uint8_t counter, uint8_t value) {
   /* Prepare the first command */
   pn532_packetbuffer[0] = PN532_COMMAND_INCOMMUNICATETHRU;
   pn532_packetbuffer[1] = 0xA5;    /* INCR_CNT */
@@ -1279,14 +1283,14 @@ bool mifareultralight_IncrementCounter(uint8_t counter, uint8_t value) {
   pn532_packetbuffer[5] = 0x00;
   pn532_packetbuffer[6] = 0x00;  // ignored
 
-  if (!sendCommandCheckAck(pn532_packetbuffer, 7, I2C_WRITE_TIMEOUT)) {
+  if (!pn532_send_cmd_check_ack(pn532_packetbuffer, 7, I2C_WRITE_TIMEOUT)) {
     ESP_LOGE(TAG, "Failed to receive ACK for write command");
     return false;
   }
 
   // TODO: how to check if the command was successful?
   // vTaskDelay(10 / portTICK_PERIOD_MS);
-  // readdata(pn532_packetbuffer, 16);
+  // pn532_read_data(pn532_packetbuffer, 16);
   // if (pn532_packetbuffer[7] != 0x00) {
   //   ESP_LOGE(TAG, "Unexpected response reading block: ");
   //   ESP_LOG_BUFFER_HEX(TAG, pn532_packetbuffer, 16);
@@ -1296,18 +1300,18 @@ bool mifareultralight_IncrementCounter(uint8_t counter, uint8_t value) {
   return true;
 }
 
-bool mifareultralight_ReadCounter(uint8_t counter, uint16_t* value) {
+bool mfu_read_counter(uint8_t counter, uint16_t* value) {
   pn532_packetbuffer[0] = PN532_COMMAND_INCOMMUNICATETHRU;
   pn532_packetbuffer[1] = 0x39;    /* READ_CNT */
   pn532_packetbuffer[2] = counter; /* Counter number */
 
-  if (!sendCommandCheckAck(pn532_packetbuffer, 3, I2C_WRITE_TIMEOUT)) {
+  if (!pn532_send_cmd_check_ack(pn532_packetbuffer, 3, I2C_WRITE_TIMEOUT)) {
     ESP_LOGE(TAG, "Failed to receive ACK for write command");
     return false;
   }
   vTaskDelay(10 / portTICK_PERIOD_MS);
 
-  readdata(pn532_packetbuffer, 16);
+  pn532_read_data(pn532_packetbuffer, 16);
   if (pn532_packetbuffer[7] != 0x00) {
     ESP_LOGE(TAG, "Unexpected response reading block: ");
     ESP_LOG_BUFFER_HEX(TAG, pn532_packetbuffer, 16);
@@ -1329,7 +1333,7 @@ bool mifareultralight_ReadCounter(uint8_t counter, uint16_t* value) {
  retrieved data (if any)
  */
 /**************************************************************************/
-bool ntag2xx_ReadPage(uint8_t page, uint8_t* buffer) {
+bool ntag2xx_read_page(uint8_t page, uint8_t* buffer) {
   // TAG Type       PAGES   USER START    USER STOP
   // --------       -----   ----------    ---------
   // NTAG 203       42      4             39
@@ -1351,13 +1355,13 @@ bool ntag2xx_ReadPage(uint8_t page, uint8_t* buffer) {
   pn532_packetbuffer[3] = page;            /* Page Number (0..63 in most cases) */
 
   /* Send the command */
-  if (!sendCommandCheckAck(pn532_packetbuffer, 4, I2C_WRITE_TIMEOUT)) {
+  if (!pn532_send_cmd_check_ack(pn532_packetbuffer, 4, I2C_WRITE_TIMEOUT)) {
     ESP_LOGE(TAG, "Failed to receive ACK for write command");
     return false;
   }
 
   /* Read the response packet */
-  readdata(pn532_packetbuffer, 26);
+  pn532_read_data(pn532_packetbuffer, 26);
   ESP_LOG_LEVEL(MIFARE_LEVEL, TAG, "Received: ");
   ESP_LOG_BUFFER_HEX_LEVEL(TAG, pn532_packetbuffer, 26, MIFARE_LEVEL);
 
@@ -1394,7 +1398,7 @@ bool ntag2xx_ReadPage(uint8_t page, uint8_t* buffer) {
  @returns 1 if everything executed properly, 0 for an error
  */
 /**************************************************************************/
-bool ntag2xx_WritePage(uint8_t page, uint8_t* data) {
+bool ntag2xx_write_page(uint8_t page, uint8_t* data) {
   // TAG Type       PAGES   USER START    USER STOP
   // --------       -----   ----------    ---------
   // NTAG 203       42      4             39
@@ -1418,7 +1422,7 @@ bool ntag2xx_WritePage(uint8_t page, uint8_t* data) {
   memcpy(pn532_packetbuffer + 4, data, 4);             /* Data Payload */
 
   /* Send the command */
-  if (!sendCommandCheckAck(pn532_packetbuffer, 8, I2C_WRITE_TIMEOUT)) {
+  if (!pn532_send_cmd_check_ack(pn532_packetbuffer, 8, I2C_WRITE_TIMEOUT)) {
     ESP_LOGE(TAG, "Failed to receive ACK for write command");
     // Return Failed Signal
     return false;
@@ -1426,7 +1430,7 @@ bool ntag2xx_WritePage(uint8_t page, uint8_t* data) {
   vTaskDelay(10 / portTICK_PERIOD_MS);
 
   /* Read the response packet */
-  readdata(pn532_packetbuffer, 26);
+  pn532_read_data(pn532_packetbuffer, 26);
 
   // Return OK Signal
   return true;
@@ -1439,15 +1443,15 @@ bool ntag2xx_WritePage(uint8_t page, uint8_t* data) {
  Note that this function assumes that the NTAG2xx card is
  already formatted to work as an "NFC Forum Tag".
 
- @param  uriIdentifier The uri identifier code (0 = none, 0x01 =
+ @param  uri_identifier The uri identifier code (0 = none, 0x01 =
  "http://www.", etc.)
  @param  url           The uri text to write (null-terminated string).
- @param  dataLen       The size of the data area for overflow checks.
+ @param  data_len       The size of the data area for overflow checks.
 
  @returns 1 if everything executed properly, 0 for an error
  */
 /**************************************************************************/
-bool ntag2xx_WriteNDEFURI(uint8_t uriIdentifier, char* url, uint8_t dataLen) {
+bool ntag2xx_write_ndef_uri(uint8_t uri_identifier, char* url, uint8_t data_len) {
   uint8_t pageBuffer[4] = {0, 0, 0, 0};
 
   // Remove NDEF record overhead from the URI data (pageHeader below)
@@ -1456,8 +1460,8 @@ bool ntag2xx_WriteNDEFURI(uint8_t uriIdentifier, char* url, uint8_t dataLen) {
   // Figure out how long the string is
   uint8_t len = strlen(url);
 
-  // Make sure the URI payload will fit in dataLen (include 0xFE trailer)
-  if ((len < 1) || (len + 1 > (dataLen - wrapperSize))) {
+  // Make sure the URI payload will fit in data_len (include 0xFE trailer)
+  if ((len < 1) || (len + 1 > (data_len - wrapperSize))) {
     return false;
   }
 
@@ -1473,26 +1477,26 @@ bool ntag2xx_WriteNDEFURI(uint8_t uriIdentifier, char* url, uint8_t dataLen) {
       0x44, /* Size in bytes of a page and the number of bytes each lock bit can lock (4 bit + 4
                bits) */
       /* NDEF Message TLV - URI Record */
-      0x03,         /* Tag Field (0x03 = NDEF Message) */
-      len + 5,      /* Payload Length (not including 0xFE trailer) */
-      0xD1,         /* NDEF Record Header (TNF=0x1:Well known record + SR + ME + MB) */
-      0x01,         /* Type Length for the record type indicator */
-      len + 1,      /* Payload len */
-      0x55,         /* Record Type Indicator (0x55 or 'U' = URI Record) */
-      uriIdentifier /* URI Prefix (ex. 0x01 = "http://www.") */
+      0x03,          /* Tag Field (0x03 = NDEF Message) */
+      len + 5,       /* Payload Length (not including 0xFE trailer) */
+      0xD1,          /* NDEF Record Header (TNF=0x1:Well known record + SR + ME + MB) */
+      0x01,          /* Type Length for the record type indicator */
+      len + 1,       /* Payload len */
+      0x55,          /* Record Type Indicator (0x55 or 'U' = URI Record) */
+      uri_identifier /* URI Prefix (ex. 0x01 = "http://www.") */
   };
 
   // Write 12 byte header (three pages of data starting at page 4)
   memcpy(pageBuffer, pageHeader, 4);
-  if (!(ntag2xx_WritePage(4, pageBuffer))) {
+  if (!(ntag2xx_write_page(4, pageBuffer))) {
     return false;
   }
   memcpy(pageBuffer, pageHeader + 4, 4);
-  if (!(ntag2xx_WritePage(5, pageBuffer))) {
+  if (!(ntag2xx_write_page(5, pageBuffer))) {
     return false;
   }
   memcpy(pageBuffer, pageHeader + 8, 4);
-  if (!(ntag2xx_WritePage(6, pageBuffer))) {
+  if (!(ntag2xx_write_page(6, pageBuffer))) {
     return false;
   }
 
@@ -1504,20 +1508,20 @@ bool ntag2xx_WriteNDEFURI(uint8_t uriIdentifier, char* url, uint8_t dataLen) {
       memset(pageBuffer, 0, 4);
       memcpy(pageBuffer, urlcopy, len);
       pageBuffer[len] = 0xFE;  // NDEF record footer
-      if (!(ntag2xx_WritePage(currentPage, pageBuffer))) {
+      if (!(ntag2xx_write_page(currentPage, pageBuffer))) {
         return false;
       }
       // DONE!
       return true;
     } else if (len == 4) {
       memcpy(pageBuffer, urlcopy, len);
-      if (!(ntag2xx_WritePage(currentPage, pageBuffer))) {
+      if (!(ntag2xx_write_page(currentPage, pageBuffer))) {
         return false;
       }
       memset(pageBuffer, 0, 4);
       pageBuffer[0] = 0xFE;  // NDEF record footer
       currentPage++;
-      if (!(ntag2xx_WritePage(currentPage, pageBuffer))) {
+      if (!(ntag2xx_write_page(currentPage, pageBuffer))) {
         return false;
       }
       // DONE!
@@ -1525,7 +1529,7 @@ bool ntag2xx_WriteNDEFURI(uint8_t uriIdentifier, char* url, uint8_t dataLen) {
     } else {
       // More than one page of data left
       memcpy(pageBuffer, urlcopy, 4);
-      if (!(ntag2xx_WritePage(currentPage, pageBuffer))) {
+      if (!(ntag2xx_write_page(currentPage, pageBuffer))) {
         return false;
       }
       currentPage++;
@@ -1538,16 +1542,16 @@ bool ntag2xx_WriteNDEFURI(uint8_t uriIdentifier, char* url, uint8_t dataLen) {
   return true;
 }
 
-bool ntag2xx_Authenticate(uint8_t* pwd, uint8_t* pack) {
+bool ntag2xx_authenticate(uint8_t* pwd, uint8_t* pack) {
   pn532_packetbuffer[0] = PN532_COMMAND_INCOMMUNICATETHRU;
   pn532_packetbuffer[1] = MIFARE_PWD_AUTH_COMMAND;
   memcpy(pn532_packetbuffer + 2, pwd, 4);
 
-  if (!sendCommandCheckAck(pn532_packetbuffer, 6, I2C_WRITE_TIMEOUT)) {
+  if (!pn532_send_cmd_check_ack(pn532_packetbuffer, 6, I2C_WRITE_TIMEOUT)) {
     return false;
   }
 
-  readdata(pn532_packetbuffer, 12);
+  pn532_read_data(pn532_packetbuffer, 12);
 
   if (pn532_packetbuffer[7] != 0x00) {
     ESP_LOGE(TAG, "Authentification failed: ");

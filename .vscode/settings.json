@@ -73,6 +73,7 @@
     "condition_variable": "c",
     "future": "c",
     "esp_littlefs.h": "c",
-    "event_group.h": "c"
+    "event_group.h": "c",
+    "buzzer.h": "c"
   }
 }

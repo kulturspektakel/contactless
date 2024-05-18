@@ -26,9 +26,10 @@
 #define RSTPDN_PIN GPIO_NUM_36
 
 #define BATTERY_MAX 2070
+#define BATTERY_LOW 1700
 #define BATTERY_MIN 1500
 
-#define UPDATE_INTERVAL 60000
+#define UPDATE_INTERVAL 5000
 #define POWER_OFF_TIMEOUT 900000  // 15 minutes
 
 #define LED_BLUE_PIN GPIO_NUM_40
@@ -72,21 +73,14 @@ static void IRAM_ATTR gpio_interrupt_handler(void* args) {
 }
 
 static void update_leds() {
-  // if (battery_voltage > BATTERY_MAX && usb_voltage > USB_VOLTAGE_THRESHOLD) {
-  //   // green
-  //   gpio_set_level(LED_BLUE_PIN, 1);
-  //   gpio_set_level(LED_GREEN_PIN, 0);
-  //   gpio_set_level(LED_RED_PIN, 1);
-  // } else if (usb_voltage > USB_VOLTAGE_THRESHOLD) {
-  //   // orange
-  //   gpio_set_level(LED_BLUE_PIN, 0);
-  //   gpio_set_level(LED_GREEN_PIN, 1);
-  //   gpio_set_level(LED_RED_PIN, 1);
-  // } else
-  if (battery_voltage < 1700) {
+  if (battery_voltage < BATTERY_LOW) {
     // red
     gpio_set_level(LED_BLUE_PIN, 1);
     gpio_set_level(LED_GREEN_PIN, 1);
+    gpio_set_level(LED_RED_PIN, 0);
+  } else if (usb_voltage > USB_VOLTAGE_THRESHOLD) {
+    gpio_set_level(LED_BLUE_PIN, 0);
+    gpio_set_level(LED_GREEN_PIN, 0);
     gpio_set_level(LED_RED_PIN, 0);
   } else {
     // turn off all LEDs
@@ -140,12 +134,6 @@ static void power_off_timer_callback(TimerHandle_t xTimer) {
   esp_deep_sleep_start();
 }
 
-void reset_power_off_timer() {
-  if (power_off_timer_handle != NULL) {
-    xTimerReset(power_off_timer_handle, pdMS_TO_TICKS(POWER_OFF_TIMEOUT));
-  }
-}
-
 static void read_voltages() {
   adc_oneshot_unit_handle_t adc1_handle;
   adc_oneshot_unit_init_cfg_t init_config = {
@@ -165,6 +153,11 @@ static void read_voltages() {
   adc_calibration_init(init_config.unit_id, BATTERY_CHANNEL, config.atten, &battery_cali_handle);
   adc_cali_handle_t usb_cali_handle = NULL;
   adc_calibration_init(init_config.unit_id, USB_CHANNEL, config.atten, &usb_cali_handle);
+
+  if (battery_cali_handle == NULL || usb_cali_handle == NULL) {
+    ESP_LOGE(TAG, "Failed to initialize calibration");
+    return;
+  }
 
   battery_voltage = 0;
   usb_voltage = 0;
@@ -189,6 +182,12 @@ static void read_voltages() {
   update_leds();
 }
 
+void reset_power_off_timer() {
+  if (power_off_timer_handle != NULL) {
+    xTimerReset(power_off_timer_handle, pdMS_TO_TICKS(POWER_OFF_TIMEOUT));
+  }
+}
+
 void power_management(void* params) {
   task_handle = xTaskGetCurrentTaskHandle();
   read_voltages();
@@ -206,7 +205,7 @@ void power_management(void* params) {
   gpio_config(&led_config);
 
   gpio_config_t io_conf = {
-      .intr_type = GPIO_INTR_NEGEDGE,
+      .intr_type = GPIO_INTR_ANYEDGE,
       .pin_bit_mask = (1ULL << USB_PIN),
       .mode = GPIO_MODE_INPUT,
       .pull_down_en = 1,
@@ -220,19 +219,23 @@ void power_management(void* params) {
   }
 
   while (true) {
+    // need to setup USB interrupt again, after reading voltages
     gpio_config(&io_conf);
-    gpio_set_intr_type(USB_PIN, GPIO_INTR_NEGEDGE);
     gpio_isr_handler_add(USB_PIN, gpio_interrupt_handler, (void*)USB_PIN);
     gpio_intr_enable(USB_PIN);
-
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-
     gpio_intr_disable(USB_PIN);
-    ulTaskNotifyTake(pdTRUE, 0);  // clear remaining interrupt notifications
-
+    gpio_isr_handler_remove(USB_PIN);
     vTaskDelay(200 / portTICK_PERIOD_MS);
+    // while unplugging, multiple interrupts might be triggered
+    // clear all pending notifications that might have been triggered in the meantime
+    ulTaskNotifyTake(pdTRUE, 0);
     int old_usb_voltage = usb_voltage;
     read_voltages();
+
+    // if (battery_voltage < BATTERY_LOW) {
+    //   trigger_beep(LOW_BATTERY);
+    // }
 
     if (old_usb_voltage < USB_VOLTAGE_THRESHOLD && usb_voltage > USB_VOLTAGE_THRESHOLD) {
       // USB was just plugged in, start power off timer
@@ -246,7 +249,8 @@ void power_management(void* params) {
         );
       }
       reset_power_off_timer();
-    } else if (old_usb_voltage > USB_VOLTAGE_THRESHOLD && usb_voltage < USB_VOLTAGE_THRESHOLD) {
+    } else if (old_usb_voltage > USB_VOLTAGE_THRESHOLD && usb_voltage < USB_VOLTAGE_THRESHOLD &&
+               power_off_timer_handle != NULL) {
       // USB was just unplugged, disable power off timer
       xTimerDelete(power_off_timer_handle, 0);
       power_off_timer_handle = NULL;

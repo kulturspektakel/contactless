@@ -41,7 +41,7 @@
 #define PN532_COMMAND_WRITEGPIO (0x0E)
 #define PN532_COMMAND_SETSERIALBAUDRATE (0x10)
 #define PN532_COMMAND_SETPARAMETERS (0x12)
-#define PN532_COMMAND_SAMCONFIGURATION (0x14)
+#define PN532_COMMAND_pn532_sam_configurationURATION (0x14)
 #define PN532_COMMAND_POWERDOWN (0x16)
 #define PN532_COMMAND_RFCONFIGURATION (0x32)
 #define PN532_COMMAND_RFREGULATIONTEST (0x58)
@@ -147,63 +147,59 @@
 #define IRQ_WAIT_TIMEOUT 1000   // ms
 
 // Initialize the I2C the the reset/IRQ pint
-bool init_PN532_I2C(
-    uint8_t sda,
-    uint8_t scl,
-    uint8_t reset,
-    uint8_t irq,
-    i2c_port_t i2c_port_number
-);
+bool pn532_init(uint8_t sda, uint8_t scl, uint8_t reset, uint8_t irq, i2c_port_t i2c_port_number);
 
 // Generic PN532 functions
-bool SAMConfig(void);
-uint32_t getPN532FirmwareVersion(void);
-bool sendCommandCheckAck(uint8_t* cmd, uint8_t cmdlen, uint16_t timeout);
-bool writeGPIO(uint8_t pinstate);
-uint8_t readGPIO(void);
-bool setPassiveActivationRetries(uint8_t maxRetries);
-bool readdata(uint8_t* buff, uint8_t n);
+bool pn532_sam_configuration(void);
+uint32_t pn532_get_firmware_version(void);
+bool pn532_send_cmd_check_ack(uint8_t* cmd, uint8_t cmdlen, uint16_t timeout);
+bool pn532_write_gpio(uint8_t pinstate);
+uint8_t pn532_read_gpio(void);
+bool pn532_set_passive_activation_retries(uint8_t max_retries);
+bool pn532_read_data(uint8_t* buff, uint8_t n);
 
 // ISO14443A functions
-bool readPassiveTargetID(
+bool iso14443a_read_passive_target_id(
     uint8_t cardbaudrate,
     uint8_t* uid,
-    uint8_t* uidLength,
+    uint8_t* uid_len,
     uint16_t timeout
 );  // timeout 0 means no timeout - will block forever.
-bool inDataExchange(uint8_t* send, uint8_t sendLength, uint8_t* response, uint8_t* responseLength);
-bool inListPassiveTarget();
-bool inAutoPoll(uint8_t period);
-bool inDeselect();
+bool iso14443a_in_data_exchange(
+    uint8_t* send,
+    uint8_t send_len,
+    uint8_t* response,
+    uint8_t* response_len
+);
+bool iso14443a_in_list_passive_targers();
+bool iso14443a_in_auto_poll(uint8_t period);
+bool iso14443a_in_deselect();
 
 // Mifare Classic functions
-bool mifareclassic_IsFirstBlock(uint32_t uiBlock);
-bool mifareclassic_IsTrailerBlock(uint32_t uiBlock);
-bool mifareclassic_AuthenticateBlock(
+bool mfc_is_first_block(uint32_t uiBlock);
+bool mfc_is_trailer_block(uint32_t uiBlock);
+bool mfc_authenticate_block(
     uint8_t* uid,
     uint8_t uidLen,
-    uint32_t blockNumber,
-    uint8_t keyNumber,
-    uint8_t* keyData
+    uint32_t block_num,
+    uint8_t key_num,
+    uint8_t* key_data
 );
-bool mifareclassic_ReadDataBlock(uint8_t blockNumber, uint8_t* data);
-bool mifareclassic_WriteDataBlock(uint8_t blockNumber, uint8_t* data);
-bool mifareclassic_FormatNDEF(void);
-bool mifareclassic_WriteNDEFURI(uint8_t sectorNumber, uint8_t uriIdentifier, const char* url);
+bool mfc_read_data_block(uint8_t block_num, uint8_t* data);
+bool mfc_write_data_block(uint8_t block_num, uint8_t* data);
+bool mfc_format_ndef(void);
+bool mfc_write_ndef_uri(uint8_t sector_num, uint8_t uri_identifier, const char* url);
 
 // Mifare Ultralight functions
-bool mifareultralight_ReadPage(uint8_t page, uint8_t* buffer, uint8_t bufferSize);
-bool mifareultralight_WritePage(uint8_t page, uint8_t* data);
-bool mifareultralight_IncrementCounter(uint8_t counter, uint8_t value);
-bool mifareultralight_ReadCounter(uint8_t counter, uint16_t* value);
+bool mfu_read_page(uint8_t page, uint8_t* buffer, uint8_t buffer_size);
+bool mfu_write_page(uint8_t page, uint8_t* data);
+bool mfu_increment_counter(uint8_t counter, uint8_t value);
+bool mfu_read_counter(uint8_t counter, uint16_t* value);
 
 // NTAG2xx functions
-bool ntag2xx_ReadPage(uint8_t page, uint8_t* buffer);
-bool ntag2xx_WritePage(uint8_t page, uint8_t* data);
-bool ntag2xx_WriteNDEFURI(uint8_t uriIdentifier, char* url, uint8_t dataLen);
-bool ntag2xx_Authenticate(uint8_t* pwd, uint8_t* pack);
-
-// Target command
-bool initiate_as_target_106();
+bool ntag2xx_read_page(uint8_t page, uint8_t* buffer);
+bool ntag2xx_write_page(uint8_t page, uint8_t* data);
+bool ntag2xx_write_ndef_uri(uint8_t uri_identifier, char* url, uint8_t data_len);
+bool ntag2xx_authenticate(uint8_t* pwd, uint8_t* pack);
 
 #endif
