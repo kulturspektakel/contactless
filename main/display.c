@@ -53,7 +53,7 @@ static void animation_timer_cb(TimerHandle_t timer) {
   xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
 }
 
-static void battery(u8g2_t* u8g2) {
+static int battery(u8g2_t* u8g2) {
   int offset = DISPLAY_WIDTH - 1;
 
   if (usb_voltage > USB_VOLTAGE_THRESHOLD) {
@@ -63,6 +63,8 @@ static void battery(u8g2_t* u8g2) {
     u8g2_DrawBox(u8g2, offset - 6, 0, 4, 5);
     u8g2_DrawVLine(u8g2, offset - 7, 1, 3);
     u8g2_DrawHLine(u8g2, offset - 10, 2, 3);
+
+    offset -= 10;
   } else {
     // battery icon
     int BATTERY_WIDTH = 8;
@@ -76,9 +78,10 @@ static void battery(u8g2_t* u8g2) {
     u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
     char buffer[10];
     snprintf(buffer, sizeof(buffer), "%d%%", percentage);
-    u8g2_uint_t w = u8g2_GetStrWidth(u8g2, buffer);
-    u8g2_DrawStr(u8g2, DISPLAY_WIDTH - w - 13, 5, buffer);
+    offset -= u8g2_GetStrWidth(u8g2, buffer) + 12;
+    u8g2_DrawStr(u8g2, offset, 5, buffer);
   }
+  return offset;
 }
 
 static bool animation_tick(int ms, int64_t* last_time_ms) {
@@ -137,15 +140,18 @@ static void wifi_strength(u8g2_t* u8g2) {
   }
 }
 
-static void pending_uploads(u8g2_t* u8g2) {
+static void pending_uploads(u8g2_t* u8g2, int offset) {
+  if (current_state.log_files_to_upload < 1) {
+    return;
+  }
   u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
   char pending[4];
   sprintf(pending, "%3d", current_state.log_files_to_upload);
   // render right aligned
-  u8g2_uint_t w = u8g2_GetStrWidth(u8g2, pending);
-  u8g2_DrawStr(u8g2, DISPLAY_WIDTH - 16 - w, 5, pending);
+  offset -= u8g2_GetStrWidth(u8g2, pending) + 4;
+  u8g2_DrawStr(u8g2, offset, 5, pending);
   u8g2_SetFont(u8g2, u8g2_font_m2icon_5_tf);
-  u8g2_DrawStr(u8g2, DISPLAY_WIDTH - 18 - w, 5, "B");
+  u8g2_DrawStr(u8g2, offset - 2, 5, "b");
 }
 
 static void time_display(u8g2_t* u8g2) {
@@ -191,9 +197,9 @@ static void keypad_legend(u8g2_t* u8g2, bool with_navigation) {
 }
 
 static void status_bar(u8g2_t* u8g2) {
-  battery(u8g2);
+  int offset = battery(u8g2);
   wifi_strength(u8g2);
-  pending_uploads(u8g2);
+  pending_uploads(u8g2, offset);
   time_display(u8g2);
 }
 

@@ -1,5 +1,6 @@
 #include "power_management.h"
 #include "driver/gpio.h"
+#include "driver/ledc.h"
 #include "driver/rtc_io.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
@@ -29,7 +30,7 @@
 #define BATTERY_LOW 1700
 #define BATTERY_MIN 1500
 
-#define UPDATE_INTERVAL 5000
+#define UPDATE_INTERVAL 60000
 #define POWER_OFF_TIMEOUT 900000  // 15 minutes
 
 #define LED_BLUE_PIN GPIO_NUM_40
@@ -72,22 +73,51 @@ static void IRAM_ATTR gpio_interrupt_handler(void* args) {
   vTaskNotifyGiveFromISR(task_handle, NULL);
 }
 
-static void update_leds() {
-  if (battery_voltage < BATTERY_LOW) {
-    // red
-    gpio_set_level(LED_BLUE_PIN, 1);
-    gpio_set_level(LED_GREEN_PIN, 1);
-    gpio_set_level(LED_RED_PIN, 0);
-  } else if (usb_voltage > USB_VOLTAGE_THRESHOLD) {
-    gpio_set_level(LED_BLUE_PIN, 0);
-    gpio_set_level(LED_GREEN_PIN, 0);
-    gpio_set_level(LED_RED_PIN, 0);
-  } else {
-    // turn off all LEDs
-    gpio_set_level(LED_BLUE_PIN, 1);
-    gpio_set_level(LED_GREEN_PIN, 1);
-    gpio_set_level(LED_RED_PIN, 1);
+static void ledc_init() {
+  // Prepare and set configuration of timers that control PWM
+  ledc_timer_config_t ledc_timer = {
+      .duty_resolution = LEDC_TIMER_8_BIT,
+      .freq_hz = 5000,
+      .speed_mode = LEDC_LOW_SPEED_MODE,
+      .timer_num = LEDC_TIMER_0
+  };
+  ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
+
+  ledc_channel_config_t ledc_channel[3] = {
+      {.channel = LEDC_CHANNEL_0,
+       .duty = 0,
+       .gpio_num = LED_RED_PIN,
+       .flags = {.output_invert = 1},
+       .speed_mode = ledc_timer.speed_mode,
+       .timer_sel = ledc_timer.timer_num},
+      {.channel = LEDC_CHANNEL_1,
+       .duty = 0,
+       .gpio_num = LED_GREEN_PIN,
+       .flags = {.output_invert = 1},
+       .speed_mode = ledc_timer.speed_mode,
+       .timer_sel = ledc_timer.timer_num},
+      {.channel = LEDC_CHANNEL_2,
+       .duty = 0,
+       .gpio_num = LED_BLUE_PIN,
+       .flags = {.output_invert = 1},
+       .speed_mode = ledc_timer.speed_mode,
+       .timer_sel = ledc_timer.timer_num}
+  };
+
+  // Configure the three LEDC channels
+  for (int ch = 0; ch < 3; ch++) {
+    ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel[ch]));
   }
+}
+
+static void set_rgb_color(uint8_t red, uint8_t green, uint8_t blue) {
+  ESP_LOGI(TAG, "Setting RGB color: %d %d %d", red, green, blue);
+  ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, red);
+  ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+  ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, green);
+  ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1);
+  ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_2, blue);
+  ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_2);
 }
 
 static void power_off_timer_callback(TimerHandle_t xTimer) {
@@ -179,7 +209,16 @@ static void read_voltages() {
 
   ESP_ERROR_CHECK(adc_oneshot_del_unit(adc1_handle));
 
-  update_leds();
+  if (battery_voltage < BATTERY_LOW) {
+    // red
+    set_rgb_color(255, 0, 0);
+  } else if (usb_voltage > USB_VOLTAGE_THRESHOLD) {
+    // white
+    set_rgb_color(255, 255, 255);
+  } else {
+    // turn off all LEDs
+    set_rgb_color(0, 0, 0);
+  }
 }
 
 void reset_power_off_timer() {
@@ -190,19 +229,9 @@ void reset_power_off_timer() {
 
 void power_management(void* params) {
   task_handle = xTaskGetCurrentTaskHandle();
+  ledc_init();
   read_voltages();
-
   gpio_install_isr_service(0);
-
-  // setup LED pins
-  gpio_config_t led_config = {
-      .pin_bit_mask = (1ULL << LED_BLUE_PIN) | (1ULL << LED_GREEN_PIN) | (1ULL << LED_RED_PIN),
-      .mode = GPIO_MODE_OUTPUT,
-      .pull_up_en = 0,
-      .pull_down_en = 0,
-      .intr_type = GPIO_INTR_DISABLE,
-  };
-  gpio_config(&led_config);
 
   gpio_config_t io_conf = {
       .intr_type = GPIO_INTR_ANYEDGE,
