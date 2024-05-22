@@ -39,14 +39,14 @@ void turnon_cols() {
 
 static void IRAM_ATTR gpio_interrupt_handler(void* args) {
   static int64_t time_old_isr = 0;
-  int r = (int)(args);
+  uint8_t r = *(uint8_t*)args;
   int64_t time_now_isr = esp_timer_get_time();
 
   if (time_now_isr - time_old_isr >= 200000) {  // 200ms debounce
     turnon_cols();
     for (int c = 0; c < 4; c++) {
       if (!gpio_get_level(KEYPAD_COLS[c])) {
-        xQueueSendFromISR(keypad_queue, &KEYPAD[r * 4 + c - 4], NULL);
+        xQueueSendFromISR(keypad_queue, &KEYPAD[r * 4 + c], NULL);
         break;
       }
     }
@@ -64,12 +64,13 @@ void keypad(void* params) {
   }
 
   ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_install_isr_service(ESP_INTR_FLAG_EDGE));
-  for (int r = 0; r < 4; r++) {  // Rows
+  for (uint8_t r = 0; r < 4; r++) {  // Rows
     gpio_intr_disable(KEYPAD_ROWS[r]);
     gpio_set_direction(KEYPAD_ROWS[r], GPIO_MODE_INPUT);
     gpio_set_intr_type(KEYPAD_ROWS[r], GPIO_INTR_NEGEDGE);
-    ESP_ERROR_CHECK_WITHOUT_ABORT(
-        gpio_isr_handler_add(KEYPAD_ROWS[r], (void*)gpio_interrupt_handler, (void*)r)
+    uint8_t* arg = pvPortMalloc(sizeof(uint8_t));
+    *arg = r;
+    ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_isr_handler_add(KEYPAD_ROWS[r], gpio_interrupt_handler, arg)
     );
   }
   for (int c = 0; c < 4; c++) {  // Columns

@@ -40,7 +40,7 @@
 int battery_voltage = 0;
 int usb_voltage = 0;
 static TaskHandle_t task_handle;
-static TimerHandle_t power_off_timer_handle = NULL;
+static TimerHandle_t power_off_timer = NULL;
 
 int battery_percentage() {
   // https://www.desmos.com/calculator/jymu8kltny
@@ -120,34 +120,39 @@ static void set_rgb_color(uint8_t red, uint8_t green, uint8_t blue) {
   ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_2);
 }
 
+static void gpio_config_for_wakeup(gpio_num_t pin) {
+  gpio_isr_handler_remove(pin);
+  gpio_reset_pin(pin);
+  rtc_gpio_init(pin);
+  rtc_gpio_set_direction(pin, RTC_GPIO_MODE_INPUT_ONLY);
+  rtc_gpio_pullup_dis(pin);
+  rtc_gpio_pulldown_en(pin);
+}
+
 static void power_off_timer_callback(TimerHandle_t xTimer) {
   ESP_LOGI(TAG, "Powering off");
   if (usb_voltage > USB_VOLTAGE_THRESHOLD) {
     ESP_LOGI(TAG, "USB still connected, not powering off");
-    return;
+    // TODO return;
   }
+  UBaseType_t uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);
+  ESP_LOGI(TAG, "watermarkt %d", uxHighWaterMark);
 
   trigger_event(ENTER_POWER_SAVE);
-  gpio_config_t io_conf;
-  io_conf.intr_type = GPIO_INTR_DISABLE;
-  io_conf.mode = GPIO_MODE_OUTPUT;
-  io_conf.pin_bit_mask = (1ULL << RSTPDN_PIN);
-  io_conf.pull_down_en = 1;
-  io_conf.pull_up_en = 0;
-  gpio_config(&io_conf);
-  gpio_set_level(RSTPDN_PIN, 0);
+  // gpio_config_t io_conf;
+  // io_conf.intr_type = GPIO_INTR_DISABLE;
+  // io_conf.mode = GPIO_MODE_OUTPUT;
+  // io_conf.pin_bit_mask = (1ULL << RSTPDN_PIN);
+  // io_conf.pull_down_en = 1;
+  // io_conf.pull_up_en = 0;
+  // gpio_config(&io_conf);
+  // gpio_set_level(RSTPDN_PIN, 0);
 
-  // Initialize and configure each RTC GPIO pin in a loop
   uint64_t rtc_gpio_mask = 0;
   for (int i = 0; i < 4; i++) {
     // input
     gpio_num_t pin = KEYPAD_ROWS[i];
-    gpio_isr_handler_remove(pin);
-    gpio_reset_pin(pin);
-    rtc_gpio_init(pin);
-    rtc_gpio_set_direction(pin, RTC_GPIO_MODE_INPUT_ONLY);
-    rtc_gpio_pullup_dis(pin);
-    rtc_gpio_pulldown_en(pin);
+    gpio_config_for_wakeup(pin);
     rtc_gpio_mask |= (1ULL << pin);
 
     // output
@@ -158,6 +163,10 @@ static void power_off_timer_callback(TimerHandle_t xTimer) {
     rtc_gpio_set_direction(pin, RTC_GPIO_MODE_OUTPUT_ONLY);
     rtc_gpio_set_level(pin, 1);
   }
+
+  // Wake up on USB plug
+  // gpio_config_for_wakeup(USB_PIN);
+  // rtc_gpio_mask |= (1ULL << USB_PIN);
 
   esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
   esp_sleep_enable_ext1_wakeup(rtc_gpio_mask, ESP_EXT1_WAKEUP_ANY_HIGH);
@@ -207,23 +216,12 @@ static void read_voltages() {
     vTaskDelay(1 / portTICK_PERIOD_MS);
   }
 
-  ESP_ERROR_CHECK(adc_oneshot_del_unit(adc1_handle));
-
-  if (battery_voltage < BATTERY_LOW) {
-    // red
-    set_rgb_color(255, 0, 0);
-  } else if (usb_voltage > USB_VOLTAGE_THRESHOLD) {
-    // white
-    set_rgb_color(255, 255, 255);
-  } else {
-    // turn off all LEDs
-    set_rgb_color(0, 0, 0);
-  }
+  adc_oneshot_del_unit(adc1_handle);
 }
 
 void reset_power_off_timer() {
-  if (power_off_timer_handle != NULL) {
-    xTimerReset(power_off_timer_handle, pdMS_TO_TICKS(POWER_OFF_TIMEOUT));
+  if (power_off_timer != NULL) {
+    xTimerResetFromISR(power_off_timer, pdMS_TO_TICKS(POWER_OFF_TIMEOUT));
   }
 }
 
@@ -231,30 +229,33 @@ void power_management(void* params) {
   task_handle = xTaskGetCurrentTaskHandle();
   ledc_init();
   read_voltages();
-  gpio_install_isr_service(0);
-
-  gpio_config_t io_conf = {
-      .intr_type = GPIO_INTR_ANYEDGE,
-      .pin_bit_mask = (1ULL << USB_PIN),
-      .mode = GPIO_MODE_INPUT,
-      .pull_down_en = 1,
-  };
+  gpio_install_isr_service(ESP_INTR_FLAG_EDGE);
 
   TimerHandle_t voltage_update_timer = xTimerCreate(
       "voltage_update_timer", pdMS_TO_TICKS(UPDATE_INTERVAL), pdTRUE, 0, gpio_interrupt_handler
   );
-  if (voltage_update_timer != NULL) {
-    xTimerStart(voltage_update_timer, pdMS_TO_TICKS(UPDATE_INTERVAL));
-  }
+  xTimerStart(voltage_update_timer, pdMS_TO_TICKS(UPDATE_INTERVAL));
+
+  // TODO ******
+  // power_off_timer =
+  //     xTimerCreate("power_off_timer", pdMS_TO_TICKS(3000), pdFALSE, 0, power_off_timer_callback);
+  // xTimerStart(power_off_timer, 0);
+  // ******
 
   while (true) {
     // need to setup USB interrupt again, after reading voltages
+    gpio_config_t io_conf = {
+        .intr_type = GPIO_INTR_ANYEDGE,
+        .pin_bit_mask = (1ULL << USB_PIN),
+        .mode = GPIO_MODE_INPUT,
+        .pull_down_en = 1,
+    };
+
     gpio_config(&io_conf);
-    gpio_isr_handler_add(USB_PIN, gpio_interrupt_handler, (void*)USB_PIN);
-    gpio_intr_enable(USB_PIN);
+    gpio_isr_handler_add(USB_PIN, gpio_interrupt_handler, NULL);
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    gpio_intr_disable(USB_PIN);
-    gpio_isr_handler_remove(USB_PIN);
+    // gpio_isr_handler_remove(USB_PIN);
+
     vTaskDelay(200 / portTICK_PERIOD_MS);
     // while unplugging, multiple interrupts might be triggered
     // clear all pending notifications that might have been triggered in the meantime
@@ -266,10 +267,21 @@ void power_management(void* params) {
     //   trigger_beep(LOW_BATTERY);
     // }
 
-    if (old_usb_voltage < USB_VOLTAGE_THRESHOLD && usb_voltage > USB_VOLTAGE_THRESHOLD) {
-      // USB was just plugged in, start power off timer
-      if (power_off_timer_handle == NULL) {
-        power_off_timer_handle = xTimerCreate(
+    if (battery_voltage < BATTERY_LOW) {
+      // red
+      set_rgb_color(255, 0, 0);
+    } else if (usb_voltage > USB_VOLTAGE_THRESHOLD) {
+      // white
+      set_rgb_color(255, 255, 255);
+    } else {
+      // turn off all LEDs
+      set_rgb_color(0, 0, 0);
+    }
+
+    if (old_usb_voltage > USB_VOLTAGE_THRESHOLD && usb_voltage < USB_VOLTAGE_THRESHOLD) {
+      // USB was just plugged unplugged, start power off timer
+      if (power_off_timer == NULL) {
+        power_off_timer = xTimerCreate(
             "power_off_timer",
             pdMS_TO_TICKS(POWER_OFF_TIMEOUT),
             pdFALSE,
@@ -278,11 +290,11 @@ void power_management(void* params) {
         );
       }
       reset_power_off_timer();
-    } else if (old_usb_voltage > USB_VOLTAGE_THRESHOLD && usb_voltage < USB_VOLTAGE_THRESHOLD &&
-               power_off_timer_handle != NULL) {
-      // USB was just unplugged, disable power off timer
-      xTimerDelete(power_off_timer_handle, 0);
-      power_off_timer_handle = NULL;
+    } else if (old_usb_voltage < USB_VOLTAGE_THRESHOLD && usb_voltage > USB_VOLTAGE_THRESHOLD &&
+               power_off_timer != NULL) {
+      // USB was just plugged in, disable power off timer
+      xTimerDelete(power_off_timer, 0);
+      power_off_timer = NULL;
     }
 
     ESP_LOGI(TAG, "USB %dmV, battery %dmV", usb_voltage, battery_voltage);
