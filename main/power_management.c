@@ -20,11 +20,10 @@
 #define BATTERY_CHANNEL ADC_CHANNEL_1
 #define USB_PIN GPIO_NUM_1
 
-// TODO: disabled because it needs to be a RTC GPIO pin (14 or 21)
 // Reset and Power-Down: When low, internal current sources are switched off, the oscillator is
 // disabled, and input pads are disconnected from the outside world. The internal reset phase
 // starts on the negative edge on this pin.
-#define RSTPDN_PIN GPIO_NUM_36
+#define RSTPDN_PIN GPIO_NUM_14
 
 #define BATTERY_MAX 2070
 #define BATTERY_LOW 1700
