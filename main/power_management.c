@@ -40,6 +40,9 @@ int battery_voltage = 0;
 int usb_voltage = 0;
 static TaskHandle_t task_handle;
 static TimerHandle_t power_off_timer = NULL;
+static adc_oneshot_unit_handle_t adc1_handle;
+static adc_cali_handle_t battery_cali_handle = NULL;
+static adc_cali_handle_t usb_cali_handle = NULL;
 
 int battery_percentage() {
   // https://www.desmos.com/calculator/jymu8kltny
@@ -132,20 +135,18 @@ static void power_off_timer_callback(TimerHandle_t xTimer) {
   ESP_LOGI(TAG, "Powering off");
   if (usb_voltage > USB_VOLTAGE_THRESHOLD) {
     ESP_LOGI(TAG, "USB still connected, not powering off");
-    // TODO return;
+    return;
   }
-  UBaseType_t uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);
-  ESP_LOGI(TAG, "watermarkt %d", uxHighWaterMark);
 
   trigger_event(ENTER_POWER_SAVE);
-  // gpio_config_t io_conf;
-  // io_conf.intr_type = GPIO_INTR_DISABLE;
-  // io_conf.mode = GPIO_MODE_OUTPUT;
-  // io_conf.pin_bit_mask = (1ULL << RSTPDN_PIN);
-  // io_conf.pull_down_en = 1;
-  // io_conf.pull_up_en = 0;
-  // gpio_config(&io_conf);
-  // gpio_set_level(RSTPDN_PIN, 0);
+  gpio_config_t io_conf;
+  io_conf.intr_type = GPIO_INTR_DISABLE;
+  io_conf.mode = GPIO_MODE_OUTPUT;
+  io_conf.pin_bit_mask = (1ULL << RSTPDN_PIN);
+  io_conf.pull_down_en = 1;
+  io_conf.pull_up_en = 0;
+  gpio_config(&io_conf);
+  gpio_set_level(RSTPDN_PIN, 0);
 
   uint64_t rtc_gpio_mask = 0;
   for (int i = 0; i < 4; i++) {
@@ -164,8 +165,8 @@ static void power_off_timer_callback(TimerHandle_t xTimer) {
   }
 
   // Wake up on USB plug
-  // gpio_config_for_wakeup(USB_PIN);
-  // rtc_gpio_mask |= (1ULL << USB_PIN);
+  gpio_config_for_wakeup(USB_PIN);
+  rtc_gpio_mask |= (1ULL << USB_PIN);
 
   esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
   esp_sleep_enable_ext1_wakeup(rtc_gpio_mask, ESP_EXT1_WAKEUP_ANY_HIGH);
@@ -173,30 +174,6 @@ static void power_off_timer_callback(TimerHandle_t xTimer) {
 }
 
 static void read_voltages() {
-  adc_oneshot_unit_handle_t adc1_handle;
-  adc_oneshot_unit_init_cfg_t init_config = {
-      .unit_id = ADC_UNIT_1,
-      .ulp_mode = ADC_ULP_MODE_DISABLE,
-  };
-  ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config, &adc1_handle));
-
-  adc_oneshot_chan_cfg_t config = {
-      .bitwidth = ADC_BITWIDTH_DEFAULT,
-      .atten = ADC_ATTEN_DB_11,
-  };
-  ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, BATTERY_CHANNEL, &config));
-  ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, USB_CHANNEL, &config));
-
-  adc_cali_handle_t battery_cali_handle = NULL;
-  adc_calibration_init(init_config.unit_id, BATTERY_CHANNEL, config.atten, &battery_cali_handle);
-  adc_cali_handle_t usb_cali_handle = NULL;
-  adc_calibration_init(init_config.unit_id, USB_CHANNEL, config.atten, &usb_cali_handle);
-
-  if (battery_cali_handle == NULL || usb_cali_handle == NULL) {
-    ESP_LOGE(TAG, "Failed to initialize calibration");
-    return;
-  }
-
   battery_voltage = 0;
   usb_voltage = 0;
   int battery_voltage_tmp;
@@ -214,8 +191,6 @@ static void read_voltages() {
     // delay to allow ADC to settle
     vTaskDelay(1 / portTICK_PERIOD_MS);
   }
-
-  adc_oneshot_del_unit(adc1_handle);
 }
 
 void reset_power_off_timer() {
@@ -224,10 +199,30 @@ void reset_power_off_timer() {
   }
 }
 
+static void init_voltage_measurements() {
+  adc_oneshot_unit_init_cfg_t init_config = {
+      .unit_id = ADC_UNIT_1,
+      .ulp_mode = ADC_ULP_MODE_DISABLE,
+  };
+  ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config, &adc1_handle));
+  adc_oneshot_chan_cfg_t config = {
+      .bitwidth = ADC_BITWIDTH_DEFAULT,
+      .atten = ADC_ATTEN_DB_11,
+  };
+  ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, BATTERY_CHANNEL, &config));
+  ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, USB_CHANNEL, &config));
+  adc_calibration_init(init_config.unit_id, BATTERY_CHANNEL, config.atten, &battery_cali_handle);
+  adc_calibration_init(init_config.unit_id, USB_CHANNEL, config.atten, &usb_cali_handle);
+  if (battery_cali_handle == NULL || usb_cali_handle == NULL) {
+    ESP_LOGE(TAG, "Failed to initialize calibration");
+    return;
+  }
+}
+
 void power_management(void* params) {
+  init_voltage_measurements();
   task_handle = xTaskGetCurrentTaskHandle();
   ledc_init();
-  read_voltages();
   gpio_install_isr_service(ESP_INTR_FLAG_EDGE);
 
   TimerHandle_t voltage_update_timer = xTimerCreate(
@@ -235,11 +230,8 @@ void power_management(void* params) {
   );
   xTimerStart(voltage_update_timer, pdMS_TO_TICKS(UPDATE_INTERVAL));
 
-  // TODO ******
-  // power_off_timer =
-  //     xTimerCreate("power_off_timer", pdMS_TO_TICKS(3000), pdFALSE, 0, power_off_timer_callback);
-  // xTimerStart(power_off_timer, 0);
-  // ******
+  // notify for initial reading
+  xTaskNotifyGive(task_handle);
 
   while (true) {
     // need to setup USB interrupt again, after reading voltages
@@ -249,11 +241,9 @@ void power_management(void* params) {
         .mode = GPIO_MODE_INPUT,
         .pull_down_en = 1,
     };
-
     gpio_config(&io_conf);
     gpio_isr_handler_add(USB_PIN, gpio_interrupt_handler, NULL);
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    // gpio_isr_handler_remove(USB_PIN);
 
     vTaskDelay(200 / portTICK_PERIOD_MS);
     // while unplugging, multiple interrupts might be triggered
@@ -262,12 +252,9 @@ void power_management(void* params) {
     int old_usb_voltage = usb_voltage;
     read_voltages();
 
-    // if (battery_voltage < BATTERY_LOW) {
-    //   trigger_beep(LOW_BATTERY);
-    // }
-
     if (battery_voltage < BATTERY_LOW) {
       // red
+      //   trigger_beep(LOW_BATTERY);
       set_rgb_color(255, 0, 0);
     } else if (usb_voltage > USB_VOLTAGE_THRESHOLD) {
       // white

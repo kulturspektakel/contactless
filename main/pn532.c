@@ -78,7 +78,7 @@ static void resetPN532() {
  @param  cmdlen    Command length in bytes
  */
 /**************************************************************************/
-void write_command(uint8_t* cmd, uint8_t cmdlen) {
+void writecommand(uint8_t* cmd, uint8_t cmdlen) {
   // I2C command write.
   uint8_t checksum;
 
@@ -246,9 +246,9 @@ bool pn532_init(uint8_t sda, uint8_t scl, uint8_t reset, uint8_t irq, i2c_port_t
   if (i2c_param_config(PN532_I2C_PORT, &conf) != ESP_OK) {
     return false;
   }
-  if (i2c_driver_install(PN532_I2C_PORT, conf.mode, 0, 0, 0) != ESP_OK) {
-    return false;
-  }
+
+  ESP_ERROR_CHECK_WITHOUT_ABORT(i2c_driver_install(PN532_I2C_PORT, conf.mode, 0, 0, 0));
+
   // Needed due to long wake up procedure on the first command on i2c bus. May be decreased
   if (i2c_set_timeout(PN532_I2C_PORT, 0x0000001FU) != ESP_OK) {
     return false;
@@ -338,7 +338,7 @@ bool isready() {
  @return true if PN532 is ready before timeout, false otherwise
  */
 /**************************************************************************/
-bool wait_ready(uint16_t timeout) {
+bool waitready(uint16_t timeout) {
 #ifdef CONFIG_ENABLE_IRQ_ISR
 
   uint32_t io_num = 0;
@@ -383,13 +383,13 @@ bool wait_ready(uint16_t timeout) {
 // default timeout of one second
 bool pn532_send_cmd_check_ack(uint8_t* cmd, uint8_t cmdlen, uint16_t timeout) {
   // write the command
-  write_command(cmd, cmdlen);
+  writecommand(cmd, cmdlen);
 
   // I2C TUNING
   vTaskDelay(1 / portTICK_PERIOD_MS);
 
   // Wait for chip to say its ready!
-  if (!wait_ready(timeout)) {
+  if (!waitready(timeout)) {
     ESP_LOGE(TAG, "Timeout");
     return false;
   }
@@ -536,6 +536,7 @@ uint8_t pn532_read_gpio(void) {
   // Note: You can use the IO GPIO value to detect the serial bus being used
   switch (pn532_packetbuffer[p3offset + 2]) {
     case 0x00:  // Using UART
+
       ESP_LOG_LEVEL(PN532_LOG_LEVEL, TAG, "Using UART (IO = 0x00)");
       break;
     case 0x01:  // Using I2C
@@ -624,7 +625,7 @@ bool iso14443a_read_passive_target_id(
   }
 
   ESP_LOG_LEVEL(PN532_LOG_LEVEL, TAG, "Waiting for IRQ (indicates card presence)");
-  if (!wait_ready(timeout)) {
+  if (!waitready(timeout)) {
     ESP_LOG_LEVEL(PN532_LOG_LEVEL, TAG, "IRQ Timeout");
     return false;
   }
@@ -701,7 +702,7 @@ bool iso14443a_in_data_exchange(
     return false;
   }
 
-  if (!wait_ready(1000)) {
+  if (!waitready(1000)) {
     ESP_LOGE(TAG, "Response never received for APDU...");
     return false;
   }
@@ -768,7 +769,7 @@ bool iso14443a_in_auto_poll(uint8_t period) {
     return false;
   }
 
-  if (!wait_ready(30000)) {
+  if (!waitready(30000)) {
     return false;
   }
 
@@ -803,7 +804,7 @@ bool iso14443a_in_list_passive_targers() {
     return false;
   }
 
-  if (!wait_ready(30000)) {
+  if (!waitready(30000)) {
     return false;
   }
 
