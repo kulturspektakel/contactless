@@ -16,6 +16,7 @@ AllLists_privilege_tokens_t privilege_tokens[MAX_PRIVILEGE_TOKENS];
 int32_t all_lists_checksum = -1;
 product_list_t* product_lists = NULL;
 QueueHandle_t config_update_queue = NULL;
+int32_t config_timestamp = -1;
 
 bool pb_from_file_stream(pb_istream_t* stream, uint8_t* buffer, size_t count) {
   FILE* file = (FILE*)stream->state;
@@ -113,7 +114,7 @@ static void select_list(int32_t list_id) {
 void local_config(void* params) {
   config_update_queue = xQueueCreate(1, sizeof(int));
 
-  while (1) {
+  while (true) {
     int32_t product_list_id = read_product_list_id();
     active_config.list_id = -1;
 
@@ -127,7 +128,9 @@ void local_config(void* params) {
         .funcs.decode = decode_product_list,
         .arg = &product_list_id,
     });
+
     all_lists_checksum = all_lists.checksum;
+    config_timestamp = all_lists.timestamp;
     memcpy(privilege_tokens, all_lists.privilege_tokens, sizeof(privilege_tokens));
 
     product_lists = (product_list_t*)pvPortMalloc(lists_count * sizeof(product_list_t));
@@ -146,11 +149,14 @@ void local_config(void* params) {
     if (active_config.list_id > -1) {
       xEventGroupSetBits(event_group, LOCAL_CONFIG_LOADED | DISPLAY_NEEDS_UPDATE);
     }
+
+    // even if no list is selected, we can still fetch the config
+    xEventGroupSetBits(event_group, READY_TO_FETCH_CONFIG);
+
     int new_list_id = -1;
     if (xQueueReceive(config_update_queue, &new_list_id, portMAX_DELAY) == pdPASS) {
       // update if new list is selected
       select_list(new_list_id);
     }
   }
-  vTaskDelete(NULL);
 }

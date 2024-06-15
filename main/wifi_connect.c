@@ -12,8 +12,9 @@
 static const char* TAG = "wifi_connect";
 static TimerHandle_t signal_strength_timer;
 static uint8_t backoff_counter = 1;
-int8_t wifi_rssi = 0;
+int8_t wifi_rssi = INT8_MIN;
 wifi_status_t wifi_status = DISCONNECTED;
+#define WIFI_STRENGTH_UPDATE_INTERVAL 10000
 
 static void update_signal_strength(TimerHandle_t timer) {
   wifi_ap_record_t wifidata;
@@ -48,10 +49,18 @@ static void event_handler(
   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
     backoff_counter = 1;
     wifi_status = CONNECTED;
+    update_signal_strength(NULL);
     xEventGroupSetBits(event_group, WIFI_CONNECTED);
-    signal_strength_timer = xTimerCreate(
-        "wifi_signal_strength", pdMS_TO_TICKS(30000), pdTRUE, 0, update_signal_strength
-    );
+    if (signal_strength_timer == NULL) {
+      signal_strength_timer = xTimerCreate(
+          "wifi_signal_strength",
+          pdMS_TO_TICKS(WIFI_STRENGTH_UPDATE_INTERVAL),
+          pdTRUE,
+          0,
+          update_signal_strength
+      );
+    }
+    xTimerReset(signal_strength_timer, 0);
   }
   xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
 }

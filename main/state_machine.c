@@ -1,11 +1,13 @@
 #include "state_machine.h"
 #include "buzzer.h"
 #include "constants.h"
+#include "display.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "event_group.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "freertos/task.h"
 #include "local_config.h"
 #include "log_writer.h"
 #include "logmessage.pb.h"
@@ -23,6 +25,7 @@ state_t current_state = {
     .is_privileged = false,
     .log_files_to_upload = -1,
     .manual_amount = 0,
+    .menu_index = 0,
     .product_selection =
         {
             .first_digit = -1,
@@ -347,7 +350,7 @@ static mode_type charge_without_card(event_t event) {
 static mode_type charge_list(event_t event) {
   switch (event) {
     case KEY_TRIPPLE_D:
-      current_state.selected_main_menu_item = 0;
+      current_state.menu_index = 0;
       return MAIN_MENU;
     case KEY_STAR:
       return current_state.cart.item_count > 0 ? CHARGE_WITHOUT_CARD : CHARGE_MANUAL;
@@ -525,34 +528,34 @@ static mode_type privileged_topup(event_t event) {
   return PRIVILEGED_TOPUP;
 }
 
-static mode_type main_menu(event_t event) {
+static mode_type main_product_lists(event_t event) {
   switch (event) {
     case KEY_A:
-      if (current_state.selected_main_menu_item > 0) {
-        current_state.selected_main_menu_item--;
+      if (current_state.menu_index > 0) {
+        current_state.menu_index--;
       }
       break;
     case KEY_B:
-      if (current_state.selected_main_menu_item < lists_count - 1) {
-        current_state.selected_main_menu_item++;
+      if (current_state.menu_index < lists_count - 1) {
+        current_state.menu_index++;
       }
       break;
     case KEY_HASH:
       reset_cart();
-      xQueueSendFromISR(
-          config_update_queue, &product_lists[current_state.selected_main_menu_item].id, NULL
-      );
+      xQueueSendFromISR(config_update_queue, &product_lists[current_state.menu_index].id, NULL);
       timeout(400);
       break;
-    case KEY_D:
     case TIMEOUT:
       return default_mode();
+    case KEY_D:
+      current_state.menu_index = MENU_CONFIG;
+      return MAIN_MENU;
 
     // stay in same state
     default:
       break;
   }
-  return MAIN_MENU;
+  return MAIN_PRODUCT_LISTS;
 }
 
 static mode_type write_card(event_t event) {
@@ -644,6 +647,48 @@ static mode_type read_failed(event_t event) {
   }
 }
 
+static mode_type main_menu(event_t event) {
+  switch (event) {
+    case KEY_A:
+      current_state.menu_index--;
+      break;
+    case KEY_B:
+      current_state.menu_index++;
+      break;
+    case KEY_HASH:
+      switch (current_state.menu_index) {
+        case MENU_CONFIG:
+          for (int i = 0; i < lists_count; i++) {
+            if (product_lists[i].id == active_config.list_id) {
+              current_state.menu_index = i;
+              break;
+            }
+          }
+          if (lists_count > 0) {
+            return MAIN_PRODUCT_LISTS;
+          }
+          break;
+        case MENU_UPDATE:
+          vTaskNotifyGiveFromISR(xTaskGetHandle(FETCH_CONFIG_TASK), NULL);
+          break;
+        case MENU_WIFI:
+          // TODO trigger wifi reconnect
+          break;
+        case MENU_UPLOADS:
+          break;
+
+        default:
+          break;
+      }
+      break;
+    case KEY_D:
+      return current_state.previous_mode;
+    default:
+      break;
+  }
+  return MAIN_MENU;
+}
+
 static mode_type process_event(event_t event) {
   if (event == FATAL_ERROR) {
     return MAIN_FATAL;
@@ -687,10 +732,12 @@ static mode_type process_event(event_t event) {
     case WRITE_NOT_ATTEMPTED:
       return write_not_attemted(event);
       break;
-    case MAIN_MENU:
-      return main_menu(event);
     case MAIN_STARTING_UP:
       return main_starting_up(event);
+    case MAIN_MENU:
+      return main_menu(event);
+    case MAIN_PRODUCT_LISTS:
+      return main_product_lists(event);
     case MAIN_FATAL:
     case POWER_SAVE:
       // cannot leave these states
@@ -724,10 +771,10 @@ void state_machine(void* params) {
   event_t event;
   while (true) {
     xQueueReceive(state_events, &event, portMAX_DELAY);
-    mode_type previous_mode = current_state.mode;
 
     // state manipulation should not be interrupted, to prevent inconsistent state
     taskENTER_CRITICAL(&mutex);
+    mode_type previous_mode = current_state.mode;
     current_state.mode = process_event(event);
     // state entry events
     switch (current_state.mode) {
@@ -740,15 +787,22 @@ void state_machine(void* params) {
         break;
       case PRIVILEGED_CASHOUT:
         current_state.transaction_type = LogMessage_CardTransaction_TransactionType_CASHOUT;
+        break;
       default:
         break;
     }
     taskEXIT_CRITICAL(&mutex);
 
     if (previous_mode != current_state.mode) {
+      current_state.previous_mode = previous_mode;
+
       // log needs to be outside of critical section
       ESP_LOGI(
-          TAG, "Event %d changed state from %d to %d", event, previous_mode, current_state.mode
+          TAG,
+          "Event %d changed state from %d to %d",
+          event,
+          current_state.previous_mode,
+          current_state.mode
       );
     }
     xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);

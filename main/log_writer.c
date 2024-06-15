@@ -12,7 +12,7 @@
 #include "power_management.h"
 #include "state_machine.h"
 
-static const char* TAG = "logger";
+static const char* TAG = "log_writer";
 static const char* ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
 QueueHandle_t log_queue;
@@ -56,6 +56,7 @@ void log_writer(void* params) {
       ESP_LOGI(TAG, "Writing log file %s", filename);
 
       FILE* log_file = fopen(filename, "w");
+
       if (log_file != NULL) {
         pb_ostream_t file_stream = {
             .callback = write_pb_to_file,
@@ -66,11 +67,13 @@ void log_writer(void* params) {
 
         if (pb_encode(&file_stream, LogMessage_fields, log_message)) {
           ESP_LOGI(TAG, "Wrote log to %s", filename);
-          current_state.log_files_to_upload++;
-          xTaskNotifyGive(xTaskGetHandle("log_uploader"));
         } else {
           ESP_LOGE(TAG, "Failed to write log to %s", filename);
         }
+
+        // even if we failed to write the log, the file was created
+        xTaskNotifyGive(xTaskGetHandle(LOG_UPLOADER_TASK));
+        current_state.log_files_to_upload++;
 
         fclose(log_file);
       } else {

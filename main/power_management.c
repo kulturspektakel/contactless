@@ -226,9 +226,8 @@ void power_management(void* params) {
   gpio_install_isr_service(ESP_INTR_FLAG_EDGE);
 
   TimerHandle_t voltage_update_timer = xTimerCreate(
-      "voltage_update_timer", pdMS_TO_TICKS(UPDATE_INTERVAL), pdTRUE, 0, gpio_interrupt_handler
+      "voltage_update_timer", pdMS_TO_TICKS(UPDATE_INTERVAL), pdFALSE, 0, gpio_interrupt_handler
   );
-  xTimerStart(voltage_update_timer, pdMS_TO_TICKS(UPDATE_INTERVAL));
 
   // notify for initial reading
   xTaskNotifyGive(task_handle);
@@ -252,13 +251,13 @@ void power_management(void* params) {
     int old_usb_voltage = usb_voltage;
     read_voltages();
 
-    if (battery_voltage < BATTERY_LOW) {
+    if (usb_voltage > USB_VOLTAGE_THRESHOLD) {
+      // white
+      set_rgb_color(255, 125, 125);
+    } else if (battery_voltage < BATTERY_LOW) {
       // red
       //   trigger_beep(LOW_BATTERY);
       set_rgb_color(255, 0, 0);
-    } else if (usb_voltage > USB_VOLTAGE_THRESHOLD) {
-      // white
-      set_rgb_color(255, 255, 255);
     } else {
       // turn off all LEDs
       set_rgb_color(0, 0, 0);
@@ -285,5 +284,12 @@ void power_management(void* params) {
 
     ESP_LOGI(TAG, "USB %dmV, battery %dmV", usb_voltage, battery_voltage);
     xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
+
+    xTimerChangePeriod(
+        voltage_update_timer,
+        current_state.mode == MAIN_MENU ? pdMS_TO_TICKS(500) : pdMS_TO_TICKS(UPDATE_INTERVAL),
+        0
+    );
+    xTimerStart(voltage_update_timer, 0);
   }
 }

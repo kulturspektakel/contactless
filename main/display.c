@@ -1,5 +1,8 @@
+#include "display.h"
+#include <esp_app_desc.h>
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "esp_wifi.h"
 #include "event_group.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -155,6 +158,10 @@ static void pending_uploads(u8g2_t* u8g2, int offset) {
 }
 
 static void time_display(u8g2_t* u8g2) {
+  bool time_set = xEventGroupGetBits(event_group) & TIME_SET;
+  if (!time_set) {
+    return;
+  }
   u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
   time_t now;
   struct tm timeinfo;
@@ -410,11 +417,11 @@ static void product_list(u8g2_t* u8g2) {
   );
 }
 
-static void main_menu_cb(u8g2_t* u8g2, int i, int x, int y) {
+static void main_product_lists_cb(u8g2_t* u8g2, int i, int x, int y) {
   u8g2_DrawUTF8(u8g2, x, y, product_lists[i].name);
 }
 
-static void main_menu(u8g2_t* u8g2) {
+static void main_product_lists(u8g2_t* u8g2) {
   int active_config_index = -1;
   for (int i = 0; i < lists_count; i++) {
     if (product_lists[i].id == active_config.list_id) {
@@ -424,7 +431,7 @@ static void main_menu(u8g2_t* u8g2) {
   }
 
   scrollable_list(
-      u8g2, main_menu_cb, lists_count, current_state.selected_main_menu_item, active_config_index
+      u8g2, main_product_lists_cb, lists_count, current_state.menu_index, active_config_index
   );
 }
 
@@ -637,6 +644,87 @@ static void fatal_error(u8g2_t* u8g2) {
   );
 }
 
+static void main_menu_cb(u8g2_t* u8g2, int i, int x, int y) {
+  char label[16];
+  char value[16];
+
+  switch (i) {
+    case MENU_CONFIG:
+      snprintf(label, sizeof(label), "CONFIG");
+      bool config_loaded = xEventGroupGetBits(event_group) & LOCAL_CONFIG_LOADED;
+      snprintf(value, sizeof(value), config_loaded ? active_config.name : "-");
+      break;
+    case MENU_DEVICE:
+      snprintf(label, sizeof(label), "DEVICE");
+      bool device_id_loaded = xEventGroupGetBits(event_group) & DEVICE_ID_LOADED;
+      snprintf(value, sizeof(value), device_id_loaded ? DEVICE_ID : "-");
+      break;
+    case MENU_WIFI:
+      uint8_t primary_channel;
+      wifi_second_chan_t second_channel;
+
+      snprintf(label, sizeof(label), "WIFI");
+      if (wifi_status == CONNECTED) {
+        esp_wifi_get_channel(&primary_channel, &second_channel);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-truncation"
+        snprintf(value, sizeof(value), "%ddBm (Ch %d)", (int)wifi_rssi, primary_channel);
+#pragma GCC diagnostic pop
+      } else if (wifi_status == CONNECTING) {
+        snprintf(value, sizeof(value), "connecting");
+      } else {
+        snprintf(value, sizeof(value), "disconnected");
+      }
+      break;
+    case MENU_USB:
+      snprintf(label, sizeof(label), "USB");
+      snprintf(value, sizeof(value), "%dmV", usb_voltage);
+      break;
+    case MENU_BATTERY:
+      snprintf(label, sizeof(label), "BATTERY");
+      snprintf(value, sizeof(value), "%dmV", battery_voltage);
+      break;
+    case MENU_UPDATE:
+      struct tm local_time;
+      time_t time = (time_t)config_timestamp;
+      localtime_r(&time, &local_time);
+      snprintf(label, sizeof(label), "UPDATE");
+      strftime(value, sizeof(value), "%d.%m.%y %H:%M", &local_time);
+      break;
+    case MENU_VERSION:
+      const esp_app_desc_t* desc = esp_app_get_description();
+      snprintf(label, sizeof(label), "VERSION");
+      snprintf(value, sizeof(value), desc->version);
+      break;
+    case MENU_UPLOADS:
+      snprintf(label, sizeof(label), "UPLOAD");
+      snprintf(
+          value,
+          sizeof(value),
+          "%d file%c",
+          current_state.log_files_to_upload,
+          current_state.log_files_to_upload == 1 ? '\0' : 's'
+      );
+      break;
+
+    default:
+      return;
+  }
+
+  u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
+  u8g2_DrawStr(u8g2, x, y - 1, label);
+  u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
+  u8g2_DrawUTF8(u8g2, x + 32, y, value);
+}
+
+static void main_menu(u8g2_t* u8g2) {
+  keypad_legend(u8g2, true);
+  int total = 7;
+  ESP_LOGI(TAG, "wifi_rssi: %d", wifi_rssi);
+
+  scrollable_list(u8g2, main_menu_cb, total, current_state.menu_index % total, -1);
+}
+
 static void write_not_attemted(u8g2_t* u8g2) {
   int y = 21;
   switch (current_state.card_error) {
@@ -700,11 +788,6 @@ void display(void* params) {
         product_list(&u8g2);
         keypad_legend(&u8g2, true);
         break;
-      case MAIN_MENU:
-        status_bar(&u8g2);
-        main_menu(&u8g2);
-        keypad_legend(&u8g2, true);
-        break;
       case WRITE_FAILED:
         status_bar(&u8g2);
         display_error(&u8g2, "Erneut", "versuchen", 17);
@@ -749,6 +832,16 @@ void display(void* params) {
         break;
       case POWER_SAVE:
         u8g2_SetPowerSave(&u8g2, 1);
+        break;
+      case MAIN_MENU:
+        status_bar(&u8g2);
+        main_menu(&u8g2);
+        keypad_legend(&u8g2, true);
+        break;
+      case MAIN_PRODUCT_LISTS:
+        status_bar(&u8g2);
+        main_product_lists(&u8g2);
+        keypad_legend(&u8g2, true);
         break;
     }
 

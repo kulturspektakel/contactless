@@ -6,9 +6,8 @@
 #include "event_group.h"
 #include "http_auth_headers.h"
 #include "local_config.h"
+#include "network_request.h"
 #include "pb_decode.h"
-
-static const char* TAG = "fetch_config";
 
 static size_t bytes_written = 0;
 static uint8_t* buffer = NULL;
@@ -21,12 +20,12 @@ esp_err_t _http_event_handler(esp_http_client_event_t* evt) {
 
     case HTTP_EVENT_ON_DATA:
       if (esp_http_client_is_chunked_response(evt->client)) {
-        ESP_LOGE(TAG, "chunked response is not supported");
+        ESP_LOGE(FETCH_CONFIG_TASK, "chunked response is not supported");
         return ESP_ERR_NOT_SUPPORTED;
       }
 
       if (esp_http_client_get_content_length(evt->client) > 4096) {
-        ESP_LOGE(TAG, "content length too large");
+        ESP_LOGE(FETCH_CONFIG_TASK, "content length too large");
         return ESP_ERR_INVALID_SIZE;
       }
 
@@ -43,12 +42,8 @@ esp_err_t _http_event_handler(esp_http_client_event_t* evt) {
   return ESP_OK;
 }
 
-void fetch_config(void* params) {
-  xEventGroupWaitBits(
-      event_group, (LOCAL_CONFIG_LOADED | WIFI_CONNECTED), pdFALSE, pdTRUE, portMAX_DELAY
-  );
-
-  ESP_LOGI(TAG, "start fetching config");
+static void send_http_request() {
+  ESP_LOGI(FETCH_CONFIG_TASK, "start fetching config, etag = %ld", all_lists_checksum);
 
   esp_http_client_config_t config = {
       .host = API_HOST,
@@ -64,17 +59,19 @@ void fetch_config(void* params) {
   sprintf(etag, "\"%ld\"", all_lists_checksum);
   esp_http_client_set_header(client, "If-None-Match", etag);
 
+  xSemaphoreTake(network_request, portMAX_DELAY);
   esp_err_t err = esp_http_client_perform(client);
+  xSemaphoreGive(network_request);
 
   if (err != ESP_OK) {
-    ESP_LOGE(TAG, "HTTP request failed: %s", esp_err_to_name(err));
+    ESP_LOGE(FETCH_CONFIG_TASK, "HTTP request failed: %s", esp_err_to_name(err));
     esp_http_client_cleanup(client);
     return vTaskDelete(NULL);
   }
 
   int status_code = esp_http_client_get_status_code(client);
   ESP_LOGI(
-      TAG,
+      FETCH_CONFIG_TASK,
       "HTTP GET Status = %d, content_length = %" PRId64,
       status_code,
       esp_http_client_get_content_length(client)
@@ -88,24 +85,31 @@ void fetch_config(void* params) {
 
       // check if we can decode the protobuf
       if (!pb_decode(&stream, AllLists_fields, &all_lists)) {
-        ESP_LOGE(TAG, "failed to decode protobuf");
+        ESP_LOGE(FETCH_CONFIG_TASK, "failed to decode protobuf");
         break;
       }
       pb_release(AllLists_fields, &all_lists);
 
       FILE* config_file = fopen(CONFIG_FILE, "w");
       size_t files_written = fwrite(buffer, bytes_written, 1, config_file);
-      ESP_LOGI(TAG, "written %d files", files_written);
+      ESP_LOGI(FETCH_CONFIG_TASK, "written %d files", files_written);
       fclose(config_file);
       int new_list_id = -1;
       xQueueSend(config_update_queue, &new_list_id, 0);
       break;
     default:
-      ESP_LOGI(TAG, "HTTP status code %d", status_code);
+      ESP_LOGI(FETCH_CONFIG_TASK, "HTTP status code %d", status_code);
       break;
   }
+}
 
-  vPortFree(buffer);
-  xEventGroupSetBits(event_group, REMOTE_CONFIG_FETCHED);
-  vTaskDelete(NULL);
+void fetch_config(void* params) {
+  xEventGroupWaitBits(
+      event_group, (READY_TO_FETCH_CONFIG | WIFI_CONNECTED), pdFALSE, pdTRUE, portMAX_DELAY
+  );
+
+  while (true) {
+    send_http_request();
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+  }
 }

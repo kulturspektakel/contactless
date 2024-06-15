@@ -19,5 +19,6 @@ extern DeviceConfig active_config;
 extern AllLists_privilege_tokens_t privilege_tokens[MAX_PRIVILEGE_TOKENS];
 extern int32_t all_lists_checksum;
 extern QueueHandle_t config_update_queue;
+extern int32_t config_timestamp;
 
 void local_config(void* params);

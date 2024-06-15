@@ -12,6 +12,9 @@
 #define API_HOST "api.kulturspektakel.de"
 #define DEPOSIT_VALUE 200
 
+#define FETCH_CONFIG_TASK "fetch_config"
+#define LOG_UPLOADER_TASK "log_uploader"
+
 extern const char* LOG_DIR;
 extern const char* CONFIG_FILE;
 
