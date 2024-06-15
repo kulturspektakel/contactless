@@ -8,6 +8,7 @@
 #include "event_group.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "network_request.h"
 
 static const char* TAG = "time_sync";
 
@@ -41,9 +42,13 @@ void time_sync(void* params) {
   ESP_LOGI(TAG, "Fetching time from NTP");
   esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
 
+  xSemaphoreTake(network_request, portMAX_DELAY);
   esp_netif_sntp_init(&config);
+  esp_err_t ret = esp_netif_sntp_sync_wait(pdMS_TO_TICKS(15000));
+  esp_netif_sntp_deinit();
+  xSemaphoreGive(network_request);
 
-  if (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(15000)) == ESP_OK) {
+  if (ret == ESP_OK) {
     // set system time
     time_t now;
     time(&now);
@@ -54,9 +59,7 @@ void time_sync(void* params) {
     ds3231_set_time(&dev, gmtime(&now));
     xEventGroupSetBits(event_group, TIME_SET);
   }
-
   ds3231_free_desc(&dev);
-  esp_netif_sntp_deinit();
 
   ESP_LOGI(TAG, "Done, terminating task");
   vTaskDelete(NULL);

@@ -246,9 +246,9 @@ bool pn532_init(uint8_t sda, uint8_t scl, uint8_t reset, uint8_t irq, i2c_port_t
   if (i2c_param_config(PN532_I2C_PORT, &conf) != ESP_OK) {
     return false;
   }
-  if (i2c_driver_install(PN532_I2C_PORT, conf.mode, 0, 0, 0) != ESP_OK) {
-    return false;
-  }
+
+  ESP_ERROR_CHECK_WITHOUT_ABORT(i2c_driver_install(PN532_I2C_PORT, conf.mode, 0, 0, 0));
+
   // Needed due to long wake up procedure on the first command on i2c bus. May be decreased
   if (i2c_set_timeout(PN532_I2C_PORT, 0x0000001FU) != ESP_OK) {
     return false;

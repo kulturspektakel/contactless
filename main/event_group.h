@@ -3,7 +3,7 @@
 #include "freertos/event_groups.h"
 
 #define LOCAL_CONFIG_LOADED BIT0
-#define REMOTE_CONFIG_FETCHED BIT1
+#define READY_TO_FETCH_CONFIG BIT1
 #define WIFI_CONNECTED BIT2
 #define TIME_SET BIT3
 #define DISPLAY_NEEDS_UPDATE BIT4

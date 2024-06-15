@@ -7,16 +7,16 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "http_auth_headers.h"
+#include "network_request.h"
 #include "state_machine.h"
 
-static const char* TAG = "log_uploader";
 #define MAX_ERRORS 3
 
 int count_logs() {
   DIR* dir = opendir(LOG_DIR);
 
   if (dir == NULL) {
-    ESP_LOGE(TAG, "Failed to open directory");
+    ESP_LOGE(LOG_UPLOADER_TASK, "Failed to open directory");
     return -1;
   }
 
@@ -37,12 +37,12 @@ typedef enum {
   HTTP_ISSUE,
 } log_uploader_event_t;
 
-log_uploader_event_t upload_file(char* filename) {
-  ESP_LOGI(TAG, "Uploading %s", filename);
+static log_uploader_event_t upload_file(char* filename) {
+  ESP_LOGI(LOG_UPLOADER_TASK, "Uploading %s", filename);
   FILE* f = fopen(filename, "r");
 
   if (f == NULL) {
-    ESP_LOGE(TAG, "Failed to open %s for reading", filename);
+    ESP_LOGE(LOG_UPLOADER_TASK, "Failed to open %s for reading", filename);
     return FILE_SKIPPED;
   }
 
@@ -56,7 +56,7 @@ log_uploader_event_t upload_file(char* filename) {
   fseek(f, 0, SEEK_END);
   int file_size = ftell(f);
   if (file_size < 1) {
-    ESP_LOGE(TAG, "File %s is corrupt. Deleting it.", filename);
+    ESP_LOGE(LOG_UPLOADER_TASK, "File %s is corrupt. Deleting it.", filename);
     fclose(f);
     remove(filename);
     return FILE_HANDLED;
@@ -74,7 +74,7 @@ log_uploader_event_t upload_file(char* filename) {
   buffer = NULL;
 
   if (err != ESP_OK) {
-    ESP_LOGE(TAG, "Request failed (Error: %s)", esp_err_to_name(err));
+    ESP_LOGE(LOG_UPLOADER_TASK, "Request failed (Error: %s)", esp_err_to_name(err));
     esp_http_client_cleanup(client);
     return HTTP_ISSUE;
   }
@@ -83,13 +83,18 @@ log_uploader_event_t upload_file(char* filename) {
   esp_http_client_cleanup(client);
 
   if (status_code == 201 || status_code == 409) {
-    ESP_LOGI(TAG, "Upload successful (HTTP %d), deleting log file %s", status_code, filename);
+    ESP_LOGI(
+        LOG_UPLOADER_TASK,
+        "Upload successful (HTTP %d), deleting log file %s",
+        status_code,
+        filename
+    );
     return FILE_HANDLED;
   } else if (status_code == 400) {
-    ESP_LOGE(TAG, "Bad request (HTTP 400), deleting log file %s", filename);
+    ESP_LOGE(LOG_UPLOADER_TASK, "Bad request (HTTP 400), deleting log file %s", filename);
     return FILE_HANDLED;
   } else {
-    ESP_LOGE(TAG, "Server error (HTTP %d), skipping file %s", status_code, filename);
+    ESP_LOGE(LOG_UPLOADER_TASK, "Server error (HTTP %d), skipping file %s", status_code, filename);
     return FILE_SKIPPED;
   }
 }
@@ -98,9 +103,9 @@ void maybe_create_log_dir() {
   DIR* dir = opendir(LOG_DIR);
   if (dir == NULL) {
     // create directory if it doesn't exist
-    ESP_LOGI(TAG, "Creating directory %s", LOG_DIR);
+    ESP_LOGI(LOG_UPLOADER_TASK, "Creating directory %s", LOG_DIR);
     if (mkdir(LOG_DIR, 0777) != 0) {
-      ESP_LOGE(TAG, "Failed to create directory");
+      ESP_LOGE(LOG_UPLOADER_TASK, "Failed to create directory");
       trigger_event(FATAL_ERROR);
       vTaskDelete(NULL);
       return;
@@ -120,7 +125,7 @@ void log_uploader(void* params) {
   // initial value
   current_state.log_files_to_upload = count_logs();
   xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
-  ESP_LOGI(TAG, "Found %d logs", current_state.log_files_to_upload);
+  ESP_LOGI(LOG_UPLOADER_TASK, "Found %d logs", current_state.log_files_to_upload);
 
   while (1) {
     xEventGroupWaitBits(event_group, WIFI_CONNECTED, pdFALSE, pdTRUE, portMAX_DELAY);
@@ -135,8 +140,10 @@ void log_uploader(void* params) {
 
       char filename[29];
       sprintf(filename, "%s/%.12s", LOG_DIR, entry->d_name);
-      ESP_LOGI(TAG, "Found log file %s", filename);
+      ESP_LOGI(LOG_UPLOADER_TASK, "Found log file %s", filename);
+      xSemaphoreTake(network_request, portMAX_DELAY);
       log_uploader_event_t status = upload_file(filename);
+      xSemaphoreGive(network_request);
 
       switch (status) {
         case FILE_SKIPPED:
@@ -158,7 +165,7 @@ void log_uploader(void* params) {
       }
 
       if (error_count >= MAX_ERRORS) {
-        ESP_LOGE(TAG, "Stopping log uploader after %d error(s)", error_count);
+        ESP_LOGE(LOG_UPLOADER_TASK, "Stopping log uploader after %d error(s)", error_count);
         break;
       }
     }
@@ -171,7 +178,9 @@ void log_uploader(void* params) {
             xTimerCreate("retry_timer", pdMS_TO_TICKS(300000), pdFALSE, NULL, retry_upload);
       }
       ESP_LOGI(
-          TAG, "Encountered %d errors while uploading. Scheduling retry in 5 Minutes", error_count
+          LOG_UPLOADER_TASK,
+          "Encountered %d errors while uploading. Scheduling retry in 5 Minutes",
+          error_count
       );
       xTimerReset(retry_timer, 0);
     }

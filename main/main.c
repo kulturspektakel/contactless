@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "buzzer.h"
+#include "constants.h"
 #include "display.h"
 #include "esp_event.h"
 #include "esp_littlefs.h"
@@ -12,6 +13,7 @@
 #include "local_config.h"
 #include "log_uploader.h"
 #include "log_writer.h"
+#include "network_request.h"
 #include "nvs_flash.h"
 #include "power_management.h"
 #include "rfid.h"
@@ -20,12 +22,15 @@
 #include "wifi_connect.h"
 
 EventGroupHandle_t event_group;
+SemaphoreHandle_t network_request;
 
 #define PRIO_NORMAL 5
 #define PRIO_HIGH 10
 
 void app_main(void) {
   event_group = xEventGroupCreate();
+  network_request = xSemaphoreCreateBinary();
+  xSemaphoreGive(network_request);
 
   ESP_ERROR_CHECK(nvs_flash_init());
   esp_vfs_littlefs_conf_t conf = {
@@ -38,7 +43,7 @@ void app_main(void) {
 
   xTaskCreate(&wifi_connect, "wifi_connect", 4096, NULL, PRIO_NORMAL, NULL);
   xTaskCreate(&local_config, "local_config", 5120, NULL, PRIO_NORMAL, NULL);
-  xTaskCreate(&fetch_config, "fetch_config", 16096, NULL, PRIO_NORMAL, NULL);
+  xTaskCreate(&fetch_config, FETCH_CONFIG_TASK, 16096, NULL, PRIO_NORMAL, NULL);
   xTaskCreate(&log_uploader, "log_uploader", 4096, NULL, PRIO_NORMAL, NULL);
   xTaskCreate(&display, "display", 4096, NULL, PRIO_NORMAL, NULL);
   xTaskCreate(&keypad, "keypad", 4096, NULL, PRIO_NORMAL, NULL);

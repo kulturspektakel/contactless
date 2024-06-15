@@ -17,6 +17,11 @@ const event_t KEYPAD[] = {
 };
 QueueHandle_t keypad_queue;
 
+typedef struct {
+  event_t key;
+  int64_t time;
+} key_event_t;
+
 void turnon_rows() {
   for (int i = 0; i < 4; i++) {  // Columns
     gpio_set_pull_mode(KEYPAD_COLS[i], GPIO_PULLDOWN_ONLY);
@@ -80,24 +85,21 @@ void keypad(void* params) {
   turnon_rows();
 
   event_t key;
-  event_t prev_key = '\0';
-  uint8_t count = 0;
-  int64_t prev_key_time = 0;
+  key_event_t history[3];
 
   while (true) {
     xQueueReceive(keypad_queue, &key, portMAX_DELAY);
+    history[2] = history[1];
+    history[1] = history[0];
+    key_event_t event = {key, esp_timer_get_time()};
+    history[0] = event;
     trigger_event(key);
-    if (key == prev_key && esp_timer_get_time() - prev_key_time < 500000) {
-      count++;
-      if (count == 2 && key == KEY_D) {
-        trigger_event(KEY_TRIPPLE_D);
-        count = 0;
-      }
-    } else {
-      count = 0;
-    }
-    prev_key = key;
-    prev_key_time = esp_timer_get_time();
     ESP_LOGI(TAG, "keypress %d", key);
+
+    if (esp_timer_get_time() - history[2].time < 1000000) {
+      if (history[0].key == KEY_D && history[1].key == KEY_D && history[2].key == KEY_D) {
+        trigger_event(KEY_TRIPPLE_D);
+      }
+    }
   }
 }

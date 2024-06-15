@@ -33,7 +33,6 @@ typedef enum {
   STARTUP_COMPLETED,
   WRITE_SUCCESSFUL,
   WRITE_UNSUCCESSFUL,
-  SHOW_DEBUG_BAR,
   FATAL_ERROR,
   ENTER_POWER_SAVE,
 } event_t;
@@ -41,6 +40,7 @@ typedef enum {
 typedef enum {
   MAIN_STARTING_UP,
   MAIN_MENU,
+  MAIN_PRODUCT_LISTS,
   MAIN_FATAL,
 
   CHARGE_LIST,
@@ -60,7 +60,7 @@ typedef enum {
 
   READ_FAILED,
 
-  POWER_SAVE
+  POWER_SAVE,
 } mode_type;
 
 typedef struct {
@@ -100,17 +100,18 @@ typedef enum {
 
 typedef struct {
   mode_type mode;
+  mode_type previous_mode;
   bool is_privileged;
   cart_t cart;
   product_selection_t product_selection;
   LogMessage_CardTransaction_TransactionType transaction_type;
-  uint8_t selected_main_menu_item;
   int log_files_to_upload;
   int manual_amount;
   ultralight_card_info_t data_to_write;
   ultralight_card_info_t data_before_write;
   card_error_t card_error;
   int64_t expected_bootup_time;
+  uint8_t menu_index;
 } state_t;
 
 extern state_t current_state;
