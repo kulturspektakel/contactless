@@ -8,19 +8,57 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
+#include "power_management.h"
 
-static const char* TAG = "wifi_connect";
-static TimerHandle_t signal_strength_timer;
-static uint8_t backoff_counter = 1;
+static TimerHandle_t update_timer;
 int8_t wifi_rssi = INT8_MIN;
 wifi_status_t wifi_status = DISCONNECTED;
-#define WIFI_STRENGTH_UPDATE_INTERVAL 10000
 
-static void update_signal_strength(TimerHandle_t timer) {
+static void update_signal_strength() {
   wifi_ap_record_t wifidata;
   esp_wifi_sta_get_ap_info(&wifidata);
   wifi_rssi = wifidata.rssi;
   xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
+}
+
+static int timer_duration() {
+  bool is_connected = xEventGroupGetBits(event_group) & WIFI_CONNECTED;
+  bool usb_connected = xEventGroupGetBits(event_group) & USB_CONNECTED;
+  if (is_connected) {
+    // update signal strength every 10 seconds
+    return 10000;
+  } else if (usb_connected) {
+    // try reconnecting every minute when on battery
+    return 60000;
+  } else {
+    // try reconnecting every 3 minutes when on power
+    return 60000 * 3;
+  }
+}
+
+static void timer_cb(TimerHandle_t timer) {
+  bool is_connected = xEventGroupGetBits(event_group) & WIFI_CONNECTED;
+  if (is_connected) {
+    update_signal_strength();
+  } else {
+    xTaskNotifyGive(xTaskGetCurrentTaskHandle());
+  }
+  xTimerChangePeriod(update_timer, pdMS_TO_TICKS(timer_duration()), 0);
+  xTimerReset(update_timer, 0);
+}
+
+static void clearTimer() {
+  if (update_timer != NULL) {
+    xTimerDelete(update_timer, 0);
+    update_timer = NULL;
+  }
+}
+
+static void startTimer() {
+  clearTimer();
+  update_timer =
+      xTimerCreate("update_timer", pdMS_TO_TICKS(timer_duration()), pdFALSE, 0, timer_cb);
+  xTimerStart(update_timer, 0);
 }
 
 static void event_handler(
@@ -30,37 +68,21 @@ static void event_handler(
     void* event_data
 ) {
   if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-    if (signal_strength_timer != NULL) {
-      xTimerDelete(signal_strength_timer, 0);
-    }
+    ESP_LOGI(WIFI_CONNECT_TASK, "Trying to connect to WiFi...");
+    clearTimer();
     wifi_status = CONNECTING;
     esp_wifi_connect();
   } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+    ESP_LOGI(WIFI_CONNECT_TASK, "WiFi disconnected");
     wifi_status = DISCONNECTED;
     xEventGroupClearBits(event_group, WIFI_CONNECTED);
-    if (signal_strength_timer != NULL) {
-      xTimerDelete(signal_strength_timer, 0);
-    }
-    if (backoff_counter < 15) {
-      backoff_counter++;
-    }
-    // notify task to try reconnecting
-    xTaskNotifyGive(arg);
+    startTimer();  // timer for reconnecting
   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-    backoff_counter = 1;
+    ESP_LOGI(WIFI_CONNECT_TASK, "WiFi connected");
     wifi_status = CONNECTED;
-    update_signal_strength(NULL);
+    update_signal_strength();
     xEventGroupSetBits(event_group, WIFI_CONNECTED);
-    if (signal_strength_timer == NULL) {
-      signal_strength_timer = xTimerCreate(
-          "wifi_signal_strength",
-          pdMS_TO_TICKS(WIFI_STRENGTH_UPDATE_INTERVAL),
-          pdTRUE,
-          0,
-          update_signal_strength
-      );
-    }
-    xTimerReset(signal_strength_timer, 0);
+    startTimer();  // timer for signal strength
   }
   xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
 }
@@ -102,14 +124,17 @@ void wifi_connect(void* params) {
   esp_wifi_start();
 
   ESP_LOGI(
-      TAG, "initialized with ssid=%s password=%s", wifi_config.sta.ssid, wifi_config.sta.password
+      WIFI_CONNECT_TASK,
+      "initialized with ssid=%s password=%s",
+      wifi_config.sta.ssid,
+      wifi_config.sta.password
   );
 
   while (1) {
     // reconnect if disconnected
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    ESP_LOGI(TAG, "Disconnected, reconnecting in %d minutes", backoff_counter);
-    vTaskDelay(pdMS_TO_TICKS(60000 * backoff_counter));
-    esp_wifi_connect();
+    if (wifi_status == DISCONNECTED) {
+      esp_wifi_connect();
+    }
   }
 }

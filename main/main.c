@@ -41,7 +41,7 @@ void app_main(void) {
   };
   ESP_ERROR_CHECK(esp_vfs_littlefs_register(&conf));
 
-  xTaskCreate(&wifi_connect, "wifi_connect", 4096, NULL, PRIO_NORMAL, NULL);
+  xTaskCreate(&wifi_connect, WIFI_CONNECT_TASK, 4096, NULL, PRIO_NORMAL, NULL);
   xTaskCreate(&local_config, "local_config", 5120, NULL, PRIO_NORMAL, NULL);
   xTaskCreate(&fetch_config, FETCH_CONFIG_TASK, 16096, NULL, PRIO_NORMAL, NULL);
   xTaskCreate(&log_uploader, "log_uploader", 4096, NULL, PRIO_NORMAL, NULL);
@@ -53,7 +53,7 @@ void app_main(void) {
   xTaskCreate(&state_machine, "state_machine", 4096, NULL, PRIO_HIGH, NULL);
   xTaskCreate(&time_sync, "time_sync", 4096, NULL, PRIO_NORMAL, NULL);
   xTaskCreate(&rfid, "rfid", 4096, NULL, PRIO_NORMAL, NULL);
-  xTaskCreate(&power_management, "power_management", 4096, NULL, PRIO_NORMAL, NULL);
+  xTaskCreate(&power_management, POWER_MANAGEMENT_TASK, 4096, NULL, PRIO_NORMAL, NULL);
   xTaskCreate(&load_device_id, "load_device_id", 3072, NULL, PRIO_NORMAL, NULL);
   xTaskCreate(&load_salt, "load_salt", 3072, NULL, PRIO_NORMAL, NULL);
   xTaskCreate(&buzzer, "buzzer", 5120, NULL, PRIO_NORMAL, NULL);

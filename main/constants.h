@@ -14,6 +14,8 @@
 
 #define FETCH_CONFIG_TASK "fetch_config"
 #define LOG_UPLOADER_TASK "log_uploader"
+#define WIFI_CONNECT_TASK "wifi_connect"
+#define POWER_MANAGEMENT_TASK "power_mgmt"
 
 extern const char* LOG_DIR;
 extern const char* CONFIG_FILE;

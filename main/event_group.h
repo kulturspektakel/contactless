@@ -9,6 +9,7 @@
 #define DISPLAY_NEEDS_UPDATE BIT4
 #define DEVICE_ID_LOADED BIT5
 #define SALT_LOADED BIT6
+#define USB_CONNECTED BIT7
 
 static const EventBits_t startup_bits =
     LOCAL_CONFIG_LOADED | TIME_SET | DEVICE_ID_LOADED | SALT_LOADED;

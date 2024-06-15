@@ -112,6 +112,7 @@ typedef struct {
   card_error_t card_error;
   int64_t expected_bootup_time;
   uint8_t menu_index;
+  int8_t menu_index_active;
 } state_t;
 
 extern state_t current_state;

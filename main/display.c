@@ -58,8 +58,9 @@ static void animation_timer_cb(TimerHandle_t timer) {
 
 static int battery(u8g2_t* u8g2) {
   int offset = DISPLAY_WIDTH - 1;
+  bool usb_connected = xEventGroupGetBits(event_group) & USB_CONNECTED;
 
-  if (usb_voltage > USB_VOLTAGE_THRESHOLD) {
+  if (usb_connected) {
     // charger icon
     u8g2_DrawHLine(u8g2, offset - 2, 1, 2);
     u8g2_DrawHLine(u8g2, offset - 2, 3, 2);
@@ -677,10 +678,14 @@ static void main_menu_cb(u8g2_t* u8g2, int i, int x, int y) {
       }
       break;
     case MENU_USB:
+      // notify power management task to update voltage
+      xTaskNotifyGive(xTaskGetHandle(POWER_MANAGEMENT_TASK));
       snprintf(label, sizeof(label), "USB");
       snprintf(value, sizeof(value), "%dmV", usb_voltage);
       break;
     case MENU_BATTERY:
+      // notify power management task to update voltage
+      xTaskNotifyGive(xTaskGetHandle(POWER_MANAGEMENT_TASK));
       snprintf(label, sizeof(label), "BATTERY");
       snprintf(value, sizeof(value), "%dmV", battery_voltage);
       break;
@@ -719,10 +724,9 @@ static void main_menu_cb(u8g2_t* u8g2, int i, int x, int y) {
 
 static void main_menu(u8g2_t* u8g2) {
   keypad_legend(u8g2, true);
-  int total = 7;
-  ESP_LOGI(TAG, "wifi_rssi: %d", wifi_rssi);
-
-  scrollable_list(u8g2, main_menu_cb, total, current_state.menu_index % total, -1);
+  scrollable_list(
+      u8g2, main_menu_cb, MENU_COUNT, current_state.menu_index, current_state.menu_index_active
+  );
 }
 
 static void write_not_attemted(u8g2_t* u8g2) {

@@ -26,6 +26,7 @@ state_t current_state = {
     .log_files_to_upload = -1,
     .manual_amount = 0,
     .menu_index = 0,
+    .menu_index_active = -1,
     .product_selection =
         {
             .first_digit = -1,
@@ -564,7 +565,8 @@ static mode_type write_card(event_t event) {
       trigger_beep(BEEP_SHORT);
       write_log(LogMessage_Order_PaymentMethod_KULT_CARD);
       reset_cart();
-      if (usb_voltage <= USB_VOLTAGE_THRESHOLD) {
+      bool usb_connected = xEventGroupGetBits(event_group) & USB_CONNECTED;
+      if (!usb_connected) {
         // if running on battery, exit privileged mode after transaction
         current_state.is_privileged = false;
       }
@@ -650,13 +652,18 @@ static mode_type read_failed(event_t event) {
 static mode_type main_menu(event_t event) {
   switch (event) {
     case KEY_A:
-      current_state.menu_index--;
+      if (current_state.menu_index > 0) {
+        current_state.menu_index--;
+      }
       break;
     case KEY_B:
-      current_state.menu_index++;
+      if (current_state.menu_index < MENU_COUNT - 1) {
+        current_state.menu_index++;
+      }
       break;
     case KEY_HASH:
       switch (current_state.menu_index) {
+        ESP_LOGI(TAG, "menu index: %d", current_state.menu_index);
         case MENU_CONFIG:
           for (int i = 0; i < lists_count; i++) {
             if (product_lists[i].id == active_config.list_id) {
@@ -669,12 +676,19 @@ static mode_type main_menu(event_t event) {
           }
           break;
         case MENU_UPDATE:
+          current_state.menu_index_active = MENU_UPDATE;
+          timeout(400);
           vTaskNotifyGiveFromISR(xTaskGetHandle(FETCH_CONFIG_TASK), NULL);
           break;
         case MENU_WIFI:
-          // TODO trigger wifi reconnect
+          current_state.menu_index_active = MENU_WIFI;
+          timeout(400);
+          vTaskNotifyGiveFromISR(xTaskGetHandle(WIFI_CONNECT_TASK), NULL);
           break;
         case MENU_UPLOADS:
+          current_state.menu_index_active = MENU_UPLOADS;
+          vTaskNotifyGiveFromISR(xTaskGetHandle(LOG_UPLOADER_TASK), NULL);
+          timeout(400);
           break;
 
         default:
@@ -683,6 +697,9 @@ static mode_type main_menu(event_t event) {
       break;
     case KEY_D:
       return current_state.previous_mode;
+    case TIMEOUT:
+      current_state.menu_index_active = -1;
+      break;
     default:
       break;
   }

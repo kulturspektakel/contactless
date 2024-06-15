@@ -1,7 +1,5 @@
 #pragma once
 
-#define USB_VOLTAGE_THRESHOLD 1000
-
 extern int battery_voltage;
 extern int usb_voltage;
 int battery_percentage();

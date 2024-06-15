@@ -1,4 +1,5 @@
 #include "power_management.h"
+#include "constants.h"
 #include "driver/gpio.h"
 #include "driver/ledc.h"
 #include "driver/rtc_io.h"
@@ -15,10 +16,10 @@
 #include "math.h"
 #include "state_machine.h"
 
-#define TAG "power_management"
 #define USB_CHANNEL ADC_CHANNEL_0
 #define BATTERY_CHANNEL ADC_CHANNEL_1
 #define USB_PIN GPIO_NUM_1
+#define USB_VOLTAGE_THRESHOLD 1000
 
 // Reset and Power-Down: When low, internal current sources are switched off, the oscillator is
 // disabled, and input pads are disconnected from the outside world. The internal reset phase
@@ -38,11 +39,11 @@
 
 int battery_voltage = 0;
 int usb_voltage = 0;
-static TaskHandle_t task_handle;
 static TimerHandle_t power_off_timer = NULL;
 static adc_oneshot_unit_handle_t adc1_handle;
 static adc_cali_handle_t battery_cali_handle = NULL;
 static adc_cali_handle_t usb_cali_handle = NULL;
+static TimerHandle_t voltage_update_timer;
 
 int battery_percentage() {
   // https://www.desmos.com/calculator/jymu8kltny
@@ -72,7 +73,7 @@ static void adc_calibration_init(
 }
 
 static void IRAM_ATTR gpio_interrupt_handler(void* args) {
-  vTaskNotifyGiveFromISR(task_handle, NULL);
+  vTaskNotifyGiveFromISR(xTaskGetHandle(POWER_MANAGEMENT_TASK), NULL);
 }
 
 static void ledc_init() {
@@ -113,7 +114,6 @@ static void ledc_init() {
 }
 
 static void set_rgb_color(uint8_t red, uint8_t green, uint8_t blue) {
-  ESP_LOGI(TAG, "Setting RGB color: %d %d %d", red, green, blue);
   ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, red);
   ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
   ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, green);
@@ -132,9 +132,10 @@ static void gpio_config_for_wakeup(gpio_num_t pin) {
 }
 
 static void power_off_timer_callback(TimerHandle_t xTimer) {
-  ESP_LOGI(TAG, "Powering off");
-  if (usb_voltage > USB_VOLTAGE_THRESHOLD) {
-    ESP_LOGI(TAG, "USB still connected, not powering off");
+  ESP_LOGI(POWER_MANAGEMENT_TASK, "Powering off");
+  bool usb_connected = xEventGroupGetBits(event_group) & USB_CONNECTED;
+  if (usb_connected) {
+    ESP_LOGI(POWER_MANAGEMENT_TASK, "USB still connected, not powering off");
     return;
   }
 
@@ -214,23 +215,22 @@ static void init_voltage_measurements() {
   adc_calibration_init(init_config.unit_id, BATTERY_CHANNEL, config.atten, &battery_cali_handle);
   adc_calibration_init(init_config.unit_id, USB_CHANNEL, config.atten, &usb_cali_handle);
   if (battery_cali_handle == NULL || usb_cali_handle == NULL) {
-    ESP_LOGE(TAG, "Failed to initialize calibration");
+    ESP_LOGE(POWER_MANAGEMENT_TASK, "Failed to initialize calibration");
     return;
   }
 }
 
 void power_management(void* params) {
   init_voltage_measurements();
-  task_handle = xTaskGetCurrentTaskHandle();
   ledc_init();
   gpio_install_isr_service(ESP_INTR_FLAG_EDGE);
 
-  TimerHandle_t voltage_update_timer = xTimerCreate(
+  voltage_update_timer = xTimerCreate(
       "voltage_update_timer", pdMS_TO_TICKS(UPDATE_INTERVAL), pdFALSE, 0, gpio_interrupt_handler
   );
 
   // notify for initial reading
-  xTaskNotifyGive(task_handle);
+  xTaskNotifyGive(xTaskGetCurrentTaskHandle());
 
   while (true) {
     // need to setup USB interrupt again, after reading voltages
@@ -251,19 +251,26 @@ void power_management(void* params) {
     int old_usb_voltage = usb_voltage;
     read_voltages();
 
-    if (usb_voltage > USB_VOLTAGE_THRESHOLD) {
+    bool usb_connected = usb_voltage > USB_VOLTAGE_THRESHOLD;
+
+    if (usb_connected) {
+      // set eventgroup
+      xEventGroupSetBits(event_group, USB_CONNECTED);
       // white
       set_rgb_color(255, 125, 125);
-    } else if (battery_voltage < BATTERY_LOW) {
-      // red
-      //   trigger_beep(LOW_BATTERY);
-      set_rgb_color(255, 0, 0);
     } else {
-      // turn off all LEDs
-      set_rgb_color(0, 0, 0);
+      xEventGroupClearBits(event_group, USB_CONNECTED);
+      if (battery_voltage < BATTERY_LOW) {
+        // red
+        //   trigger_beep(LOW_BATTERY);
+        set_rgb_color(255, 0, 0);
+      } else {
+        // turn off all LEDs
+        set_rgb_color(0, 0, 0);
+      }
     }
 
-    if (old_usb_voltage > USB_VOLTAGE_THRESHOLD && usb_voltage < USB_VOLTAGE_THRESHOLD) {
+    if (old_usb_voltage > USB_VOLTAGE_THRESHOLD && !usb_connected) {
       // USB was just plugged unplugged, start power off timer
       if (power_off_timer == NULL) {
         power_off_timer = xTimerCreate(
@@ -275,21 +282,14 @@ void power_management(void* params) {
         );
       }
       reset_power_off_timer();
-    } else if (old_usb_voltage < USB_VOLTAGE_THRESHOLD && usb_voltage > USB_VOLTAGE_THRESHOLD &&
+    } else if (old_usb_voltage < USB_VOLTAGE_THRESHOLD && usb_connected &&
                power_off_timer != NULL) {
       // USB was just plugged in, disable power off timer
       xTimerDelete(power_off_timer, 0);
       power_off_timer = NULL;
     }
 
-    ESP_LOGI(TAG, "USB %dmV, battery %dmV", usb_voltage, battery_voltage);
+    ESP_LOGI(POWER_MANAGEMENT_TASK, "USB %dmV, battery %dmV", usb_voltage, battery_voltage);
     xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
-
-    xTimerChangePeriod(
-        voltage_update_timer,
-        current_state.mode == MAIN_MENU ? pdMS_TO_TICKS(500) : pdMS_TO_TICKS(UPDATE_INTERVAL),
-        0
-    );
-    xTimerStart(voltage_update_timer, 0);
   }
 }
