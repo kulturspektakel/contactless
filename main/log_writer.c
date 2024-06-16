@@ -19,7 +19,8 @@ QueueHandle_t log_queue;
 
 bool write_pb_to_file(pb_ostream_t* stream, const uint8_t* buffer, size_t count) {
   FILE* file = (FILE*)stream->state;
-  int ret = fwrite(buffer, count, 1, file);
+  int ret = fwrite(buffer, 1, count, file);
+
   if (ret < 0) {
     return false;
   } else if (ret == 0) {
@@ -68,14 +69,18 @@ void log_writer(void* params) {
         if (pb_encode(&file_stream, LogMessage_fields, log_message)) {
           ESP_LOGI(TAG, "Wrote log to %s", filename);
         } else {
-          ESP_LOGE(TAG, "Failed to write log to %s", filename);
+          ESP_LOGE(
+              TAG,
+              "Failed to write log: %s (bytes written %d)",
+              file_stream.errmsg,
+              file_stream.bytes_written
+          );
         }
+        fclose(log_file);
 
         // even if we failed to write the log, the file was created
-        xTaskNotifyGive(xTaskGetHandle(LOG_UPLOADER_TASK));
         current_state.log_files_to_upload++;
-
-        fclose(log_file);
+        xTaskNotifyGive(xTaskGetHandle(LOG_UPLOADER_TASK));
       } else {
         ESP_LOGE(TAG, "Failed to open %s for writing", filename);
       }

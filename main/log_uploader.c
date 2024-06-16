@@ -115,7 +115,7 @@ void maybe_create_log_dir() {
 }
 
 static void retry_upload(TimerHandle_t xTimer) {
-  xTaskNotifyGive(xTaskGetHandle("log_uploader"));
+  xTaskNotifyGive(xTaskGetHandle(LOG_UPLOADER_TASK));
 }
 
 void log_uploader(void* params) {
@@ -170,6 +170,10 @@ void log_uploader(void* params) {
       }
     }
     closedir(dir);
+
+    if (current_state.log_files_to_upload > 0) {
+      // TODO
+    }
 
     if (error_count > 0) {
       // retry in 5 minutes

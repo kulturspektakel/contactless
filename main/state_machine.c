@@ -303,12 +303,11 @@ static void write_log(LogMessage_Order_PaymentMethod payment) {
     log->card_transaction.has_counter = true;
     log->card_transaction.counter = current_card.counter;
 
-    for (int i = 0; i < sizeof(current_card.id); i++) {
-      char buffer[3];
-      snprintf(buffer, sizeof(buffer), "%02X", current_card.id[i]);
-      log->card_transaction.card_id[i * 2] = buffer[0];
-      log->card_transaction.card_id[i * 2 + 1] = buffer[1];
+    size_t length = sizeof(current_card.id);
+    for (int i = 0; i < length; i++) {
+      sprintf(log->card_transaction.card_id + i * 2, "%02X", current_card.id[i]);
     }
+    log->card_transaction.card_id[length * 2] = '\0';
 
     log->card_transaction.balance_before = current_state.data_before_write.balance;
     log->card_transaction.balance_after = current_state.data_to_write.balance;
@@ -696,7 +695,7 @@ static mode_type main_menu(event_t event) {
       }
       break;
     case KEY_D:
-      return current_state.previous_mode;
+      return default_mode();
     case TIMEOUT:
       current_state.menu_index_active = -1;
       break;
@@ -708,7 +707,7 @@ static mode_type main_menu(event_t event) {
 
 static mode_type process_event(event_t event) {
   if (event == FATAL_ERROR) {
-    return MAIN_FATAL;
+    return MAIN_MENU;
   } else if (event == ENTER_POWER_SAVE) {
     return POWER_SAVE;
   }
@@ -772,10 +771,9 @@ void state_machine(void* params) {
 
   while (true) {
     xEventGroupWaitBits(
-        event_group, startup_bits, pdFALSE, pdFALSE, BOOTSCREEN_DELAY_MS / portTICK_PERIOD_MS
+        event_group, STARTUP_BITS, pdFALSE, pdFALSE, BOOTSCREEN_DELAY_MS / portTICK_PERIOD_MS
     );
-    if (xEventGroupGetBits(event_group) & startup_bits) {
-      // startup completed, wait at least 2 seconds
+    if (xEventGroupGetBits(event_group) & STARTUP_BITS) {
       vTaskDelay(
           (current_state.expected_bootup_time - esp_timer_get_time()) / 1000 / portTICK_PERIOD_MS
       );
@@ -811,15 +809,9 @@ void state_machine(void* params) {
     taskEXIT_CRITICAL(&mutex);
 
     if (previous_mode != current_state.mode) {
-      current_state.previous_mode = previous_mode;
-
       // log needs to be outside of critical section
       ESP_LOGI(
-          TAG,
-          "Event %d changed state from %d to %d",
-          event,
-          current_state.previous_mode,
-          current_state.mode
+          TAG, "Event %d changed state from %d to %d", event, previous_mode, current_state.mode
       );
     }
     xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);

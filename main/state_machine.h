@@ -100,7 +100,6 @@ typedef enum {
 
 typedef struct {
   mode_type mode;
-  mode_type previous_mode;
   bool is_privileged;
   cart_t cart;
   product_selection_t product_selection;
