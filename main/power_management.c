@@ -1,4 +1,5 @@
 #include "power_management.h"
+#include "buzzer.h"
 #include "constants.h"
 #include "driver/gpio.h"
 #include "driver/ledc.h"
@@ -261,8 +262,8 @@ void power_management(void* params) {
     } else {
       xEventGroupClearBits(event_group, USB_CONNECTED);
       if (battery_voltage < BATTERY_LOW) {
+        trigger_beep(BATTERY_EMPTY);
         // red
-        //   trigger_beep(LOW_BATTERY);
         set_rgb_color(255, 0, 0);
       } else {
         // turn off all LEDs

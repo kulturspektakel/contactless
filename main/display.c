@@ -145,12 +145,12 @@ static void wifi_strength(u8g2_t* u8g2) {
 }
 
 static void pending_uploads(u8g2_t* u8g2, int offset) {
-  if (current_state.log_files_to_upload < 1) {
+  if (log_files_to_upload < 1) {
     return;
   }
   u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
   char pending[4];
-  sprintf(pending, "%3d", current_state.log_files_to_upload);
+  sprintf(pending, "%3d", log_files_to_upload);
   // render right aligned
   offset -= u8g2_GetStrWidth(u8g2, pending) + 4;
   u8g2_DrawStr(u8g2, offset, 5, pending);
@@ -707,8 +707,8 @@ static void main_menu_cb(u8g2_t* u8g2, int i, int x, int y) {
           value,
           sizeof(value),
           "%d file%c",
-          current_state.log_files_to_upload,
-          current_state.log_files_to_upload == 1 ? '\0' : 's'
+          log_files_to_upload,
+          log_files_to_upload == 1 ? '\0' : 's'
       );
       break;
 

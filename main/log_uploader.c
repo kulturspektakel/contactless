@@ -12,12 +12,14 @@
 
 #define MAX_ERRORS 3
 
-int count_logs() {
+int log_files_to_upload = 0;
+
+static int update_log_count() {
   DIR* dir = opendir(LOG_DIR);
 
   if (dir == NULL) {
     ESP_LOGE(LOG_UPLOADER_TASK, "Failed to open directory");
-    return -1;
+    return 0;
   }
 
   struct dirent* entry;
@@ -115,7 +117,7 @@ void maybe_create_log_dir() {
 }
 
 static void retry_upload(TimerHandle_t xTimer) {
-  xTaskNotifyGive(xTaskGetHandle(LOG_UPLOADER_TASK));
+  xTaskNotify(xTaskGetHandle(LOG_UPLOADER_TASK), 0, eNoAction);
 }
 
 void log_uploader(void* params) {
@@ -123,12 +125,20 @@ void log_uploader(void* params) {
   maybe_create_log_dir();
 
   // initial value
-  current_state.log_files_to_upload = count_logs();
+  log_files_to_upload = update_log_count();
   xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
-  ESP_LOGI(LOG_UPLOADER_TASK, "Found %d logs", current_state.log_files_to_upload);
+  if (log_files_to_upload > 0) {
+    xTaskNotify(xTaskGetHandle(LOG_UPLOADER_TASK), 0, eNoAction);
+  }
+  ESP_LOGI(LOG_UPLOADER_TASK, "Found %d logs", log_files_to_upload);
 
   while (1) {
     xEventGroupWaitBits(event_group, WIFI_CONNECTED, pdFALSE, pdTRUE, portMAX_DELAY);
+    int increment = 0;
+    xTaskNotifyWait(0, ULONG_MAX, &increment, portMAX_DELAY);
+    log_files_to_upload += increment;
+    xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
+
     int error_count = 0;
     DIR* dir = opendir(LOG_DIR);
     struct dirent* entry;
@@ -151,32 +161,32 @@ void log_uploader(void* params) {
           break;
         case FILE_HANDLED:
           if (remove(filename) == 0) {
-            current_state.log_files_to_upload--;
-            if (current_state.log_files_to_upload < 0) {
-              current_state.log_files_to_upload = 0;
+            log_files_to_upload--;
+            if (log_files_to_upload < 0) {
+              log_files_to_upload = 0;
             }
             xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
           }
           break;
         case HTTP_ISSUE:
-          // force starting over
-          error_count = MAX_ERRORS;
+          goto end;
           break;
       }
 
       if (error_count >= MAX_ERRORS) {
         ESP_LOGE(LOG_UPLOADER_TASK, "Stopping log uploader after %d error(s)", error_count);
-        break;
+        goto end;
       }
     }
+  end:
     closedir(dir);
 
-    if (current_state.log_files_to_upload > 0) {
-      // TODO
+    if (log_files_to_upload > 0) {
+      log_files_to_upload = update_log_count();
+      xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
     }
 
-    if (error_count > 0) {
-      // retry in 5 minutes
+    if (log_files_to_upload > 0) {
       if (retry_timer == NULL) {
         retry_timer =
             xTimerCreate("retry_timer", pdMS_TO_TICKS(300000), pdFALSE, NULL, retry_upload);
@@ -188,8 +198,5 @@ void log_uploader(void* params) {
       );
       xTimerReset(retry_timer, 0);
     }
-
-    // waiting for new log files to be written or the retry timer to fire
-    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
   }
 }

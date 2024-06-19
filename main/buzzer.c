@@ -16,13 +16,14 @@ typedef struct {
   int pause;      // Pause after the note in milliseconds
 } Note;
 
-Note low_battery[] = {{400, 150, 150}, {600, 150, 150}, {800, 150, 0}};
+Note LOW_BATTERY[] = {{698, 70, 20}, {349, 70, 400}, {698, 70, 20}, {349, 70, 0}};
+Note WELCOME[] = {{523, 150, 20}, {659, 150, 20}, {784, 150, 20}, {1046, 500, 0}};
 
 void trigger_beep(beep_type_t type) {
   xQueueSend(beep_events, &type, 0);
 }
 
-void play_tone(int tone, int duration) {
+static void play_tone(int tone, int duration) {
   ledc_timer_config_t ledc_timer = {
       .duty_resolution = LEDC_TIMER_13_BIT,
       .freq_hz = tone,
@@ -33,18 +34,31 @@ void play_tone(int tone, int duration) {
   ledc_timer_config(&ledc_timer);
 
   ledc_channel_config_t ledc_channel = {
-      .channel = LEDC_CHANNEL_0,
+      .channel = LEDC_CHANNEL_4,
       .duty = 4096,
-      .gpio_num = GPIO_NUM_8,
+      .gpio_num = BUZZER_PIN,
       .speed_mode = 0,
       .hpoint = 0,
       .timer_sel = LEDC_TIMER_0
   };
   ledc_channel_config(&ledc_channel);
 
-  vTaskDelay(1000 / duration / portTICK_PERIOD_MS);
+  vTaskDelay(duration / portTICK_PERIOD_MS);
 
-  ledc_stop(0, LEDC_CHANNEL_0, 0);
+  ledc_stop(0, LEDC_CHANNEL_4, 0);
+}
+
+static void play_melody(Note* notes, size_t size) {
+  for (int i = 0; i < size / sizeof(Note); i++) {
+    play_tone(notes[i].frequency, notes[i].duration);
+    vTaskDelay(notes[i].pause / portTICK_PERIOD_MS);
+  }
+}
+
+static void play_beep(int duration) {
+  gpio_set_level(BUZZER_PIN, 1);
+  vTaskDelay(duration / portTICK_PERIOD_MS);
+  gpio_set_level(BUZZER_PIN, 0);
 }
 
 void buzzer(void* params) {
@@ -62,16 +76,22 @@ void buzzer(void* params) {
   beep_type_t type;
   while (1) {
     xQueueReceive(beep_events, &type, portMAX_DELAY);
-    // gpio_set_level(BUZZER_PIN, 1);
     switch (type) {
       case BEEP_SHORT:
-        vTaskDelay(150 / portTICK_PERIOD_MS);
+        play_beep(150);
         break;
       case BEEP_LONG:
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        play_beep(1000);
+        break;
+      case BATTERY_EMPTY:
+        play_melody(LOW_BATTERY, sizeof(LOW_BATTERY));
+        break;
+      case STARTUP:
+        play_melody(WELCOME, sizeof(WELCOME));
         break;
     }
 
-    gpio_set_level(BUZZER_PIN, 0);
+    // clear queue, in case multiple beeps were triggered
+    xQueueReceive(beep_events, &type, 0);
   }
 }

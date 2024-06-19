@@ -104,7 +104,6 @@ typedef struct {
   cart_t cart;
   product_selection_t product_selection;
   LogMessage_CardTransaction_TransactionType transaction_type;
-  int log_files_to_upload;
   int manual_amount;
   ultralight_card_info_t data_to_write;
   ultralight_card_info_t data_before_write;

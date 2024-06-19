@@ -79,8 +79,7 @@ void log_writer(void* params) {
         fclose(log_file);
 
         // even if we failed to write the log, the file was created
-        current_state.log_files_to_upload++;
-        xTaskNotifyGive(xTaskGetHandle(LOG_UPLOADER_TASK));
+        xTaskNotify(xTaskGetHandle(LOG_UPLOADER_TASK), 0, eIncrement);
       } else {
         ESP_LOGE(TAG, "Failed to open %s for writing", filename);
       }

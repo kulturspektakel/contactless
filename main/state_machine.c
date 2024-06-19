@@ -23,7 +23,6 @@ static QueueHandle_t state_events;
 state_t current_state = {
     .mode = MAIN_STARTING_UP,
     .is_privileged = false,
-    .log_files_to_upload = -1,
     .manual_amount = 0,
     .menu_index = 0,
     .menu_index_active = -1,
@@ -662,7 +661,6 @@ static mode_type main_menu(event_t event) {
       break;
     case KEY_HASH:
       switch (current_state.menu_index) {
-        ESP_LOGI(TAG, "menu index: %d", current_state.menu_index);
         case MENU_CONFIG:
           for (int i = 0; i < lists_count; i++) {
             if (product_lists[i].id == active_config.list_id) {
@@ -686,7 +684,7 @@ static mode_type main_menu(event_t event) {
           break;
         case MENU_UPLOADS:
           current_state.menu_index_active = MENU_UPLOADS;
-          vTaskNotifyGiveFromISR(xTaskGetHandle(LOG_UPLOADER_TASK), NULL);
+          xTaskNotify(xTaskGetHandle(LOG_UPLOADER_TASK), 0, eNoAction);
           timeout(400);
           break;
 
@@ -782,6 +780,7 @@ void state_machine(void* params) {
     trigger_event(DISPLAY_NEEDS_UPDATE);
   }
   trigger_event(STARTUP_COMPLETED);
+  trigger_beep(STARTUP);
 
   event_t event;
   while (true) {

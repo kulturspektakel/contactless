@@ -11,6 +11,7 @@ set(srcs
     "power_management.c"
     "rfid.c"
     "state_machine.c"
+    "pn532.c"
     "wifi_connect.c"
     "u8g2_esp32_hal.c"
     "time_sync.c"
@@ -19,4 +20,4 @@ set(srcs
     "buzzer.c"
 )
 
-idf_component_register(SRCS "pn532.c" "${srcs}" INCLUDE_DIRS ".")
+idf_component_register(SRCS "${srcs}" INCLUDE_DIRS ".")
