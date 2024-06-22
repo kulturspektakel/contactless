@@ -776,8 +776,10 @@ void state_machine(void* params) {
           (current_state.expected_bootup_time - esp_timer_get_time()) / 1000 / portTICK_PERIOD_MS
       );
       break;
+    } else {
+      current_state.mode = MAIN_MENU;
+      trigger_event(DISPLAY_NEEDS_UPDATE);
     }
-    trigger_event(DISPLAY_NEEDS_UPDATE);
   }
   trigger_event(STARTUP_COMPLETED);
   trigger_beep(STARTUP);

@@ -238,25 +238,15 @@ static void boot_screen(u8g2_t* u8g2) {
     u8g2_DrawUTF8(u8g2, DISPLAY_WIDTH / 2 - w / 2, DISPLAY_HEIGHT - 3, DEVICE_ID);
   }
 
-  if (esp_timer_get_time() > current_state.expected_bootup_time) {
-    u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
-    int w = 0;
-    draw_status(u8g2, "DID", w++ * 26, bits & DEVICE_ID_LOADED);
-    draw_status(u8g2, "SLT", w++ * 26, bits & SALT_LOADED);
-    draw_status(u8g2, "CFG", w++ * 26, bits & LOCAL_CONFIG_LOADED);
-    draw_status(u8g2, "TME", w++ * 26, bits & TIME_SET);
-    draw_status(u8g2, "WFI", w++ * 26, bits & WIFI_CONNECTED);
-  } else {
-    static int64_t last_time_ms = 0;
-    static int64_t start_time_ms = 0;
-    if (start_time_ms == 0) {
-      start_time_ms = esp_timer_get_time() / 1000;
-    }
-    animation_tick(16, &last_time_ms);
-    float progress = (float)(last_time_ms - start_time_ms) /
-                     (float)(current_state.expected_bootup_time / 1000 - start_time_ms);
-    u8g2_DrawBox(u8g2, 0, 0, DISPLAY_WIDTH * progress, 5);
+  static int64_t last_time_ms = 0;
+  static int64_t start_time_ms = 0;
+  if (start_time_ms == 0) {
+    start_time_ms = esp_timer_get_time() / 1000;
   }
+  animation_tick(16, &last_time_ms);
+  float progress = (float)(last_time_ms - start_time_ms) /
+                   (float)(current_state.expected_bootup_time / 1000 - start_time_ms);
+  u8g2_DrawBox(u8g2, 0, 0, DISPLAY_WIDTH * progress, 5);
 }
 
 static void draw_amount(u8g2_t* u8g2, int amount, int y) {

@@ -277,8 +277,9 @@ bool pn532_read_data(uint8_t* buff, uint8_t n) {
   i2ccmd = i2c_cmd_link_create();
   i2c_master_start(i2ccmd);
   i2c_master_write_byte(i2ccmd, PN532_I2C_READ_ADDRESS, true);
-  for (uint8_t i = 0; i < (n + 2); i++)
+  for (uint8_t i = 0; i < (n + 2); i++) {
     i2c_master_read_byte(i2ccmd, &buffer[i], I2C_MASTER_ACK);
+  }
   i2c_master_read_byte(i2ccmd, &buffer[n + 2], I2C_MASTER_LAST_NACK);
   i2c_master_stop(i2ccmd);
 
@@ -566,10 +567,8 @@ bool pn532_sam_configuration(void) {
   }
 
   // read data packet
-  pn532_read_data(pn532_packetbuffer, 50);
-
-  int offset = 6;
-  return (pn532_packetbuffer[offset] == 0x15);
+  pn532_read_data(pn532_packetbuffer, 9);
+  return (pn532_packetbuffer[6] == 0x15);
 }
 
 /**************************************************************************/

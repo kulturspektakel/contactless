@@ -258,12 +258,16 @@ bool is_old_card(byte_array_t* uid) {
 }
 
 void rfid(void* params) {
+  // pn532_init(35, 37, 48, 47, I2C_NUM_1)
   if (!pn532_init(39, 38, 48, 47, I2C_NUM_0)) {
     ESP_LOGE(TAG, "PN532 init failed");
     trigger_event(FATAL_ERROR);
   }
 
-  pn532_sam_configuration();
+  if (!pn532_sam_configuration()) {
+    ESP_LOGE(TAG, "SAM configuration failed");
+    trigger_event(FATAL_ERROR);
+  }
 
   uint32_t versiondata = pn532_get_firmware_version();
   // Got ok data, print it out!
