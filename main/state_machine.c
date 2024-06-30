@@ -1,4 +1,5 @@
 #include "state_machine.h"
+#include "antenna_test.h"
 #include "buzzer.h"
 #include "constants.h"
 #include "display.h"
@@ -684,7 +685,12 @@ static mode_type main_menu(event_t event) {
           break;
         case MENU_UPLOADS:
           current_state.menu_index_active = MENU_UPLOADS;
-          xTaskNotify(xTaskGetHandle(LOG_UPLOADER_TASK), 0, eNoAction);
+          xTaskNotifyF(xTaskGetHandle(LOG_UPLOADER_TASK), 0, eNoAction);
+          timeout(400);
+          break;
+        case MENU_ANTENNA_TEST:
+          current_state.menu_index_active = MENU_ANTENNA_TEST;
+          xTaskCreate(&antenna_test, ANTENNA_TEST_TASK, 4096, NULL, TASK_PRIO_NORMAL, NULL);
           timeout(400);
           break;
 

@@ -11,6 +11,7 @@ typedef enum {
   MENU_USB,
   MENU_BATTERY,
   MENU_VERSION,
+  MENU_ANTENNA_TEST,
 
   // keep last
   MENU_COUNT

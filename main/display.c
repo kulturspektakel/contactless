@@ -1,5 +1,6 @@
 #include "display.h"
 #include <esp_app_desc.h>
+#include "antenna_test.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
@@ -701,7 +702,46 @@ static void main_menu_cb(u8g2_t* u8g2, int i, int x, int y) {
           log_files_to_upload == 1 ? '\0' : 's'
       );
       break;
-
+    case MENU_ANTENNA_TEST:
+      snprintf(label, sizeof(label), "ANTENNA");
+      switch (antenna_test_status) {
+        case ANTENNA_TEST_FAILED:
+          snprintf(value, sizeof(value), "failed");
+          break;
+        case ANTENNA_TEST_TOO_LOW:
+          snprintf(value, sizeof(value), "Error: <25mA");
+          break;
+        case ANTENNA_TEST_NOT_STARTED:
+          snprintf(value, sizeof(value), "not started");
+          break;
+        case ANTENNA_TEST_45MA:
+          snprintf(value, sizeof(value), "45mA");
+          break;
+        case ANTENNA_TEST_60MA:
+          snprintf(value, sizeof(value), "60mA");
+          break;
+        case ANTENNA_TEST_75MA:
+          snprintf(value, sizeof(value), "75mA");
+          break;
+        case ANTENNA_TEST_90MA:
+          snprintf(value, sizeof(value), "90mA");
+          break;
+        case ANTENNA_TEST_105MA:
+          snprintf(value, sizeof(value), "105mA");
+          break;
+        case ANTENNA_TEST_120MA:
+          snprintf(value, sizeof(value), "120mA");
+          break;
+        case ANTENNA_TEST_130MA:
+          snprintf(value, sizeof(value), "130mA");
+          break;
+        case ANTENNA_TEST_150MA:
+          snprintf(value, sizeof(value), "150mA");
+          break;
+        case ANTENNA_TEST_TOO_HIGH:
+          snprintf(value, sizeof(value), "Error: >150mA");
+          break;
+      }
     default:
       return;
   }

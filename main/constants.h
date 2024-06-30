@@ -12,10 +12,14 @@
 #define API_HOST "api.kulturspektakel.de"
 #define DEPOSIT_VALUE 200
 
+#define TASK_PRIO_NORMAL 5
+#define TASK_PRIO_HIGH 10
+
 #define FETCH_CONFIG_TASK "fetch_config"
 #define LOG_UPLOADER_TASK "log_uploader"
 #define WIFI_CONNECT_TASK "wifi_connect"
 #define POWER_MANAGEMENT_TASK "power_mgmt"
+#define ANTENNA_TEST_TASK "antenna_test"
 
 extern const char* LOG_DIR;
 extern const char* CONFIG_FILE;
