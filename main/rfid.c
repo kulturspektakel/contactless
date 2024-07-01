@@ -17,7 +17,6 @@ typedef struct {
   uint8_t length;
 } byte_array_t;
 
-static const char* TAG = "rfid";
 static uint8_t NDEF_KEY_A[6] = {0xD3, 0xF7, 0xD3, 0xF7, 0xD3, 0xF7};
 static uint8_t PAGE_4[16] =
     {0x00, 0x00, 0x03, 0x2B, 0xD1, 0x01, 0x27, 0x55, 0x04, 0x6B, 0x75, 0x6C, 0x74, 0x2E, 0x63, 0x61
@@ -81,7 +80,7 @@ static event_t read_card(byte_array_t* uid) {
   uint8_t payload[PAYLOAD_LENGTH + 1];
 
   if (!mfu_read_page(9, payload, 16) || !mfu_read_page(13, payload + 16, PAYLOAD_LENGTH - 16)) {
-    ESP_LOGE(TAG, "Reading payload failed");
+    ESP_LOGE(RFID_TASK, "Reading payload failed");
     return CARD_DETECTED_NOT_READABLE;
   }
   payload[PAYLOAD_LENGTH] = '=';  // add padding for base64
@@ -104,12 +103,14 @@ static event_t read_card(byte_array_t* uid) {
       decoded_payload, sizeof(decoded_payload), &size_decoded, payload, sizeof(payload)
   );
   if (decode_error != 0) {
-    ESP_LOGE(TAG, "Decoding payload failed. Error %d, decoded %d", decode_error, size_decoded);
-    ESP_LOG_BUFFER_HEX(TAG, decoded_payload, PAYLOAD_LENGTH);
+    ESP_LOGE(
+        RFID_TASK, "Decoding payload failed. Error %d, decoded %d", decode_error, size_decoded
+    );
+    ESP_LOG_BUFFER_HEX(RFID_TASK, decoded_payload, PAYLOAD_LENGTH);
     return CARD_DETECTED_NOT_READABLE;
   } else if (size_decoded != sizeof(decoded_payload)) {
-    ESP_LOGE(TAG, "Decoded payload has wrong size %d", size_decoded);
-    ESP_LOG_BUFFER_HEX(TAG, decoded_payload, size_decoded);
+    ESP_LOGE(RFID_TASK, "Decoded payload has wrong size %d", size_decoded);
+    ESP_LOG_BUFFER_HEX(RFID_TASK, decoded_payload, size_decoded);
     return CARD_DETECTED_NOT_READABLE;
   }
 
@@ -131,7 +132,10 @@ static event_t read_card(byte_array_t* uid) {
   // verify counter
   if (new_card.counter != counter_from_payload) {
     ESP_LOGE(
-        TAG, "Counter mismatch: %d (card) != %d (payload)", new_card.counter, counter_from_payload
+        RFID_TASK,
+        "Counter mismatch: %d (card) != %d (payload)",
+        new_card.counter,
+        counter_from_payload
     );
     return CARD_DETECTED_SKIPPED_SECUIRTY;
   }
@@ -141,9 +145,9 @@ static event_t read_card(byte_array_t* uid) {
   calculate_signature_ultralight(hash, &new_card);
 
   if (memcmp(hash, new_card.signature, LENGTH_SIGNATURE) != 0) {
-    ESP_LOGE(TAG, "Signature mismatch: hash != signature");
-    ESP_LOG_BUFFER_HEX(TAG, hash, 5);
-    ESP_LOG_BUFFER_HEX(TAG, new_card.signature, 5);
+    ESP_LOGE(RFID_TASK, "Signature mismatch: hash != signature");
+    ESP_LOG_BUFFER_HEX(RFID_TASK, hash, 5);
+    ESP_LOG_BUFFER_HEX(RFID_TASK, new_card.signature, 5);
     return CARD_DETECTED_SKIPPED_SECUIRTY;
   }
 
@@ -169,19 +173,24 @@ static bool write_card(byte_array_t* uid, ultralight_card_info_t* card) {
   calculate_password(uid, password, pack);
 
   if (!ntag2xx_authenticate(password, pack_read)) {
-    ESP_LOGE(TAG, "Authentication failed");
+    ESP_LOGE(RFID_TASK, "Authentication failed");
     return false;
   }
 
   // validate PACK
   if (memcmp(pack, pack_read, 2) != 0) {
     ESP_LOGE(
-        TAG, "PACK mismatch: %02x%02x != %02x%02x", pack[0], pack[1], pack_read[0], pack_read[1]
+        RFID_TASK,
+        "PACK mismatch: %02x%02x != %02x%02x",
+        pack[0],
+        pack[1],
+        pack_read[0],
+        pack_read[1]
     );
     return false;
   }
 
-  ESP_LOGI(TAG, "Authentication successful");
+  ESP_LOGI(RFID_TASK, "Authentication successful");
 
   // calculate payload
   size_t len = LENGTH_ID + LENGTH_COUNTER + LENGTH_DEPOSIT + LENGTH_BALANCE + LENGTH_SIGNATURE;
@@ -195,7 +204,7 @@ static bool write_card(byte_array_t* uid, ultralight_card_info_t* card) {
   calculate_signature_ultralight(buffer + OFFSET_SIGNATURE, card);
 
   ESP_LOGI(
-      TAG,
+      RFID_TASK,
       "Write: balance %hu, deposit %hu, counter %hu",
       card->balance,
       card->deposit,
@@ -206,12 +215,12 @@ static bool write_card(byte_array_t* uid, ultralight_card_info_t* card) {
   uint8_t write_data[PAYLOAD_LENGTH + 2];
   size_t base64_len = sizeof(write_data);
   if (mbedtls_base64_encode_url_safe(write_data, base64_len, &base64_len, buffer, len) != 0) {
-    ESP_LOGE(TAG, "Encoding payload failed");
+    ESP_LOGE(RFID_TASK, "Encoding payload failed");
     return false;
   }
   if (base64_len != PAYLOAD_LENGTH + 1) {
-    ESP_LOGE(TAG, "Base64 length mismatch: %d != %d", base64_len, PAYLOAD_LENGTH);
-    ESP_LOG_BUFFER_HEX(TAG, write_data, base64_len);
+    ESP_LOGE(RFID_TASK, "Base64 length mismatch: %d != %d", base64_len, PAYLOAD_LENGTH);
+    ESP_LOG_BUFFER_HEX(RFID_TASK, write_data, base64_len);
     return false;
   }
   write_data[PAYLOAD_LENGTH] = 0xFE;  // override padding =
@@ -220,26 +229,26 @@ static bool write_card(byte_array_t* uid, ultralight_card_info_t* card) {
   for (size_t i = 2; i < base64_len / 4; i++) {  // skip first two bytes, because ID did not
                                                  // change
     if (!mfu_write_page(i + 9, &write_data[4 * i])) {
-      ESP_LOGE(TAG, "Writing payload failed at block %d", i);
+      ESP_LOGE(RFID_TASK, "Writing payload failed at block %d", i);
       return false;
     }
   }
 
   int counter_diff = card->counter - current_card.counter;
   if (counter_diff < 0) {
-    ESP_LOGE(TAG, "Counter decreased: %d", counter_diff);
+    ESP_LOGE(RFID_TASK, "Counter decreased: %d", counter_diff);
     return false;
   } else if (counter_diff > 3) {
-    ESP_LOGE(TAG, "Counter diff to high: %d", counter_diff);
+    ESP_LOGE(RFID_TASK, "Counter diff to high: %d", counter_diff);
     return false;
   }
-  ESP_LOGI(TAG, "Incrementing counter by %d", counter_diff);
+  ESP_LOGI(RFID_TASK, "Incrementing counter by %d", counter_diff);
   if (!mfu_increment_counter(0, counter_diff)) {
-    ESP_LOGE(TAG, "Incrementing counter failed");
+    ESP_LOGE(RFID_TASK, "Incrementing counter failed");
     return false;
   }
 
-  ESP_LOGI(TAG, "Write successful");
+  ESP_LOGI(RFID_TASK, "Write successful");
   return true;
 }
 
@@ -250,7 +259,7 @@ bool is_old_card(byte_array_t* uid) {
 
     if (mfc_authenticate_block(uid->bytes, uid->length, block_addr, 0, NDEF_KEY_A) &&
         mfc_read_data_block(block_addr, buffer) && memcmp(buffer, PAGE_4, sizeof(PAGE_4)) == 0) {
-      ESP_LOGI(TAG, "Old card present");
+      ESP_LOGI(RFID_TASK, "Old card present");
       return true;
     }
   }
@@ -258,25 +267,27 @@ bool is_old_card(byte_array_t* uid) {
 }
 
 void rfid(void* params) {
-  // pn532_init(35, 37, 48, 47, I2C_NUM_1)
-  if (!pn532_init(39, 38, 48, 47, I2C_NUM_0)) {
-    ESP_LOGE(TAG, "PN532 init failed");
+  if (!pn532_init(35, 37, 48, 47, I2C_NUM_1)) {  // RevA
+    // if (!pn532_init(39, 38, 48, 47, I2C_NUM_0)) { // RevE
+    ESP_LOGE(RFID_TASK, "PN532 init failed");
     trigger_event(FATAL_ERROR);
   }
 
   if (!pn532_sam_configuration()) {
-    ESP_LOGE(TAG, "SAM configuration failed");
+    ESP_LOGE(RFID_TASK, "SAM configuration failed");
     trigger_event(FATAL_ERROR);
   }
 
   uint32_t versiondata = pn532_get_firmware_version();
   // Got ok data, print it out!
-  ESP_LOGI(TAG, "Found chip PN5%lx", (versiondata >> 24) & 0xFF);
-  ESP_LOGI(TAG, "Firmware ver. %ld.%ld", (versiondata >> 16) & 0xFF, (versiondata >> 8) & 0xFF);
+  ESP_LOGI(RFID_TASK, "Found chip PN5%lx", (versiondata >> 24) & 0xFF);
+  ESP_LOGI(
+      RFID_TASK, "Firmware ver. %ld.%ld", (versiondata >> 16) & 0xFF, (versiondata >> 8) & 0xFF
+  );
 
   byte_array_t uid = {};
 
-  ESP_LOGI(TAG, "Start scanning for tags");
+  ESP_LOGI(RFID_TASK, "Start scanning for tags");
   int64_t card_seen_at = 0;
 
   while (1) {
@@ -287,7 +298,7 @@ void rfid(void* params) {
       }
       // card removed
       int64_t card_seen_for = (esp_timer_get_time() - card_seen_at) / 1000;
-      ESP_LOGI(TAG, "card seen for %lld", card_seen_for);
+      ESP_LOGI(RFID_TASK, "card seen for %lld", card_seen_for);
       card_seen_at = 0;
       vTaskDelay((card_seen_for < 1000 ? (1000 - card_seen_for) : 0) / portTICK_PERIOD_MS);
       trigger_event(CARD_REMOVED);
@@ -298,8 +309,8 @@ void rfid(void* params) {
       continue;
     }
 
-    ESP_LOGI(TAG, "Card detected:");
-    ESP_LOG_BUFFER_HEX(TAG, uid.bytes, uid.length);
+    ESP_LOGI(RFID_TASK, "Card detected:");
+    ESP_LOG_BUFFER_HEX(RFID_TASK, uid.bytes, uid.length);
 
     // reset current card
     ultralight_card_info_t new_card = {0};
@@ -317,11 +328,11 @@ void rfid(void* params) {
     }
 
     if (uid.length != 7) {
-      ESP_LOGE(TAG, "Invalid UID length: %d", uid.length);
+      ESP_LOGE(RFID_TASK, "Invalid UID length: %d", uid.length);
       continue;
     }
 
-    ESP_LOGI(TAG, "New card present");
+    ESP_LOGI(RFID_TASK, "New card present");
     event_t read_status = read_card(&uid);
     if (read_status == CARD_DETECTED_NOT_READABLE) {
       // don't proceed if card is not readable
@@ -334,19 +345,19 @@ void rfid(void* params) {
     }
 
     if (memcmp(uid.bytes, current_state.data_to_write.id, LENGTH_ID) != 0) {
-      ESP_LOGE(TAG, "Card changed during write process");
+      ESP_LOGE(RFID_TASK, "Card changed during write process");
       continue;
     }
 
     if (!write_card(&uid, &current_state.data_to_write)) {
-      ESP_LOGE(TAG, "Writing card failed");
+      ESP_LOGE(RFID_TASK, "Writing card failed");
       trigger_event(WRITE_UNSUCCESSFUL);
       continue;
     }
-    ESP_LOGI(TAG, "Card written successfully");
+    ESP_LOGI(RFID_TASK, "Card written successfully");
 
     if (read_card(&uid) != CARD_DETECTED_OK) {
-      ESP_LOGE(TAG, "Rereading card failed");
+      ESP_LOGE(RFID_TASK, "Rereading card failed");
       trigger_event(WRITE_UNSUCCESSFUL);
       continue;
     }
@@ -354,7 +365,7 @@ void rfid(void* params) {
         current_card.balance != current_state.data_to_write.balance) {
       // reread mismatch
       ESP_LOGE(
-          TAG,
+          RFID_TASK,
           "Reread mismatch: Balance (%d != %d), deposit (%d != %d)",
           current_card.balance,
           current_state.data_to_write.balance,

@@ -20,6 +20,7 @@
 #define WIFI_CONNECT_TASK "wifi_connect"
 #define POWER_MANAGEMENT_TASK "power_mgmt"
 #define ANTENNA_TEST_TASK "antenna_test"
+#define RFID_TASK "rfid"
 
 extern const char* LOG_DIR;
 extern const char* CONFIG_FILE;

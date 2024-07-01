@@ -1,6 +1,7 @@
 #pragma once
 
 typedef enum {
+  ANTRNNA_TEST_RUNNING = -4,
   ANTENNA_TEST_FAILED = -3,
   ANTENNA_TEST_TOO_LOW = -2,
   ANTENNA_TEST_NOT_STARTED = -1,

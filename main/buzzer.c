@@ -76,20 +76,21 @@ void buzzer(void* params) {
   beep_type_t type;
   while (1) {
     xQueueReceive(beep_events, &type, portMAX_DELAY);
-    switch (type) {
-      case BEEP_SHORT:
-        play_beep(150);
-        break;
-      case BEEP_LONG:
-        play_beep(1000);
-        break;
-      case BATTERY_EMPTY:
-        play_melody(LOW_BATTERY, sizeof(LOW_BATTERY));
-        break;
-      case STARTUP:
-        play_melody(WELCOME, sizeof(WELCOME));
-        break;
-    }
+    // switch (type) {
+    //   case BEEP_SHORT:
+    //     play_beep(150);
+    //     break;
+    //   case BEEP_LONG:
+    //     play_beep(1000);
+    //     break;
+    //   case BATTERY_EMPTY:
+    //     play_melody(LOW_BATTERY, sizeof(LOW_BATTERY));
+    //     break;
+    //   case STARTUP:
+    //     play_melody(WELCOME, sizeof(WELCOME));
+    //     break;
+    // }
+    vTaskDelay(100 / portTICK_PERIOD_MS);
 
     // clear queue, in case multiple beeps were triggered
     xQueueReceive(beep_events, &type, 0);

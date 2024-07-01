@@ -49,7 +49,7 @@ void app_main(void) {
   // yield for the state to update
   xTaskCreate(&state_machine, "state_machine", 4096, NULL, TASK_PRIO_HIGH, NULL);
   xTaskCreate(&time_sync, "time_sync", 4096, NULL, TASK_PRIO_NORMAL, NULL);
-  xTaskCreate(&rfid, "rfid", 4096, NULL, TASK_PRIO_NORMAL, NULL);
+  xTaskCreate(&rfid, RFID_TASK, 4096, NULL, TASK_PRIO_NORMAL, NULL);
   xTaskCreate(&power_management, POWER_MANAGEMENT_TASK, 4096, NULL, TASK_PRIO_NORMAL, NULL);
   xTaskCreate(&load_device_id, "load_device_id", 3072, NULL, TASK_PRIO_NORMAL, NULL);
   xTaskCreate(&load_salt, "load_salt", 3072, NULL, TASK_PRIO_NORMAL, NULL);

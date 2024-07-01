@@ -685,7 +685,7 @@ static mode_type main_menu(event_t event) {
           break;
         case MENU_UPLOADS:
           current_state.menu_index_active = MENU_UPLOADS;
-          xTaskNotifyF(xTaskGetHandle(LOG_UPLOADER_TASK), 0, eNoAction);
+          xTaskNotify(xTaskGetHandle(LOG_UPLOADER_TASK), 0, eNoAction);
           timeout(400);
           break;
         case MENU_ANTENNA_TEST:

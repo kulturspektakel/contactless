@@ -157,6 +157,7 @@ bool pn532_write_gpio(uint8_t pinstate);
 uint8_t pn532_read_gpio(void);
 bool pn532_set_passive_activation_retries(uint8_t max_retries);
 bool pn532_read_data(uint8_t* buff, uint8_t n);
+int pn532_antenna_test(bool decrease_lower_threshold, uint8_t andet_ithh);
 
 // ISO14443A functions
 bool iso14443a_read_passive_target_id(

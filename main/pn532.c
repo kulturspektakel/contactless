@@ -1562,3 +1562,84 @@ bool ntag2xx_authenticate(uint8_t* pwd, uint8_t* pack) {
   memcpy(pack, pn532_packetbuffer + 8, 2);
   return true;
 }
+
+int pn532_read_register(uint16_t reg) {
+  pn532_packetbuffer[0] = PN532_COMMAND_READREGISTER;
+  pn532_packetbuffer[1] = reg >> 8;
+  pn532_packetbuffer[2] = reg & 0xFF;
+
+  if (!pn532_send_cmd_check_ack(pn532_packetbuffer, 3, I2C_WRITE_TIMEOUT)) {
+    return -1;
+  }
+
+  if (!pn532_read_data(pn532_packetbuffer, 16)) {
+    ESP_LOGE(TAG, "Error reading data after reading register");
+    return -1;
+  }
+
+  if (pn532_packetbuffer[6] != 0x07) {
+    ESP_LOGE(TAG, "Unexpected response reading register: ");
+    ESP_LOG_BUFFER_HEX(TAG, pn532_packetbuffer, 16);
+    return -1;
+  }
+
+  ESP_LOG_BUFFER_HEX_LEVEL(PN532_LOG_LEVEL, TAG, pn532_packetbuffer, 16);
+
+  return pn532_packetbuffer[7];
+}
+
+bool is_bit_set(int value, int bit_position) {
+  return (value & (1 << bit_position)) != 0;
+}
+
+int pn532_antenna_test(bool decrease_lower_threshold, uint8_t andet_ithh) {
+  resetPN532();
+  pn532_packetbuffer[0] = PN532_COMMAND_DIAGNOSE;
+  pn532_packetbuffer[1] = 0x07;  // Self Antenna Test
+
+  // bit 7: andet_bot - A too low power consumption has been detected
+  // bit 6: andet_up - A too high power consumption has been detected
+  // bit 5 to 4: andet_ithl - Set the low current consumption threshold to be detected
+  // bit 3 to 1: andet_ithh - Set the high current consumption threshold to be detected
+  // bit 0: andet_en - Enable the detection of the antenna presence detector functionality
+  uint8_t andet_control = 0b00110001;
+
+  if (decrease_lower_threshold) {
+    // sets the lower threshold to 25mA
+    andet_control &= ~(1 << 4);
+  }
+
+  if (is_bit_set(andet_ithh, 0)) {
+    andet_control |= 1 << 1;
+  }
+  if (is_bit_set(andet_ithh, 1)) {
+    andet_control |= 1 << 2;
+  }
+  if (is_bit_set(andet_ithh, 2)) {
+    andet_control |= 1 << 3;
+  }
+
+  pn532_packetbuffer[2] = andet_control;
+
+  if (!pn532_send_cmd_check_ack(pn532_packetbuffer, 3, I2C_WRITE_TIMEOUT)) {
+    return -1;
+  }
+
+  if (!waitready(I2C_WRITE_TIMEOUT)) {
+    ESP_LOG_LEVEL(PN532_LOG_LEVEL, TAG, "IRQ Timeout");
+    return -1;
+  }
+
+  if (!pn532_read_data(pn532_packetbuffer, 16)) {
+    ESP_LOGE(TAG, "Error reading data after antenna test");
+    return -1;
+  }
+
+  // if (pn532_packetbuffer[6] != 0x01  || pn532_packetbuffer[7] != 0x00) {
+  //   ESP_LOGE(TAG, "Unexpected response reading block: ");
+  //   ESP_LOG_BUFFER_HEX_LEVEL(TAG, pn532_packetbuffer, 16, ESP_LOG_ERROR);
+  //   return -1;
+  // }
+
+  return pn532_read_register(0x610C);  // Andet_control register
+}

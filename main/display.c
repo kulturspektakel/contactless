@@ -703,8 +703,11 @@ static void main_menu_cb(u8g2_t* u8g2, int i, int x, int y) {
       );
       break;
     case MENU_ANTENNA_TEST:
-      snprintf(label, sizeof(label), "ANTENNA");
+      snprintf(label, sizeof(label), "ANT");
       switch (antenna_test_status) {
+        case ANTRNNA_TEST_RUNNING:
+          snprintf(value, sizeof(value), "testing...");
+          break;
         case ANTENNA_TEST_FAILED:
           snprintf(value, sizeof(value), "failed");
           break;
@@ -715,33 +718,34 @@ static void main_menu_cb(u8g2_t* u8g2, int i, int x, int y) {
           snprintf(value, sizeof(value), "not started");
           break;
         case ANTENNA_TEST_45MA:
-          snprintf(value, sizeof(value), "45mA");
+          snprintf(value, sizeof(value), "OK <45mA");
           break;
         case ANTENNA_TEST_60MA:
-          snprintf(value, sizeof(value), "60mA");
+          snprintf(value, sizeof(value), "OK <60mA");
           break;
         case ANTENNA_TEST_75MA:
-          snprintf(value, sizeof(value), "75mA");
+          snprintf(value, sizeof(value), "OK <75mA");
           break;
         case ANTENNA_TEST_90MA:
-          snprintf(value, sizeof(value), "90mA");
+          snprintf(value, sizeof(value), "OK <90mA");
           break;
         case ANTENNA_TEST_105MA:
-          snprintf(value, sizeof(value), "105mA");
+          snprintf(value, sizeof(value), "OK <105mA");
           break;
         case ANTENNA_TEST_120MA:
-          snprintf(value, sizeof(value), "120mA");
+          snprintf(value, sizeof(value), "OK <120mA");
           break;
         case ANTENNA_TEST_130MA:
-          snprintf(value, sizeof(value), "130mA");
+          snprintf(value, sizeof(value), "OK <130mA");
           break;
         case ANTENNA_TEST_150MA:
-          snprintf(value, sizeof(value), "150mA");
+          snprintf(value, sizeof(value), "OK <150mA");
           break;
         case ANTENNA_TEST_TOO_HIGH:
           snprintf(value, sizeof(value), "Error: >150mA");
           break;
       }
+      break;
     default:
       return;
   }
