@@ -285,7 +285,8 @@ static mode_type product_list(event_t event) {
 }
 
 static void write_log(LogMessage_Order_PaymentMethod payment) {
-  LogMessage* log = pvPortMalloc(sizeof(LogMessage) LogMessage_init_default);
+  LogMessage* log = pvPortMalloc(sizeof(LogMessage));
+  *log = (LogMessage)LogMessage_init_default;
 
   if (current_state.cart.item_count > 0) {
     log->has_order = true;

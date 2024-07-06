@@ -50,7 +50,7 @@ void log_writer(void* params) {
       log_message->battery_voltage = battery_voltage;
       log_message->has_usb_voltage = true;
       log_message->usb_voltage = usb_voltage;
-      strncpy(log_message->device_id, DEVICE_ID, sizeof(log_message->device_id));
+      strlcpy(log_message->device_id, DEVICE_ID, sizeof(log_message->device_id));
 
       char filename[strlen(LOG_DIR) + 8 + 1 + 3 + 1];
       sprintf(filename, "%s/%.8s.log", LOG_DIR, log_message->client_id);

@@ -41,7 +41,7 @@ static void timer_cb(TimerHandle_t timer) {
   if (is_connected) {
     update_signal_strength();
   } else {
-    xTaskNotifyGive(xTaskGetCurrentTaskHandle());
+    xTaskNotifyGive(xTaskGetHandle(WIFI_CONNECT_TASK));
   }
   xTimerChangePeriod(update_timer, pdMS_TO_TICKS(timer_duration()), 0);
   xTimerReset(update_timer, 0);
@@ -68,10 +68,7 @@ static void event_handler(
     void* event_data
 ) {
   if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-    ESP_LOGI(WIFI_CONNECT_TASK, "Trying to connect to WiFi...");
-    clearTimer();
-    wifi_status = CONNECTING;
-    esp_wifi_connect();
+    xTaskNotifyGive(xTaskGetHandle(WIFI_CONNECT_TASK));
   } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
     ESP_LOGI(WIFI_CONNECT_TASK, "WiFi disconnected");
     wifi_status = DISCONNECTED;
@@ -82,6 +79,8 @@ static void event_handler(
     wifi_status = CONNECTED;
     update_signal_strength();
     xEventGroupSetBits(event_group, WIFI_CONNECTED);
+    // notify log uploader to start uploading
+    xTaskNotify(xTaskGetHandle(LOG_UPLOADER_TASK), 0, eNoAction);
     startTimer();  // timer for signal strength
   }
   xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
@@ -131,10 +130,12 @@ void wifi_connect(void* params) {
   );
 
   while (1) {
-    // reconnect if disconnected
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    if (wifi_status == DISCONNECTED) {
-      esp_wifi_connect();
-    }
+    // reconnect if disconnected
+    ESP_LOGI(WIFI_CONNECT_TASK, "Trying to connect to WiFi...");
+    wifi_status = CONNECTING;
+    xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
+    clearTimer();
+    esp_wifi_connect();
   }
 }

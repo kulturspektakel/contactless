@@ -133,11 +133,15 @@ void log_uploader(void* params) {
   ESP_LOGI(LOG_UPLOADER_TASK, "Found %d logs", log_files_to_upload);
 
   while (1) {
-    xEventGroupWaitBits(event_group, WIFI_CONNECTED, pdFALSE, pdTRUE, portMAX_DELAY);
     int increment = 0;
     xTaskNotifyWait(0, ULONG_MAX, &increment, portMAX_DELAY);
     log_files_to_upload += increment;
     xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
+
+    bool wifi_connected = xEventGroupGetBits(event_group) & WIFI_CONNECTED;
+    if (log_files_to_upload == 0 || !wifi_connected) {
+      continue;
+    }
 
     int error_count = 0;
     DIR* dir = opendir(LOG_DIR);
