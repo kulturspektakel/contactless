@@ -1,5 +1,6 @@
 #include "state_machine.h"
 #include "antenna_test.h"
+#include "battery_test.h"
 #include "buzzer.h"
 #include "constants.h"
 #include "display.h"
@@ -674,6 +675,13 @@ static mode_type main_menu(event_t event) {
             return MAIN_PRODUCT_LISTS;
           }
           break;
+        case MENU_SILENT_MODE:
+          toggle_silent_mode();
+          timeout(400);
+          break;
+        case MENU_BATTERY_TEST:
+          xTaskCreate(&battery_test, BATTERY_TEST_TASK, 4096, NULL, TASK_PRIO_NORMAL, NULL);
+          return BATTERY_TEST;
         case MENU_UPDATE:
           current_state.menu_index_active = MENU_UPDATE;
           timeout(400);
@@ -760,6 +768,7 @@ static mode_type process_event(event_t event) {
     case MAIN_PRODUCT_LISTS:
       return main_product_lists(event);
     case MAIN_FATAL:
+    case BATTERY_TEST:
     case POWER_SAVE:
       // cannot leave these states
       break;

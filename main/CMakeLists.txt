@@ -1,5 +1,4 @@
 set(srcs
-
     "display.c"
     "fetch_config.c"
     "http_auth_headers.c"
@@ -18,6 +17,8 @@ set(srcs
     "esp_efuse_custom_table.c"
     "constants.c"
     "buzzer.c"
+    "battery_test.c"
+    "antenna_test.c"
 )
 
-idf_component_register(SRCS "antenna_test.c" "${srcs}" INCLUDE_DIRS ".")
+idf_component_register(SRCS "${srcs}" INCLUDE_DIRS ".")

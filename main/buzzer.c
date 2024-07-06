@@ -1,14 +1,18 @@
 #include "buzzer.h"
+#include "constants.h"
 #include "driver/gpio.h"
 #include "driver/ledc.h"
 #include "esp_log.h"
+#include "event_group.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "nvs_flash.h"
 
 #define BUZZER_PIN GPIO_NUM_8
 
 static QueueHandle_t beep_events;
+silent_mode_t silent_mode = SILENT_MODE_OFF;
 
 typedef struct {
   int frequency;  // Frequency in Hz
@@ -61,8 +65,29 @@ static void play_beep(int duration) {
   gpio_set_level(BUZZER_PIN, 0);
 }
 
+void toggle_silent_mode() {
+  if (silent_mode == SILENT_MODE_OFF) {
+    silent_mode = SILENT_MODE_ON;
+  } else {
+    silent_mode = SILENT_MODE_OFF;
+  }
+
+  nvs_handle_t nvs_handle;
+  nvs_open(NVS_DEVICE_CONFIG, NVS_READWRITE, &nvs_handle);
+  nvs_set_u8(nvs_handle, NVS_SILENT_MODE, silent_mode);
+  nvs_commit(nvs_handle);
+  nvs_close(nvs_handle);
+
+  xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
+}
+
 void buzzer(void* params) {
   beep_events = xQueueCreate(1, sizeof(beep_type_t));
+
+  nvs_handle_t nvs_handle;
+  nvs_open(NVS_DEVICE_CONFIG, NVS_READONLY, &nvs_handle);
+  nvs_get_u8(nvs_handle, NVS_SILENT_MODE, &silent_mode);
+  nvs_close(nvs_handle);
 
   gpio_config_t config = {
       .pin_bit_mask = (1ULL << BUZZER_PIN),
@@ -76,20 +101,24 @@ void buzzer(void* params) {
   beep_type_t type;
   while (1) {
     xQueueReceive(beep_events, &type, portMAX_DELAY);
-    // switch (type) {
-    //   case BEEP_SHORT:
-    //     play_beep(150);
-    //     break;
-    //   case BEEP_LONG:
-    //     play_beep(1000);
-    //     break;
-    //   case BATTERY_EMPTY:
-    //     play_melody(LOW_BATTERY, sizeof(LOW_BATTERY));
-    //     break;
-    //   case STARTUP:
-    //     play_melody(WELCOME, sizeof(WELCOME));
-    //     break;
-    // }
+    if (silent_mode == SILENT_MODE_ON) {
+      continue;
+    }
+
+    switch (type) {
+      case BEEP_SHORT:
+        play_beep(150);
+        break;
+      case BEEP_LONG:
+        play_beep(1000);
+        break;
+      case BATTERY_EMPTY:
+        play_melody(LOW_BATTERY, sizeof(LOW_BATTERY));
+        break;
+      case STARTUP:
+        play_melody(WELCOME, sizeof(WELCOME));
+        break;
+    }
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
     // clear queue, in case multiple beeps were triggered

@@ -41,10 +41,10 @@ static void timer_cb(TimerHandle_t timer) {
   if (is_connected) {
     update_signal_strength();
   } else {
-    xTaskNotifyGive(xTaskGetHandle(WIFI_CONNECT_TASK));
+    vTaskNotifyGiveFromISR(xTaskGetHandle(WIFI_CONNECT_TASK), NULL);
   }
-  xTimerChangePeriod(update_timer, pdMS_TO_TICKS(timer_duration()), 0);
-  xTimerReset(update_timer, 0);
+  xTimerChangePeriod(timer, pdMS_TO_TICKS(timer_duration()), 0);
+  xTimerReset(timer, 0);
 }
 
 static void clearTimer() {
@@ -128,6 +128,8 @@ void wifi_connect(void* params) {
       wifi_config.sta.ssid,
       wifi_config.sta.password
   );
+
+  xTaskNotifyGive(xTaskGetCurrentTaskHandle());
 
   while (1) {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);

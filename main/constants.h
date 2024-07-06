@@ -5,6 +5,7 @@
 #define NVS_WIFI_PASSWORD "wifi_password"
 #define NVS_PRODUCT_LIST "product_list"
 #define NVS_SALT "salt"
+#define NVS_SILENT_MODE "silent_mode"
 
 #define MAX_PRIVILEGE_TOKENS 30
 
@@ -21,6 +22,7 @@
 #define POWER_MANAGEMENT_TASK "power_mgmt"
 #define ANTENNA_TEST_TASK "antenna_test"
 #define RFID_TASK "rfid"
+#define BATTERY_TEST_TASK "battery_test"
 
 extern const char* LOG_DIR;
 extern const char* CONFIG_FILE;

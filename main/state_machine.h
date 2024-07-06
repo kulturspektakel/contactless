@@ -59,7 +59,7 @@ typedef enum {
   CARD_BALANCE,
 
   READ_FAILED,
-
+  BATTERY_TEST,
   POWER_SAVE,
 } mode_type;
 

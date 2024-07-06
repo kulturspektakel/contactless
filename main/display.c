@@ -1,6 +1,8 @@
 #include "display.h"
 #include <esp_app_desc.h>
 #include "antenna_test.h"
+#include "battery_test.h"
+#include "buzzer.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
@@ -651,6 +653,10 @@ static void main_menu_cb(u8g2_t* u8g2, int i, int x, int y) {
       bool device_id_loaded = xEventGroupGetBits(event_group) & DEVICE_ID_LOADED;
       snprintf(value, sizeof(value), device_id_loaded ? DEVICE_ID : "-");
       break;
+    case MENU_SILENT_MODE:
+      snprintf(label, sizeof(label), "SILENT");
+      snprintf(value, sizeof(value), silent_mode == SILENT_MODE_ON ? "on" : "off");
+      break;
     case MENU_WIFI:
       uint8_t primary_channel;
       wifi_second_chan_t second_channel;
@@ -703,7 +709,7 @@ static void main_menu_cb(u8g2_t* u8g2, int i, int x, int y) {
       );
       break;
     case MENU_ANTENNA_TEST:
-      snprintf(label, sizeof(label), "ANT");
+      snprintf(label, sizeof(label), "ANTTST");
       switch (antenna_test_status) {
         case ANTRNNA_TEST_RUNNING:
           snprintf(value, sizeof(value), "testing...");
@@ -746,6 +752,10 @@ static void main_menu_cb(u8g2_t* u8g2, int i, int x, int y) {
           break;
       }
       break;
+    case MENU_BATTERY_TEST:
+      snprintf(label, sizeof(label), "BATTST");
+      snprintf(value, sizeof(value), "not started");
+      break;
     default:
       return;
   }
@@ -779,6 +789,28 @@ static void write_not_attemted(u8g2_t* u8g2) {
       break;
     default:
       display_error(u8g2, "Karte nicht", "schreibbar", y);
+  }
+}
+
+static void battery_test_menu(u8g2_t* u8g2) {
+  u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
+  bool usb_connected = xEventGroupGetBits(event_group) & USB_CONNECTED;
+
+  if (usb_connected) {
+    display_error(u8g2, "Ladekabel", "abstecken", 21);
+  } else {
+    char line1[16];
+    snprintf(line1, sizeof(line1), "Batterietest");
+    int w = u8g2_GetStrWidth(u8g2, line1);
+    u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, 20, line1);
+
+    snprintf(line1, sizeof(line1), "Spannung %dmV", battery_voltage);
+    w = u8g2_GetStrWidth(u8g2, line1);
+    u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, 40, line1);
+
+    snprintf(line1, sizeof(line1), "%d Messpunkte", battery_test_data_points);
+    w = u8g2_GetStrWidth(u8g2, line1);
+    u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, 51, line1);
   }
 }
 
@@ -880,6 +912,10 @@ void display(void* params) {
         status_bar(&u8g2);
         main_product_lists(&u8g2);
         keypad_legend(&u8g2, true);
+        break;
+      case BATTERY_TEST:
+        status_bar(&u8g2);
+        battery_test_menu(&u8g2);
         break;
     }
 
