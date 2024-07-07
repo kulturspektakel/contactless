@@ -28,11 +28,11 @@ static int timer_duration() {
     // update signal strength every 10 seconds
     return 10000;
   } else if (usb_connected) {
-    // try reconnecting every minute when on battery
-    return 60000;
+    // try reconnecting every 2 minutes when on battery
+    return 60000 * 2;
   } else {
-    // try reconnecting every 3 minutes when on power
-    return 60000 * 3;
+    // try reconnecting every 5 minutes when on power
+    return 60000 * 5;
   }
 }
 

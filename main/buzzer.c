@@ -65,19 +65,24 @@ static void play_beep(int duration) {
   gpio_set_level(BUZZER_PIN, 0);
 }
 
+static void persist_silent_mode(void* arg) {
+  nvs_handle_t nvs_handle;
+  nvs_open(NVS_DEVICE_CONFIG, NVS_READWRITE, &nvs_handle);
+  nvs_set_u8(nvs_handle, NVS_SILENT_MODE, silent_mode);
+  nvs_commit(nvs_handle);
+  nvs_close(nvs_handle);
+  vTaskDelete(NULL);
+}
+
 void toggle_silent_mode() {
   if (silent_mode == SILENT_MODE_OFF) {
     silent_mode = SILENT_MODE_ON;
   } else {
     silent_mode = SILENT_MODE_OFF;
   }
-
-  nvs_handle_t nvs_handle;
-  nvs_open(NVS_DEVICE_CONFIG, NVS_READWRITE, &nvs_handle);
-  nvs_set_u8(nvs_handle, NVS_SILENT_MODE, silent_mode);
-  nvs_commit(nvs_handle);
-  nvs_close(nvs_handle);
-
+  // needs to be done in a separate task, as this function is called from state machine during
+  // critical sections
+  xTaskCreate(persist_silent_mode, "persist_silent_mode", 2048, NULL, TASK_PRIO_NORMAL, NULL);
   xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
 }
 
