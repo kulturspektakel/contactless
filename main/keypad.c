@@ -1,4 +1,5 @@
 #include "keypad.h"
+#include "driver/rtc_io.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -70,6 +71,8 @@ void keypad(void* params) {
 
   ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_install_isr_service(ESP_INTR_FLAG_EDGE));
   for (uint8_t r = 0; r < 4; r++) {  // Rows
+
+    rtc_gpio_deinit(KEYPAD_ROWS[r]);
     gpio_intr_disable(KEYPAD_ROWS[r]);
     gpio_set_direction(KEYPAD_ROWS[r], GPIO_MODE_INPUT);
     gpio_set_intr_type(KEYPAD_ROWS[r], GPIO_INTR_NEGEDGE);
@@ -79,6 +82,7 @@ void keypad(void* params) {
     );
   }
   for (int c = 0; c < 4; c++) {  // Columns
+    rtc_gpio_deinit(KEYPAD_COLS[c]);
     gpio_set_direction(KEYPAD_COLS[c], GPIO_MODE_INPUT);
   }
 

@@ -22,6 +22,7 @@ typedef struct {
 
 Note LOW_BATTERY[] = {{698, 70, 20}, {349, 70, 400}, {698, 70, 20}, {349, 70, 0}};
 Note WELCOME[] = {{523, 150, 20}, {659, 150, 20}, {784, 150, 20}, {1046, 500, 0}};
+Note POWER[] = {{349, 70, 20}, {698, 70, 20}};
 
 void trigger_beep(beep_type_t type) {
   xQueueSend(beep_events, &type, 0);
@@ -122,6 +123,9 @@ void buzzer(void* params) {
         break;
       case STARTUP:
         play_melody(WELCOME, sizeof(WELCOME));
+        break;
+      case POWER_CONNECTED:
+        play_melody(POWER, sizeof(POWER));
         break;
     }
     vTaskDelay(100 / portTICK_PERIOD_MS);
