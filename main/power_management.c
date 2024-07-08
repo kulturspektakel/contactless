@@ -283,11 +283,13 @@ void power_management(void* params) {
         );
       }
       reset_power_off_timer();
-    } else if (old_usb_voltage < USB_VOLTAGE_THRESHOLD && usb_connected &&
-               power_off_timer != NULL) {
+    } else if (old_usb_voltage < USB_VOLTAGE_THRESHOLD && usb_connected) {
       // USB was just plugged in, disable power off timer
-      xTimerDelete(power_off_timer, 0);
-      power_off_timer = NULL;
+      trigger_beep(POWER_CONNECTED);
+      if (power_off_timer != NULL) {
+        xTimerDelete(power_off_timer, 0);
+        power_off_timer = NULL;
+      }
     }
 
     ESP_LOGI(POWER_MANAGEMENT_TASK, "USB %dmV, battery %dmV", usb_voltage, battery_voltage);
