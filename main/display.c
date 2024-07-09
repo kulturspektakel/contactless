@@ -655,7 +655,19 @@ static void main_menu_cb(u8g2_t* u8g2, int i, int x, int y) {
       break;
     case MENU_SILENT_MODE:
       snprintf(label, sizeof(label), "SILENT");
-      snprintf(value, sizeof(value), silent_mode == SILENT_MODE_ON ? "on" : "off");
+      switch (silent_mode) {
+        case SILENT_MODE_OFF:
+          sprintf(value, "off");
+          break;
+        case SILENT_MODE_ON:
+          sprintf(value, "on");
+          break;
+        case SILENT_MODE_OFF_WITH_KEYPRESS:
+          sprintf(value, "off+keypress");
+          break;
+        default:
+          sprintf(value, "unknown");
+      }
       break;
     case MENU_WIFI:
       uint8_t primary_channel;

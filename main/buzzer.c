@@ -61,6 +61,14 @@ static void play_melody(Note* notes, size_t size) {
 }
 
 static void play_beep(int duration) {
+  static gpio_config_t config = {
+      .pin_bit_mask = (1ULL << BUZZER_PIN),
+      .mode = GPIO_MODE_OUTPUT,
+      .pull_up_en = GPIO_PULLUP_ENABLE,
+      .pull_down_en = GPIO_PULLDOWN_DISABLE,
+      .intr_type = GPIO_INTR_DISABLE,
+  };
+  gpio_config(&config);
   gpio_set_level(BUZZER_PIN, 1);
   vTaskDelay(duration / portTICK_PERIOD_MS);
   gpio_set_level(BUZZER_PIN, 0);
@@ -76,11 +84,7 @@ static void persist_silent_mode(void* arg) {
 }
 
 void toggle_silent_mode() {
-  if (silent_mode == SILENT_MODE_OFF) {
-    silent_mode = SILENT_MODE_ON;
-  } else {
-    silent_mode = SILENT_MODE_OFF;
-  }
+  silent_mode = (silent_mode + 1) % _SILENT_MODE_COUNT;
   // needs to be done in a separate task, as this function is called from state machine during
   // critical sections
   xTaskCreate(persist_silent_mode, "persist_silent_mode", 2048, NULL, TASK_PRIO_NORMAL, NULL);
@@ -94,15 +98,6 @@ void buzzer(void* params) {
   nvs_open(NVS_DEVICE_CONFIG, NVS_READONLY, &nvs_handle);
   nvs_get_u8(nvs_handle, NVS_SILENT_MODE, &silent_mode);
   nvs_close(nvs_handle);
-
-  gpio_config_t config = {
-      .pin_bit_mask = (1ULL << BUZZER_PIN),
-      .mode = GPIO_MODE_OUTPUT,
-      .pull_up_en = GPIO_PULLUP_ENABLE,
-      .pull_down_en = GPIO_PULLDOWN_DISABLE,
-      .intr_type = GPIO_INTR_DISABLE,
-  };
-  gpio_config(&config);
 
   beep_type_t type;
   while (1) {
@@ -127,8 +122,14 @@ void buzzer(void* params) {
       case POWER_CONNECTED:
         play_melody(POWER, sizeof(POWER));
         break;
+      case KEY_PRESS:
+        if (silent_mode == SILENT_MODE_OFF_WITH_KEYPRESS) {
+          play_beep(50);
+          break;
+        }
+      default:
+        vTaskDelay(50 / portTICK_PERIOD_MS);
     }
-    vTaskDelay(100 / portTICK_PERIOD_MS);
 
     // clear queue, in case multiple beeps were triggered
     xQueueReceive(beep_events, &type, 0);

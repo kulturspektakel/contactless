@@ -135,8 +135,8 @@ static void gpio_config_for_wakeup(gpio_num_t pin) {
 static void power_off_timer_callback(TimerHandle_t xTimer) {
   ESP_LOGI(POWER_MANAGEMENT_TASK, "Powering off");
   bool usb_connected = xEventGroupGetBits(event_group) & USB_CONNECTED;
-  if (usb_connected) {
-    ESP_LOGI(POWER_MANAGEMENT_TASK, "USB still connected, not powering off");
+  if (usb_connected || current_state.mode == BATTERY_TEST) {
+    ESP_LOGI(POWER_MANAGEMENT_TASK, "Skipping power off");
     return;
   }
 
