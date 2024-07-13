@@ -191,7 +191,7 @@ static void read_voltages() {
     usb_voltage = usb_voltage_tmp > usb_voltage ? usb_voltage_tmp : usb_voltage;
 
     // delay to allow ADC to settle
-    vTaskDelay(1 / portTICK_PERIOD_MS);
+    vTaskDelay(50 / portTICK_PERIOD_MS);
   }
 }
 
