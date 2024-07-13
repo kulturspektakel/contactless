@@ -292,6 +292,7 @@ static void write_log(LogMessage_Order_PaymentMethod payment) {
   if (current_state.cart.item_count > 0) {
     log->has_order = true;
     log->order.payment_method = payment;
+    log->order.has_list_id = true;
     log->order.list_id = active_config.list_id;
     log->order.cart_items_count = current_state.cart.item_count;
     for (int i = 0; i < current_state.cart.item_count; i++) {

@@ -6,7 +6,7 @@
 #include "freertos/task.h"
 #include "log_writer.h"
 
-#define INTERVAL 180000
+#define INTERVAL 60000
 
 int battery_test_data_points = 0;
 

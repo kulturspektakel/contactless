@@ -1,4 +1,5 @@
 #include "keypad.h"
+#include "buzzer.h"
 #include "driver/rtc_io.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -97,6 +98,7 @@ void keypad(void* params) {
     history[1] = history[0];
     key_event_t event = {key, esp_timer_get_time()};
     history[0] = event;
+    trigger_beep(KEY_PRESS);
     trigger_event(key);
     ESP_LOGI(TAG, "keypress %d", key);
 

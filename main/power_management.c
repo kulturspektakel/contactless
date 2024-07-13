@@ -14,7 +14,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "keypad.h"
-#include "math.h"
 #include "state_machine.h"
 
 #define USB_CHANNEL ADC_CHANNEL_0
@@ -27,9 +26,7 @@
 // starts on the negative edge on this pin.
 #define RSTPDN_PIN GPIO_NUM_14
 
-#define BATTERY_MAX 2070
 #define BATTERY_LOW 1700
-#define BATTERY_MIN 1500
 
 #define UPDATE_INTERVAL 60000
 #define POWER_OFF_TIMEOUT 900000  // 15 minutes
@@ -47,15 +44,36 @@ static adc_cali_handle_t usb_cali_handle = NULL;
 static TimerHandle_t voltage_update_timer;
 
 int battery_percentage() {
-  // https://www.desmos.com/calculator/jymu8kltny
-  double percentage =
-      1.2 - (1.2 / (1.0 + pow(((1.5 * fmax(0.0, battery_voltage - BATTERY_MIN)) / 580), 4.0)));
-  if (percentage < 0) {
-    percentage = 0;
-  } else if (percentage > 1) {
-    percentage = 1;
+  /*
+  WITH A(v, p) AS (
+    SELECT  "batteryVoltage", 1 - extract(EPOCH FROM ("deviceTime" - '2024-07-09 23:00:19')) / 74888
+    FROM "DeviceLog"
+    WHERE "deviceId" = 'Döner'
+      AND "deviceTime" >= '2024-07-09 23:00:19'
+      AND "deviceTime" < '2024-07-10 23:00:00'
+    ORDER BY "createdAt" ASC
+  )
+  SELECT max(v) AS max, floor(p / 0.01) * 0.01 AS group_bin
+  FROM A
+  GROUP BY floor(p / 0.01)
+  ORDER BY group_bin;
+  */
+  static const uint16_t voltages[101] = {
+      1545, 1608, 1647, 1677, 1700, 1715, 1724, 1727, 1730, 1735, 1739, 1742, 1750, 1756, 1765,
+      1769, 1779, 1789, 1794, 1803, 1810, 1822, 1828, 1833, 1838, 1845, 1850, 1854, 1858, 1862,
+      1869, 1870, 1874, 1877, 1877, 1882, 1883, 1886, 1886, 1886, 1889, 1892, 1896, 1897, 1897,
+      1898, 1900, 1902, 1902, 1902, 1907, 1908, 1908, 1910, 1911, 1913, 1914, 1915, 1923, 1925,
+      1927, 1931, 1935, 1937, 1941, 1943, 1949, 1952, 1955, 1961, 1964, 1964, 1967, 1968, 1974,
+      1977, 1977, 1978, 1979, 1982, 1982, 1982, 1985, 1985, 1987, 1989, 1989, 1989, 1991, 1991,
+      1994, 1994, 1996, 1999, 2002, 2004, 2008, 2014, 2019, 2028, 2030
+  };
+
+  for (int i = 0; i < (sizeof(voltages) / sizeof(uint16_t)); i++) {
+    if (battery_voltage < voltages[i]) {
+      return i;
+    }
   }
-  return (int)(percentage * 100);
+  return 100;
 }
 
 static void adc_calibration_init(
@@ -135,8 +153,8 @@ static void gpio_config_for_wakeup(gpio_num_t pin) {
 static void power_off_timer_callback(TimerHandle_t xTimer) {
   ESP_LOGI(POWER_MANAGEMENT_TASK, "Powering off");
   bool usb_connected = xEventGroupGetBits(event_group) & USB_CONNECTED;
-  if (usb_connected) {
-    ESP_LOGI(POWER_MANAGEMENT_TASK, "USB still connected, not powering off");
+  if (usb_connected || current_state.mode == BATTERY_TEST) {
+    ESP_LOGI(POWER_MANAGEMENT_TASK, "Skipping power off");
     return;
   }
 
