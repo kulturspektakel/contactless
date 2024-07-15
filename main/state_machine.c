@@ -385,6 +385,13 @@ static mode_type charge_list(event_t event) {
     case KEY_B:
       update_deposit(false);
       break;
+    case KEY_C:
+      if (current_state.cart.item_count > 0) {
+        current_state.cart.items[current_state.cart.item_count - 1].has_product = false;
+        current_state.cart.items[current_state.cart.item_count - 1].amount = 0;
+        current_state.cart.item_count--;
+      }
+      break;
     case KEY_D:
       reset_cart();
       break;
@@ -676,13 +683,21 @@ static mode_type main_menu(event_t event) {
             return MAIN_PRODUCT_LISTS;
           }
           break;
-        case MENU_SILENT_MODE:
-          toggle_silent_mode();
+        case MENU_SOUND:
+          toggle_sound_mode();
           timeout(400);
           break;
         case MENU_BATTERY_TEST:
           xTaskCreate(&battery_test, BATTERY_TEST_TASK, 4096, NULL, TASK_PRIO_NORMAL, NULL);
           return BATTERY_TEST;
+        case MENU_BUZZER_TEST:
+          if (current_state.submenu_index < _BEEP_COUNT - 1) {
+            current_state.submenu_index++;
+          } else {
+            current_state.submenu_index = 0;
+          }
+          trigger_forced_beep(current_state.submenu_index);
+          break;
         case MENU_UPDATE:
           current_state.menu_index_active = MENU_UPDATE;
           timeout(400);

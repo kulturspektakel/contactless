@@ -267,10 +267,10 @@ void power_management(void* params) {
     // while unplugging, multiple interrupts might be triggered
     // clear all pending notifications that might have been triggered in the meantime
     ulTaskNotifyTake(pdTRUE, 0);
-    int old_usb_voltage = usb_voltage;
     read_voltages();
 
     bool usb_connected = usb_voltage > USB_VOLTAGE_THRESHOLD;
+    bool usb_was_connected = xEventGroupGetBits(event_group) & USB_CONNECTED;
 
     if (usb_connected) {
       // set eventgroup
@@ -289,7 +289,7 @@ void power_management(void* params) {
       }
     }
 
-    if (old_usb_voltage > USB_VOLTAGE_THRESHOLD && !usb_connected) {
+    if (usb_was_connected && !usb_connected) {
       // USB was just plugged unplugged, start power off timer
       if (power_off_timer == NULL) {
         power_off_timer = xTimerCreate(
@@ -301,7 +301,7 @@ void power_management(void* params) {
         );
       }
       reset_power_off_timer();
-    } else if (old_usb_voltage < USB_VOLTAGE_THRESHOLD && usb_connected) {
+    } else if (!usb_was_connected && usb_connected) {
       // USB was just plugged in, disable power off timer
       trigger_beep(POWER_CONNECTED);
       if (power_off_timer != NULL) {

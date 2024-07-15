@@ -6,18 +6,21 @@ typedef enum {
   BATTERY_EMPTY,
   STARTUP,
   POWER_CONNECTED,
-  KEY_PRESS
+  KEY_PRESS,
+
+  _BEEP_COUNT
 } beep_type_t;
 
 typedef enum __attribute__((packed)) {
-  SILENT_MODE_OFF,
-  SILENT_MODE_ON,
-  SILENT_MODE_OFF_WITH_KEYPRESS,
-  _SILENT_MODE_COUNT
-} silent_mode_t;
+  SOUND_MODE_DEFAULT,
+  SOUND_MODE_SILENT,
+  SOUND_MODE_KEYPRESS,
+  _SOUND_MODE_COUNT
+} sound_mode_t;
 
-extern silent_mode_t silent_mode;
+extern sound_mode_t sound_mode;
 
 void buzzer(void* params);
 void trigger_beep(beep_type_t type);
-void toggle_silent_mode();
+void trigger_forced_beep(beep_type_t type);
+void toggle_sound_mode();

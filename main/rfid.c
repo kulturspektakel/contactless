@@ -23,6 +23,7 @@ static uint8_t PAGE_4[16] =
 };
 ultralight_card_info_t current_card = {0};
 
+#define MINIMUM_CARD_TIME 1500
 #define OFFSET_COUNTER LENGTH_ID
 #define OFFSET_DEPOSIT LENGTH_ID + LENGTH_COUNTER
 #define OFFSET_BALANCE LENGTH_ID + LENGTH_COUNTER + LENGTH_DEPOSIT
@@ -300,7 +301,10 @@ void rfid(void* params) {
       int64_t card_seen_for = (esp_timer_get_time() - card_seen_at) / 1000;
       ESP_LOGI(RFID_TASK, "card seen for %lld", card_seen_for);
       card_seen_at = 0;
-      vTaskDelay((card_seen_for < 1000 ? (1000 - card_seen_for) : 0) / portTICK_PERIOD_MS);
+      vTaskDelay(
+          (card_seen_for < MINIMUM_CARD_TIME ? (MINIMUM_CARD_TIME - card_seen_for) : 0) /
+          portTICK_PERIOD_MS
+      );
       trigger_event(CARD_REMOVED);
     }
 

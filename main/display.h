@@ -6,7 +6,7 @@ typedef enum {
   MENU_CONFIG,
   MENU_UPDATE,
   MENU_DEVICE,
-  MENU_SILENT_MODE,
+  MENU_SOUND,
   MENU_WIFI,
   MENU_UPLOADS,
   MENU_USB,
@@ -14,6 +14,7 @@ typedef enum {
   MENU_VERSION,
   MENU_ANTENNA_TEST,
   MENU_BATTERY_TEST,
+  MENU_BUZZER_TEST,
 
   // keep last
   MENU_COUNT

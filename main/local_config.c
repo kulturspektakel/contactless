@@ -124,6 +124,7 @@ void local_config(void* params) {
     }
 
     // load active product list, products and privilege tokens
+    lists_count = 0;
     AllLists all_lists = read_local_config((pb_callback_t){
         .funcs.decode = decode_product_list,
         .arg = &product_list_id,

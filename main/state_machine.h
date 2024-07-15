@@ -111,6 +111,7 @@ typedef struct {
   int64_t expected_bootup_time;
   uint8_t menu_index;
   int8_t menu_index_active;
+  int8_t submenu_index;
 } state_t;
 
 extern state_t current_state;
