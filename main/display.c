@@ -653,17 +653,17 @@ static void main_menu_cb(u8g2_t* u8g2, int i, int x, int y) {
       bool device_id_loaded = xEventGroupGetBits(event_group) & DEVICE_ID_LOADED;
       snprintf(value, sizeof(value), device_id_loaded ? DEVICE_ID : "-");
       break;
-    case MENU_SILENT_MODE:
-      snprintf(label, sizeof(label), "SILENT");
-      switch (silent_mode) {
-        case SILENT_MODE_OFF:
-          sprintf(value, "off");
+    case MENU_SOUND:
+      snprintf(label, sizeof(label), "SOUND");
+      switch (sound_mode) {
+        case SOUND_MODE_DEFAULT:
+          sprintf(value, "default");
           break;
-        case SILENT_MODE_ON:
-          sprintf(value, "on");
+        case SOUND_MODE_SILENT:
+          sprintf(value, "silent");
           break;
-        case SILENT_MODE_OFF_WITH_KEYPRESS:
-          sprintf(value, "off+keypress");
+        case SOUND_MODE_KEYPRESS:
+          sprintf(value, "keypress");
           break;
         default:
           sprintf(value, "unknown");
@@ -767,6 +767,29 @@ static void main_menu_cb(u8g2_t* u8g2, int i, int x, int y) {
     case MENU_BATTERY_TEST:
       snprintf(label, sizeof(label), "BATTST");
       snprintf(value, sizeof(value), "not started");
+      break;
+    case MENU_BUZZER_TEST:
+      snprintf(label, sizeof(label), "BZRTST");
+      switch (current_state.submenu_index) {
+        case BEEP_SHORT:
+          snprintf(value, sizeof(value), "short");
+          break;
+        case BEEP_LONG:
+          snprintf(value, sizeof(value), "long");
+          break;
+        case BATTERY_EMPTY:
+          snprintf(value, sizeof(value), "battery");
+          break;
+        case STARTUP:
+          snprintf(value, sizeof(value), "startup");
+          break;
+        case POWER_CONNECTED:
+          snprintf(value, sizeof(value), "power");
+          break;
+        case KEY_PRESS:
+          snprintf(value, sizeof(value), "keypress");
+          break;
+      }
       break;
     default:
       return;

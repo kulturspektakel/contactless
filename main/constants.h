@@ -5,7 +5,7 @@
 #define NVS_WIFI_PASSWORD "wifi_password"
 #define NVS_PRODUCT_LIST "product_list"
 #define NVS_SALT "salt"
-#define NVS_SILENT_MODE "silent_mode"
+#define NVS_SOUND_MODE "sound_mode"
 
 #define MAX_PRIVILEGE_TOKENS 30
 

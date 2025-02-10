@@ -55,7 +55,7 @@ typedef struct _LogMessage_Order {
 } LogMessage_Order;
 
 typedef struct _LogMessage {
-    char device_id[9];
+    char device_id[17];
     char client_id[9];
     int32_t device_time;
     bool device_time_is_utc;
@@ -178,7 +178,7 @@ extern const pb_msgdesc_t LogMessage_Order_CartItem_msg;
 #if defined(Product_size)
 #define LogMessage_Order_CartItem_size           (17 + Product_size)
 #define LogMessage_Order_size                    (220 + 9*Product_size)
-#define LogMessage_size                          (356 + 9*Product_size)
+#define LogMessage_size                          (364 + 9*Product_size)
 #endif
 #define LogMessage_CardTransaction_size          73
 
