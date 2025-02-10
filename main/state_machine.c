@@ -821,6 +821,9 @@ void state_machine(void* params) {
       case PRIVILEGED_CASHOUT:
         current_state.transaction_type = LogMessage_CardTransaction_TransactionType_CASHOUT;
         break;
+      case PRIVILEGED_REPAIR:
+        current_state.transaction_type = LogMessage_CardTransaction_TransactionType_REPAIR;
+        break;
       default:
         break;
     }

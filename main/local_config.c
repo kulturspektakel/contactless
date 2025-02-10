@@ -66,7 +66,7 @@ static bool decode_product_list_names(pb_istream_t* stream, const pb_field_t* fi
     return false;
   }
 
-  int* i_ptr = *(int32_t**)arg;
+  int32_t* i_ptr = *(int32_t**)arg;
   product_lists[*i_ptr] = (product_list_t){
       .id = product_list.list_id,
   };

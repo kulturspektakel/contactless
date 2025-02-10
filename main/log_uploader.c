@@ -133,7 +133,7 @@ void log_uploader(void* params) {
   ESP_LOGI(LOG_UPLOADER_TASK, "Found %d logs", log_files_to_upload);
 
   while (1) {
-    int increment = 0;
+    uint32_t increment = 0;
     xTaskNotifyWait(0, ULONG_MAX, &increment, portMAX_DELAY);
     log_files_to_upload += increment;
     xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);

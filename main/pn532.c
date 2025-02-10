@@ -1583,7 +1583,7 @@ int pn532_read_register(uint16_t reg) {
     return -1;
   }
 
-  ESP_LOG_BUFFER_HEX_LEVEL(PN532_LOG_LEVEL, TAG, pn532_packetbuffer, 16);
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, pn532_packetbuffer, 16, PN532_LOG_LEVEL);
 
   return pn532_packetbuffer[7];
 }

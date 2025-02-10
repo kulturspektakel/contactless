@@ -95,6 +95,10 @@ static void IRAM_ATTR gpio_interrupt_handler(void* args) {
   vTaskNotifyGiveFromISR(xTaskGetHandle(POWER_MANAGEMENT_TASK), NULL);
 }
 
+static void voltage_update_timer_callback(TimerHandle_t xTimer) {
+  gpio_interrupt_handler(NULL);
+}
+
 static void ledc_init() {
   // Prepare and set configuration of timers that control PWM
   ledc_timer_config_t ledc_timer = {
@@ -215,7 +219,7 @@ static void read_voltages() {
 
 void reset_power_off_timer() {
   if (power_off_timer != NULL) {
-    xTimerResetFromISR(power_off_timer, pdMS_TO_TICKS(POWER_OFF_TIMEOUT));
+    xTimerResetFromISR(power_off_timer, NULL);
   }
 }
 
@@ -245,7 +249,11 @@ void power_management(void* params) {
   gpio_install_isr_service(ESP_INTR_FLAG_EDGE);
 
   voltage_update_timer = xTimerCreate(
-      "voltage_update_timer", pdMS_TO_TICKS(UPDATE_INTERVAL), pdFALSE, 0, gpio_interrupt_handler
+      "voltage_update_timer",
+      pdMS_TO_TICKS(UPDATE_INTERVAL),
+      pdFALSE,
+      0,
+      voltage_update_timer_callback
   );
 
   // notify for initial reading

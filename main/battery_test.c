@@ -40,7 +40,7 @@ void battery_test(void* params) {
     log->has_card_transaction = false;
     battery_test_data_points++;
 
-    xQueueSend(log_queue, &log, NULL);
+    xQueueSend(log_queue, &log, portMAX_DELAY);
 
     xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
   }

@@ -113,9 +113,9 @@ void wifi_connect(void* params) {
 
   size_t required_size;
   nvs_get_str(nvs_handle, NVS_WIFI_SSID, NULL, &required_size);
-  nvs_get_str(nvs_handle, NVS_WIFI_SSID, &wifi_config.sta.ssid, &required_size);
+  nvs_get_str(nvs_handle, NVS_WIFI_SSID, (char*)wifi_config.sta.ssid, &required_size);
   nvs_get_str(nvs_handle, NVS_WIFI_PASSWORD, NULL, &required_size);
-  nvs_get_str(nvs_handle, NVS_WIFI_PASSWORD, &wifi_config.sta.password, &required_size);
+  nvs_get_str(nvs_handle, NVS_WIFI_PASSWORD, (char*)wifi_config.sta.password, &required_size);
   nvs_close(nvs_handle);
 
   esp_wifi_set_mode(WIFI_MODE_STA);

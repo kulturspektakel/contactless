@@ -19,11 +19,12 @@ message LogMessage {
     int32 deposit_after = 5;
     string card_id = 6;
     optional int32 counter = 7;
-    
+
     enum TransactionType {
       TOP_UP = 0;
       CHARGE = 1;
       CASHOUT = 2;
+      REPAIR = 3;
     }
   }
 
@@ -31,7 +32,7 @@ message LogMessage {
     PaymentMethod payment_method = 1;
     repeated CartItem cart_items = 2;
     optional int32 list_id = 3;
-    
+
     enum PaymentMethod {
       CASH = 0;
       BON = 1;
@@ -41,7 +42,7 @@ message LogMessage {
       FREE_BAND = 5;
       KULT_CARD = 6;
     }
-  
+
     message CartItem {
       int32 amount = 1;
       Product product = 2;

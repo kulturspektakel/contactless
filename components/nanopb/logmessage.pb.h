@@ -14,7 +14,8 @@
 typedef enum _LogMessage_CardTransaction_TransactionType {
     LogMessage_CardTransaction_TransactionType_TOP_UP = 0,
     LogMessage_CardTransaction_TransactionType_CHARGE = 1,
-    LogMessage_CardTransaction_TransactionType_CASHOUT = 2
+    LogMessage_CardTransaction_TransactionType_CASHOUT = 2,
+    LogMessage_CardTransaction_TransactionType_REPAIR = 3
 } LogMessage_CardTransaction_TransactionType;
 
 typedef enum _LogMessage_Order_PaymentMethod {
@@ -75,8 +76,8 @@ extern "C" {
 
 /* Helper constants for enums */
 #define _LogMessage_CardTransaction_TransactionType_MIN LogMessage_CardTransaction_TransactionType_TOP_UP
-#define _LogMessage_CardTransaction_TransactionType_MAX LogMessage_CardTransaction_TransactionType_CASHOUT
-#define _LogMessage_CardTransaction_TransactionType_ARRAYSIZE ((LogMessage_CardTransaction_TransactionType)(LogMessage_CardTransaction_TransactionType_CASHOUT+1))
+#define _LogMessage_CardTransaction_TransactionType_MAX LogMessage_CardTransaction_TransactionType_REPAIR
+#define _LogMessage_CardTransaction_TransactionType_ARRAYSIZE ((LogMessage_CardTransaction_TransactionType)(LogMessage_CardTransaction_TransactionType_REPAIR+1))
 
 #define _LogMessage_Order_PaymentMethod_MIN LogMessage_Order_PaymentMethod_CASH
 #define _LogMessage_Order_PaymentMethod_MAX LogMessage_Order_PaymentMethod_KULT_CARD

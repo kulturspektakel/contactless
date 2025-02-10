@@ -76,6 +76,12 @@ static int mbedtls_base64_encode_url_safe(
   return 0;
 }
 
+static int is_alpha_numeric(char c) {
+  return (c >= 'A' && c <= 'Z') ||  // Uppercase letters
+         (c >= 'a' && c <= 'z') ||  // Lowercase letters
+         (c >= '0' && c <= '9');    // Base64 special characters
+}
+
 static event_t read_card(byte_array_t* uid) {
   uint8_t payload[PAYLOAD_LENGTH + 1];
 
@@ -91,7 +97,8 @@ static event_t read_card(byte_array_t* uid) {
       payload[i] = '+';
     } else if (payload[i] == '_') {
       payload[i] = '/';
-    } else if (mbedtls_ct_base64_dec_value(payload[i]) < 0) {
+    } else if (!is_alpha_numeric(payload[i])) {
+      ESP_LOGE(RFID_TASK, "Invalid character in payload: %c", payload[i]);
       // fix invalid characters, so base64 decoding doesn't fail
       payload[i] = '0';
     }
@@ -267,8 +274,8 @@ bool is_old_card(byte_array_t* uid) {
 }
 
 void rfid(void* params) {
-  if (!pn532_init(35, 37, 48, 47, I2C_NUM_1)) {  // RevA
-    // if (!pn532_init(39, 38, 48, 47, I2C_NUM_0)) { // RevE
+  // if (!pn532_init(35, 37, 48, 47, I2C_NUM_1)) {  // RevA
+  if (!pn532_init(39, 38, 48, 47, I2C_NUM_0)) {  // RevE
     ESP_LOGE(RFID_TASK, "PN532 init failed");
     trigger_event(FATAL_ERROR);
   }
