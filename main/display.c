@@ -59,6 +59,22 @@ static void animation_timer_cb(TimerHandle_t timer) {
   xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
 }
 
+static bool animation_tick(int ms, int64_t* last_time_ms) {
+  if (animation_timer == NULL) {
+    animation_timer =
+        xTimerCreate("animation_timer", pdMS_TO_TICKS(ms), pdFALSE, NULL, animation_timer_cb);
+    xTimerReset(animation_timer, 0);
+  } else if (xTimerIsTimerActive(animation_timer) == pdFALSE) {
+    xTimerChangePeriod(animation_timer, pdMS_TO_TICKS(ms), 0);
+  }
+  int64_t now = esp_timer_get_time() / 1000;
+  if (now - *last_time_ms >= ms - 10) {  // 10ms tolerance
+    *last_time_ms = now;
+    return true;
+  }
+  return false;
+}
+
 static int battery(u8g2_t* u8g2) {
   int offset = DISPLAY_WIDTH - 1;
   bool usb_connected = xEventGroupGetBits(event_group) & USB_CONNECTED;
@@ -76,10 +92,21 @@ static int battery(u8g2_t* u8g2) {
     // battery icon
     int BATTERY_WIDTH = 8;
     int percentage = battery_percentage();
-    u8g2_DrawFrame(u8g2, offset - BATTERY_WIDTH - 2, 0, 8, 5);
-    int bar_width = (percentage * (BATTERY_WIDTH - 1)) / 100;
-    u8g2_DrawBox(u8g2, offset - BATTERY_WIDTH - 1, 1, bar_width, 3);
-    u8g2_DrawVLine(u8g2, offset - 1, 1, 3);
+
+    static bool blink = false;
+    if (battery_is_low()) {
+      static int64_t last_animation_tick = 0;
+      if (animation_tick(500, &last_animation_tick)) {
+        blink = !blink;
+      }
+    }
+
+    if (!battery_is_low() || blink) {
+      u8g2_DrawFrame(u8g2, offset - BATTERY_WIDTH - 2, 0, 8, 5);
+      int bar_width = (percentage * (BATTERY_WIDTH - 1)) / 100;
+      u8g2_DrawBox(u8g2, offset - BATTERY_WIDTH - 1, 1, bar_width, 3);
+      u8g2_DrawVLine(u8g2, offset - 1, 1, 3);
+    }
 
     // percentage string
     u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
@@ -89,22 +116,6 @@ static int battery(u8g2_t* u8g2) {
     u8g2_DrawStr(u8g2, offset, 5, buffer);
   }
   return offset;
-}
-
-static bool animation_tick(int ms, int64_t* last_time_ms) {
-  if (animation_timer == NULL) {
-    animation_timer =
-        xTimerCreate("animation_timer", pdMS_TO_TICKS(ms), pdFALSE, NULL, animation_timer_cb);
-    xTimerReset(animation_timer, 0);
-  } else if (xTimerIsTimerActive(animation_timer) == pdFALSE) {
-    xTimerChangePeriod(animation_timer, pdMS_TO_TICKS(ms), 0);
-  }
-  int64_t now = esp_timer_get_time() / 1000;
-  if (now - *last_time_ms >= ms - 10) {  // 10ms tolerance
-    *last_time_ms = now;
-    return true;
-  }
-  return false;
 }
 
 static void wifi_strength(u8g2_t* u8g2) {
@@ -776,9 +787,6 @@ static void main_menu_cb(u8g2_t* u8g2, int i, int x, int y) {
           break;
         case BEEP_LONG:
           snprintf(value, sizeof(value), "long");
-          break;
-        case BATTERY_EMPTY:
-          snprintf(value, sizeof(value), "battery");
           break;
         case STARTUP:
           snprintf(value, sizeof(value), "startup");

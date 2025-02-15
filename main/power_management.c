@@ -76,6 +76,10 @@ int battery_percentage() {
   return 100;
 }
 
+bool battery_is_low() {
+  return battery_voltage < BATTERY_LOW;
+}
+
 static void adc_calibration_init(
     adc_unit_t unit,
     adc_channel_t channel,
@@ -288,7 +292,6 @@ void power_management(void* params) {
     } else {
       xEventGroupClearBits(event_group, USB_CONNECTED);
       if (battery_voltage < BATTERY_LOW) {
-        trigger_beep(BATTERY_EMPTY);
         // red
         set_rgb_color(255, 0, 0);
       } else {

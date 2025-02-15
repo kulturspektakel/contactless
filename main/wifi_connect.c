@@ -86,7 +86,43 @@ static void event_handler(
   xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
 }
 
+static esp_err_t read_nvs_string(
+    nvs_handle_t handle,
+    const char* key,
+    char* target,
+    size_t max_size
+) {
+  size_t required_size = 0;
+  esp_err_t err = nvs_get_str(handle, key, NULL, &required_size);
+
+  if (err == ESP_OK && required_size <= max_size) {
+    err = nvs_get_str(handle, key, target, &required_size);
+  } else {
+    ESP_LOGE(WIFI_CONNECT_TASK, "Failed to get %s", key);
+  }
+
+  return err;
+}
+
 void wifi_connect(void* params) {
+  wifi_config_t wifi_config = {
+      .sta = {.ssid = "", .password = ""},
+  };
+
+  // Read SSID and Password
+  nvs_handle_t nvs_handle;
+  ESP_ERROR_CHECK(nvs_open(NVS_DEVICE_CONFIG, NVS_READONLY, &nvs_handle));
+  read_nvs_string(
+      nvs_handle, NVS_WIFI_SSID, (char*)wifi_config.sta.ssid, sizeof(wifi_config.sta.ssid)
+  );
+  read_nvs_string(
+      nvs_handle,
+      NVS_WIFI_PASSWORD,
+      (char*)wifi_config.sta.password,
+      sizeof(wifi_config.sta.password)
+  );
+  nvs_close(nvs_handle);
+
   esp_netif_init();
   esp_event_loop_create_default();
   esp_netif_create_default_wifi_sta();
@@ -103,20 +139,6 @@ void wifi_connect(void* params) {
   esp_event_handler_instance_register(
       IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, current_task, &instance_got_ip
   );
-
-  wifi_config_t wifi_config = {
-      .sta = {.ssid = "", .password = ""},
-  };
-
-  nvs_handle_t nvs_handle;
-  ESP_ERROR_CHECK(nvs_open(NVS_DEVICE_CONFIG, NVS_READONLY, &nvs_handle));
-
-  size_t required_size;
-  nvs_get_str(nvs_handle, NVS_WIFI_SSID, NULL, &required_size);
-  nvs_get_str(nvs_handle, NVS_WIFI_SSID, (char*)wifi_config.sta.ssid, &required_size);
-  nvs_get_str(nvs_handle, NVS_WIFI_PASSWORD, NULL, &required_size);
-  nvs_get_str(nvs_handle, NVS_WIFI_PASSWORD, (char*)wifi_config.sta.password, &required_size);
-  nvs_close(nvs_handle);
 
   esp_wifi_set_mode(WIFI_MODE_STA);
   esp_wifi_set_config(WIFI_IF_STA, &wifi_config);

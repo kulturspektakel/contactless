@@ -120,9 +120,6 @@ void buzzer(void* params) {
       case BEEP_LONG:
         play_beep(1000);
         break;
-      case BATTERY_EMPTY:
-        play_melody(LOW_BATTERY, sizeof(LOW_BATTERY));
-        break;
       case STARTUP:
         play_melody(WELCOME, sizeof(WELCOME));
         break;

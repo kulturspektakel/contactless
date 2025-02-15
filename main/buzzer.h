@@ -3,7 +3,6 @@
 typedef enum {
   BEEP_SHORT,
   BEEP_LONG,
-  BATTERY_EMPTY,
   STARTUP,
   POWER_CONNECTED,
   KEY_PRESS,
