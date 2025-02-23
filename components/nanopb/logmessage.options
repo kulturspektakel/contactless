@@ -1,4 +1,5 @@
-LogMessage.device_id                max_length:16
-LogMessage.client_id                max_length:8
-LogMessage.CardTransaction.card_id  max_length:14
-LogMessage.Order.cart_items         max_count:9
+LogMessage.device_id                       max_length:16
+LogMessage.client_id                       max_length:8
+LogMessage.CardTransaction.card_id         max_length:14
+LogMessage.Order.cart_items                max_count:9
+LogMessage.CrewCardEnrollment.crew_card_id max_size: 7

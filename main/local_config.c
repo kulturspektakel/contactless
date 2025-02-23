@@ -12,7 +12,8 @@
 static const char* TAG = "local_config";
 int32_t lists_count = 0;
 DeviceConfig active_config = DeviceConfig_init_default;
-AllLists_privilege_tokens_t privilege_tokens[MAX_PRIVILEGE_TOKENS];
+AllLists_suspended_crew_cards_t suspended_crew_cards[];
+AllLists_privilege_tokens_t privilege_tokens[];
 int32_t all_lists_checksum = -1;
 product_list_t* product_lists = NULL;
 QueueHandle_t config_update_queue = NULL;

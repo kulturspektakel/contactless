@@ -7,8 +7,6 @@
 #define NVS_SALT "salt"
 #define NVS_SOUND_MODE "sound_mode"
 
-#define MAX_PRIVILEGE_TOKENS 30
-
 #define TZ "CET-1CEST,M3.5.0,M10.5.0/3"
 #define API_HOST "api.kulturspektakel.de"
 #define DEPOSIT_VALUE 200

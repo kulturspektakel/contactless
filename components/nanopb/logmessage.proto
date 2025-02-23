@@ -10,6 +10,7 @@ message LogMessage {
   optional CardTransaction card_transaction = 6;
   optional int32 battery_voltage = 7;
   optional int32 usb_voltage = 8;
+  optional CrewCardEnrollment crew_card_enrollment = 10;
 
   message CardTransaction {
     TransactionType transaction_type = 1;
@@ -32,6 +33,7 @@ message LogMessage {
     PaymentMethod payment_method = 1;
     repeated CartItem cart_items = 2;
     optional int32 list_id = 3;
+    optional bytes crew_card_id = 4;
 
     enum PaymentMethod {
       CASH = 0;
@@ -47,5 +49,10 @@ message LogMessage {
       int32 amount = 1;
       Product product = 2;
     }
+  }
+
+  message CrewCardEnrollment {
+    bytes crew_card_id = 1;
+    int32 valid_until = 2;
   }
 }

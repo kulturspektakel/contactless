@@ -8,5 +8,15 @@
   "idf.openOcdConfigs": ["board/esp32s3-builtin.cfg"],
   "idf.port": "/dev/tty.usbmodem41301",
   "idf.toolsPath": "/Users/danielbuechele/.espressif",
-  "idf.flashType": "UART"
+  "idf.flashType": "UART",
+  "files.associations": {
+    "rfid.h": "c",
+    "local_config.h": "c",
+    "freertos.h": "c",
+    "constants.h": "c",
+    "task.h": "c",
+    "esp_littlefs.h": "c",
+    "configs.pb.h": "c",
+    "config.pb.h": "c"
+  }
 }

@@ -132,16 +132,39 @@ static void add_digit(int d) {
   current_state.manual_amount += add;
 }
 
-static mode_type token_detected(event_t event) {
-  trigger_beep(BEEP_SHORT);
-  reset_cart();
-  current_state.is_privileged = !current_state.is_privileged;
-  return default_mode();
-}
-
 static bool cart_is_empty() {
   return current_state.cart.item_count == 0 && current_state.cart.deposit == 0 &&
          current_state.manual_amount == 0;
+}
+
+static mode_type crew_card_detected(event_t event) {
+  trigger_beep(BEEP_SHORT);
+
+  // TODO check if card is suspended
+  for (int i = 0; i < MAX_SUSPENDED_CREW_CARDS; i++) {
+    if (suspended_crew_cards[i].size == sizeof(current_card.id) &&
+        memcmp(current_card.id, suspended_crew_cards[i].bytes, suspended_crew_cards[i].size) == 0) {
+      // TODO show suspended card info
+      // current_state.card_error = SUSPENDED_CARD;
+      return READ_FAILED;
+    }
+  }
+
+  // TODO check if card is valid
+
+  if (cart_is_empty()) {
+    for (int i = 0; i < MAX_PRIVILEGE_TOKENS; i++) {
+      if (privilege_tokens[i].size == sizeof(current_card.id) &&
+          memcmp(current_card.id, privilege_tokens[i].bytes, privilege_tokens[i].size) == 0) {
+        current_state.is_privileged = !current_state.is_privileged;
+        return default_mode();
+      }
+    }
+    // TODO show crew card info
+  }
+
+  // TODO charge crew card
+  return default_mode();
 }
 
 static mode_type card_detected(event_t event) {
@@ -359,8 +382,8 @@ static mode_type charge_list(event_t event) {
       return current_state.cart.item_count > 0 ? CHARGE_WITHOUT_CARD : CHARGE_MANUAL;
     case KEY_HASH:
       return PRODUCT_LIST;
-    case PRIVILEGE_TOKEN_DETECTED:
-      return token_detected(event);
+    case CREW_CARD_DETECTED:
+      return crew_card_detected(event);
     case CARD_DETECTED_OK:
     case CARD_DETECTED_NOT_READABLE:
     case CARD_DETECTED_SKIPPED_SECUIRTY:
@@ -444,8 +467,8 @@ static mode_type main_starting_up(event_t event) {
 static mode_type charge_manual(event_t event) {
   switch (event) {
     // change state
-    case PRIVILEGE_TOKEN_DETECTED:
-      return token_detected(event);
+    case CREW_CARD_DETECTED:
+      return crew_card_detected(event);
 
     case CARD_DETECTED_OK:
     case CARD_DETECTED_NOT_READABLE:
@@ -493,8 +516,8 @@ static mode_type charge_manual(event_t event) {
 
 static mode_type privileged_topup(event_t event) {
   switch (event) {
-    case PRIVILEGE_TOKEN_DETECTED:
-      return token_detected(event);
+    case CREW_CARD_DETECTED:
+      return crew_card_detected(event);
 
     case CARD_DETECTED_OK:
     case CARD_DETECTED_NOT_READABLE:

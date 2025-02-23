@@ -1,1 +1,2 @@
-AllLists.privilege_tokens max_count:30 max_size: 10
+AllLists.privilege_tokens      max_count:30 max_size: 7
+AllLists.suspended_crew_cards  max_count:30 max_size: 7

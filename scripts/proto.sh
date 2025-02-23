@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-NANOPB="nanopb-0.4.7-macosx-x86" 
+NANOPB="nanopb-0.4.9.1-macosx-x86" 
 TMP_DIR=$(mktemp -d)
 echo "Create temporary directory $TMP_DIR"
 cd $TMP_DIR

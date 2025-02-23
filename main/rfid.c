@@ -46,13 +46,8 @@ static void calculate_signature_ultralight(uint8_t* target, ultralight_card_info
   create_sha1_hash(hash_input, len, target);
 }
 
-static bool is_privilege_token(byte_array_t* uid) {
-  for (int i = 0; i < MAX_PRIVILEGE_TOKENS; i++) {
-    if (uid->length == privilege_tokens[i].size &&
-        memcmp(uid->bytes, privilege_tokens[i].bytes, privilege_tokens[i].size) == 0) {
-      return true;
-    }
-  }
+static bool is_crew_card(byte_array_t* uid) {
+  // TODO
   return false;
 }
 
@@ -328,8 +323,8 @@ void rfid(void* params) {
     current_card = new_card;
     card_seen_at = esp_timer_get_time();
 
-    if (is_privilege_token(&uid)) {
-      trigger_event(PRIVILEGE_TOKEN_DETECTED);
+    if (is_crew_card(&uid)) {
+      trigger_event(CREW_CARD_DETECTED);
       continue;
     }
 

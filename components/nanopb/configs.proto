@@ -7,4 +7,5 @@ message AllLists {
   int32 version_number = 3;
   int32 timestamp = 4;
   repeated bytes privilege_tokens = 5;
+  repeated bytes suspended_crew_cards = 6;
 }
