@@ -82,12 +82,23 @@ typedef struct {
   uint8_t current_index;
 } product_selection_t;
 
+typedef enum { REGULAR, CREW } ultralight_card_type_t;
+
 typedef struct {
   uint8_t id[7];
-  uint16_t counter;
-  uint8_t deposit;
-  uint16_t balance;
+  ultralight_card_type_t type;
   uint8_t signature[5];
+
+  union {
+    struct {
+      uint16_t counter;
+      uint8_t deposit;
+      uint16_t balance;
+    } regular;
+    struct {
+      uint16_t valid_until
+    } crew;
+  } data;
 } ultralight_card_info_t;
 
 typedef enum {

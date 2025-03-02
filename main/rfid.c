@@ -25,6 +25,7 @@ ultralight_card_info_t current_card = {0};
 
 #define MINIMUM_CARD_TIME 1500
 #define OFFSET_COUNTER LENGTH_ID
+#define OFFSET_VAILD_UNTIL LENGTH_ID
 #define OFFSET_DEPOSIT LENGTH_ID + LENGTH_COUNTER
 #define OFFSET_BALANCE LENGTH_ID + LENGTH_COUNTER + LENGTH_DEPOSIT
 #define OFFSET_SIGNATURE LENGTH_ID + LENGTH_COUNTER + LENGTH_DEPOSIT + LENGTH_BALANCE
@@ -39,9 +40,13 @@ static void calculate_signature_ultralight(uint8_t* target, ultralight_card_info
                SALT_LENGTH;
   char hash_input[len];
   memcpy(hash_input, &card->id, LENGTH_ID);
-  memcpy(hash_input + OFFSET_COUNTER, &card->counter, LENGTH_COUNTER);
-  memcpy(hash_input + OFFSET_DEPOSIT, &card->deposit, LENGTH_DEPOSIT);
-  memcpy(hash_input + OFFSET_BALANCE, &card->balance, LENGTH_BALANCE);
+  if (card->type == REGULAR) {
+    memcpy(hash_input + OFFSET_COUNTER, &card->data.regular.counter, LENGTH_COUNTER);
+    memcpy(hash_input + OFFSET_DEPOSIT, &card->data.regular.deposit, LENGTH_DEPOSIT);
+    memcpy(hash_input + OFFSET_BALANCE, &card->data.regular.balance, LENGTH_BALANCE);
+  } else {
+    // TODO
+  }
   memcpy(hash_input + OFFSET_SIGNATURE, SALT, SALT_LENGTH);
   create_sha1_hash(hash_input, len, target);
 }
@@ -118,35 +123,43 @@ static event_t read_card(byte_array_t* uid) {
   }
 
   ultralight_card_info_t new_card = {0};
-  // The value from the physical counter is stored in new_card, so that cards can be repaired
-  // based on the actual counter value in write_card. The value from the payload is only used for
-  // verification.
-  if (!mfu_read_counter(0, &new_card.counter)) {
-    return CARD_DETECTED_NOT_READABLE;
-  }
-  uint16_t counter_from_payload = *(uint16_t*)(decoded_payload + OFFSET_COUNTER);
+  new_card.type = REGULAR;  // TODO read card type
   memcpy(new_card.id, uid->bytes, LENGTH_ID);
-  new_card.deposit = *(uint8_t*)(decoded_payload + OFFSET_DEPOSIT);
-  new_card.balance = *(uint16_t*)(decoded_payload + OFFSET_BALANCE);
   memcpy(new_card.signature, decoded_payload + OFFSET_SIGNATURE, LENGTH_SIGNATURE);
 
+  if (new_card.type == REGULAR) {
+    // The value from the physical counter is stored in new_card, so that cards can be repaired
+    // based on the actual counter value in write_card. The value from the payload is only used for
+    // verification.
+    if (!mfu_read_counter(0, &new_card.data.regular.counter)) {
+      return CARD_DETECTED_NOT_READABLE;
+    }
+    new_card.data.regular.deposit = *(uint8_t*)(decoded_payload + OFFSET_DEPOSIT);
+    new_card.data.regular.balance = *(uint16_t*)(decoded_payload + OFFSET_BALANCE);
+  } else if (new_card.type == CREW) {
+    // TODO
+  }
+
+  // card was sucessfully read, but not yet verified
   current_card = new_card;
 
   // verify counter
-  if (new_card.counter != counter_from_payload) {
-    ESP_LOGE(
-        RFID_TASK,
-        "Counter mismatch: %d (card) != %d (payload)",
-        new_card.counter,
-        counter_from_payload
-    );
-    return CARD_DETECTED_SKIPPED_SECUIRTY;
+  if (new_card.type == REGULAR) {
+    uint16_t counter_from_payload = *(uint16_t*)(decoded_payload + OFFSET_COUNTER);
+    if (new_card.data.regular.counter != counter_from_payload) {
+      ESP_LOGE(
+          RFID_TASK,
+          "Counter mismatch: %d (card) != %d (payload)",
+          new_card.counter,
+          counter_from_payload
+      );
+      return CARD_DETECTED_SKIPPED_SECUIRTY;
+    }
   }
 
   // verify signature
   uint8_t hash[20];
   calculate_signature_ultralight(hash, &new_card);
-
   if (memcmp(hash, new_card.signature, LENGTH_SIGNATURE) != 0) {
     ESP_LOGE(RFID_TASK, "Signature mismatch: hash != signature");
     ESP_LOG_BUFFER_HEX(RFID_TASK, hash, 5);
@@ -200,9 +213,13 @@ static bool write_card(byte_array_t* uid, ultralight_card_info_t* card) {
   uint8_t buffer[len];
 
   memcpy(buffer, &card->id, LENGTH_ID);
-  memcpy(buffer + OFFSET_COUNTER, &card->counter, LENGTH_COUNTER);
-  memcpy(buffer + OFFSET_DEPOSIT, &card->deposit, LENGTH_DEPOSIT);
-  memcpy(buffer + OFFSET_BALANCE, &card->balance, LENGTH_BALANCE);
+  if (&card->type == REGULAR) {
+    memcpy(buffer + OFFSET_COUNTER, &card->data.regular.counter, LENGTH_COUNTER);
+    memcpy(buffer + OFFSET_DEPOSIT, &card->data.regular.deposit, LENGTH_DEPOSIT);
+    memcpy(buffer + OFFSET_BALANCE, &card->data.regular.balance, LENGTH_BALANCE);
+  } else if (&card->type == CREW) {
+    // TODO write crew card validity
+  }
   // TODO overflow?!?!
   calculate_signature_ultralight(buffer + OFFSET_SIGNATURE, card);
 
@@ -237,18 +254,21 @@ static bool write_card(byte_array_t* uid, ultralight_card_info_t* card) {
     }
   }
 
-  int counter_diff = card->counter - current_card.counter;
-  if (counter_diff < 0) {
-    ESP_LOGE(RFID_TASK, "Counter decreased: %d", counter_diff);
-    return false;
-  } else if (counter_diff > 3) {
-    ESP_LOGE(RFID_TASK, "Counter diff to high: %d", counter_diff);
-    return false;
-  }
-  ESP_LOGI(RFID_TASK, "Incrementing counter by %d", counter_diff);
-  if (!mfu_increment_counter(0, counter_diff)) {
-    ESP_LOGE(RFID_TASK, "Incrementing counter failed");
-    return false;
+  if (&card->type == REGULAR) {
+    // only regular cards use counter
+    int counter_diff = card->data.regular.counter - current_card.data.regular.counter;
+    if (counter_diff < 0) {
+      ESP_LOGE(RFID_TASK, "Counter decreased: %d", counter_diff);
+      return false;
+    } else if (counter_diff > 3) {
+      ESP_LOGE(RFID_TASK, "Counter diff to high: %d", counter_diff);
+      return false;
+    }
+    ESP_LOGI(RFID_TASK, "Incrementing counter by %d", counter_diff);
+    if (!mfu_increment_counter(0, counter_diff)) {
+      ESP_LOGE(RFID_TASK, "Incrementing counter failed");
+      return false;
+    }
   }
 
   ESP_LOGI(RFID_TASK, "Write successful");
@@ -367,8 +387,9 @@ void rfid(void* params) {
       trigger_event(WRITE_UNSUCCESSFUL);
       continue;
     }
-    if (current_card.deposit != current_state.data_to_write.deposit ||
-        current_card.balance != current_state.data_to_write.balance) {
+    if (current_card.type == REGULAR &&
+        (current_card.data.regular.deposit != current_state.data_to_write.data.regular.deposit ||
+         current_card.data.regular.balance != current_state.data_to_write.data.regular.balance)) {
       // reread mismatch
       ESP_LOGE(
           RFID_TASK,
@@ -380,6 +401,8 @@ void rfid(void* params) {
       );
       trigger_event(WRITE_UNSUCCESSFUL);
       continue;
+    } else if (current_card.type == CREW) {
+      // TODO
     }
 
     trigger_event(WRITE_SUCCESSFUL);

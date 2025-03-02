@@ -190,9 +190,13 @@ static mode_type card_detected(event_t event) {
     return CARD_BALANCE;
   }
 
+  if (current_card.type != REGULAR) {
+    return MAIN_FATAL;
+  }
+
   // stroing in ints because it could go negative
-  int new_balance = current_card.balance;
-  int new_deposit = current_card.deposit;
+  int new_balance = current_card.data.regular.balance;
+  int new_deposit = current_card.data.regular.deposit;
   if (current_state.mode == CHARGE_LIST || current_state.mode == CHARGE_MANUAL) {
     new_balance -= current_total();
     new_deposit += current_state.cart.deposit;
@@ -231,9 +235,9 @@ static mode_type card_detected(event_t event) {
 
   current_state.data_to_write = current_card;
   current_state.data_before_write = current_card;
-  current_state.data_to_write.balance = new_balance;
-  current_state.data_to_write.deposit = new_deposit;
-  current_state.data_to_write.counter = current_card.counter + 1;
+  current_state.data_to_write.data.regular.balance = new_balance;
+  current_state.data_to_write.data.regular.deposit = new_deposit;
+  current_state.data_to_write.data.regular.counter = current_card.data.regular.counter + 1;
 
   return WRITE_CARD;
 }
@@ -308,6 +312,14 @@ static mode_type product_list(event_t event) {
   return PRODUCT_LIST;
 }
 
+static bool encode_crew_card_id(pb_ostream_t* stream, const pb_field_t* field, void* const* arg) {
+  const uint8_t* card_id = (const uint8_t*)*arg;
+  if (!pb_encode_tag_for_field(stream, field)) {
+    return false;
+  }
+  return pb_encode_string(stream, card_id, LENGTH_ID);
+}
+
 static void write_log(LogMessage_Order_PaymentMethod payment) {
   LogMessage* log = pvPortMalloc(sizeof(LogMessage));
   *log = (LogMessage)LogMessage_init_default;
@@ -327,7 +339,7 @@ static void write_log(LogMessage_Order_PaymentMethod payment) {
     log->has_card_transaction = true;
     log->card_transaction.transaction_type = current_state.transaction_type;
     log->card_transaction.has_counter = true;
-    log->card_transaction.counter = current_card.counter;
+    log->card_transaction.counter = current_card.data.regular.counter;
 
     size_t length = sizeof(current_card.id);
     for (int i = 0; i < length; i++) {
@@ -335,10 +347,15 @@ static void write_log(LogMessage_Order_PaymentMethod payment) {
     }
     log->card_transaction.card_id[length * 2] = '\0';
 
-    log->card_transaction.balance_before = current_state.data_before_write.balance;
-    log->card_transaction.balance_after = current_state.data_to_write.balance;
-    log->card_transaction.deposit_before = current_state.data_before_write.deposit;
-    log->card_transaction.deposit_after = current_state.data_to_write.deposit;
+    log->card_transaction.balance_before = current_state.data_before_write.data.regular.balance;
+    log->card_transaction.balance_after = current_state.data_to_write.data.regular.balance;
+    log->card_transaction.deposit_before = current_state.data_before_write.data.regular.deposit;
+    log->card_transaction.deposit_after = current_state.data_to_write.data.regular.deposit;
+  } else if (payment == LogMessage_Order_PaymentMethod_FREE_CREW &&
+             current_state.data_before_write.type == CREW) {
+    // TODO unverified this is working or not
+    log->order.crew_card_id.funcs.encode = encode_crew_card_id;
+    log->order.crew_card_id.arg = &current_state.data_before_write.id;
   }
 
   xQueueSendFromISR(log_queue, &log, NULL);
@@ -633,9 +650,9 @@ static mode_type privileged_cashout(event_t event) {
     case CARD_DETECTED_OK:
       current_state.data_to_write = current_card;
       current_state.data_before_write = current_card;
-      current_state.data_to_write.balance = 0;
-      current_state.data_to_write.deposit = 0;
-      current_state.data_to_write.counter = current_card.counter + 1;
+      current_state.data_to_write.data.regular.balance = 0;
+      current_state.data_to_write.data.regular.deposit = 0;
+      current_state.data_to_write.data.regular.counter = current_card.data.regular.counter + 1;
       return WRITE_CARD;
     case CARD_DETECTED_NOT_READABLE:
     case CARD_DETECTED_SKIPPED_SECUIRTY:
@@ -655,7 +672,7 @@ static mode_type privileged_repair(event_t event) {
     case CARD_DETECTED_SKIPPED_SECUIRTY:
       current_state.data_to_write = current_card;
       current_state.data_before_write = current_card;
-      current_state.data_to_write.counter = current_card.counter + 1;
+      current_state.data_to_write.data.regular.counter = current_card.data.regular.counter + 1;
       return WRITE_CARD;
     case CARD_DETECTED_NOT_READABLE:
     case CARD_DETECTED_OLD_CARD:
