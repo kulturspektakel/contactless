@@ -475,12 +475,12 @@ static void balance(u8g2_t* u8g2, uint16_t balance, int y) {
 static void card_balance(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
 
-  uint16_t bal = current_card.balance;
-  uint8_t dep = current_card.deposit;
+  uint16_t bal = current_card.data.regular.balance;
+  uint8_t dep = current_card.data.regular.deposit;
   char* line1 = NULL;
   if (current_state.transaction_type == LogMessage_CardTransaction_TransactionType_CASHOUT) {
-    bal = current_state.data_before_write.balance;
-    dep = current_state.data_before_write.deposit;
+    bal = current_state.data_before_write.data.regular.balance;
+    dep = current_state.data_before_write.data.regular.deposit;
     line1 = "Karte genullt!";
   }
   // TODO: better UI for repair
@@ -632,8 +632,8 @@ static void read_failed(u8g2_t* u8g2) {
     default:
       display_error(u8g2, "Karte defekt", NULL, y);
       if (has_card()) {
-        balance(u8g2, current_card.balance, DISPLAY_HEIGHT - 16);
-        deposit(u8g2, current_card.deposit, DISPLAY_HEIGHT - 4);
+        balance(u8g2, current_card.data.regular.balance, DISPLAY_HEIGHT - 16);
+        deposit(u8g2, current_card.data.regular.deposit, DISPLAY_HEIGHT - 4);
       }
   }
 }
@@ -824,11 +824,11 @@ static void write_not_attemted(u8g2_t* u8g2) {
       break;
     case INSUFFICIENT_FUNDS:
       display_error(u8g2, "Nicht genug", "Guthaben", y);
-      balance(u8g2, current_card.balance, DISPLAY_HEIGHT - 4);
+      balance(u8g2, current_card.data.regular.balance, DISPLAY_HEIGHT - 4);
       break;
     case INSUFFICIENT_DEPOSIT:
       display_error(u8g2, "Nicht genug", "Pfandmarken", y);
-      deposit(u8g2, current_card.deposit, DISPLAY_HEIGHT - 4);
+      deposit(u8g2, current_card.data.regular.deposit, DISPLAY_HEIGHT - 4);
       break;
     default:
       display_error(u8g2, "Karte nicht", "schreibbar", y);

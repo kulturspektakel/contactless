@@ -13,6 +13,7 @@
 #include "local_config.h"
 #include "log_writer.h"
 #include "logmessage.pb.h"
+#include "pb_encode.h"
 #include "power_management.h"
 #include "rfid.h"
 
@@ -34,12 +35,11 @@ state_t current_state = {
             .second_digit = -1,
             .current_index = 0,
         },
-    .cart =
-        {
-            .deposit = 0,
-            .items = {},
-            .item_count = 0,
-        },
+    .cart = {
+        .deposit = 0,
+        .items = {},
+        .item_count = 0,
+    },
 };
 
 void trigger_event(event_t event) {

@@ -46,6 +46,7 @@ static void calculate_signature_ultralight(uint8_t* target, ultralight_card_info
     memcpy(hash_input + OFFSET_BALANCE, &card->data.regular.balance, LENGTH_BALANCE);
   } else {
     // TODO
+    ESP_LOGE(RFID_TASK, "Crew card not implemented");
   }
   memcpy(hash_input + OFFSET_SIGNATURE, SALT, SALT_LENGTH);
   create_sha1_hash(hash_input, len, target);
@@ -84,15 +85,17 @@ static int is_alpha_numeric(char c) {
 }
 
 static event_t read_card(byte_array_t* uid) {
-  uint8_t payload[PAYLOAD_LENGTH + 1];
-
-  if (!mfu_read_page(9, payload, 16) || !mfu_read_page(13, payload + 16, PAYLOAD_LENGTH - 16)) {
+  // read /$$/ prefix and payload
+  uint8_t data[4 + PAYLOAD_LENGTH + 1];
+  if (!mfu_read_page(8, data, 16) || !mfu_read_page(12, data + 16, 4 + PAYLOAD_LENGTH - 16)) {
     ESP_LOGE(RFID_TASK, "Reading payload failed");
     return CARD_DETECTED_NOT_READABLE;
   }
-  payload[PAYLOAD_LENGTH] = '=';  // add padding for base64
+
+  uint8_t* payload = data + 4;  // skip header
 
   // Convert web-safe base64 to standard base64
+  payload[PAYLOAD_LENGTH] = '=';  // add padding for base64
   for (size_t i = 0; i < PAYLOAD_LENGTH; i++) {
     if (payload[i] == '-') {
       payload[i] = '+';
@@ -108,7 +111,7 @@ static event_t read_card(byte_array_t* uid) {
   uint8_t decoded_payload[17];
   size_t size_decoded = 0;
   int decode_error = mbedtls_base64_decode(
-      decoded_payload, sizeof(decoded_payload), &size_decoded, payload, sizeof(payload)
+      decoded_payload, sizeof(decoded_payload), &size_decoded, payload, PAYLOAD_LENGTH + 1
   );
   if (decode_error != 0) {
     ESP_LOGE(
@@ -123,7 +126,19 @@ static event_t read_card(byte_array_t* uid) {
   }
 
   ultralight_card_info_t new_card = {0};
-  new_card.type = REGULAR;  // TODO read card type
+
+  // read card type
+  if (memcmp(data, "/$$/", 4) == 0) {
+    new_card.type = REGULAR;
+    ESP_LOGI(RFID_TASK, "Regular card detected");
+  } else if (memcmp(data, "/$c/", 4) == 0) {
+    new_card.type = CREW;
+    ESP_LOGI(RFID_TASK, "Crew card detected");
+  } else {
+    ESP_LOGE(RFID_TASK, "Invalid prefix: %c%c%c%c", data[0], data[1], data[2], data[3]);
+    return CARD_DETECTED_NOT_READABLE;
+  }
+
   memcpy(new_card.id, uid->bytes, LENGTH_ID);
   memcpy(new_card.signature, decoded_payload + OFFSET_SIGNATURE, LENGTH_SIGNATURE);
 
@@ -150,7 +165,7 @@ static event_t read_card(byte_array_t* uid) {
       ESP_LOGE(
           RFID_TASK,
           "Counter mismatch: %d (card) != %d (payload)",
-          new_card.counter,
+          new_card.data.regular.counter,
           counter_from_payload
       );
       return CARD_DETECTED_SKIPPED_SECUIRTY;
@@ -213,11 +228,11 @@ static bool write_card(byte_array_t* uid, ultralight_card_info_t* card) {
   uint8_t buffer[len];
 
   memcpy(buffer, &card->id, LENGTH_ID);
-  if (&card->type == REGULAR) {
+  if (card->type == REGULAR) {
     memcpy(buffer + OFFSET_COUNTER, &card->data.regular.counter, LENGTH_COUNTER);
     memcpy(buffer + OFFSET_DEPOSIT, &card->data.regular.deposit, LENGTH_DEPOSIT);
     memcpy(buffer + OFFSET_BALANCE, &card->data.regular.balance, LENGTH_BALANCE);
-  } else if (&card->type == CREW) {
+  } else if (card->type == CREW) {
     // TODO write crew card validity
   }
   // TODO overflow?!?!
@@ -226,9 +241,9 @@ static bool write_card(byte_array_t* uid, ultralight_card_info_t* card) {
   ESP_LOGI(
       RFID_TASK,
       "Write: balance %hu, deposit %hu, counter %hu",
-      card->balance,
-      card->deposit,
-      card->counter
+      card->data.regular.balance,
+      card->data.regular.deposit,
+      card->data.regular.counter
   );
 
   // encode payload to base64
@@ -254,7 +269,7 @@ static bool write_card(byte_array_t* uid, ultralight_card_info_t* card) {
     }
   }
 
-  if (&card->type == REGULAR) {
+  if (card->type == REGULAR) {
     // only regular cards use counter
     int counter_diff = card->data.regular.counter - current_card.data.regular.counter;
     if (counter_diff < 0) {
@@ -394,10 +409,10 @@ void rfid(void* params) {
       ESP_LOGE(
           RFID_TASK,
           "Reread mismatch: Balance (%d != %d), deposit (%d != %d)",
-          current_card.balance,
-          current_state.data_to_write.balance,
-          current_card.deposit,
-          current_state.data_to_write.deposit
+          current_card.data.regular.balance,
+          current_state.data_to_write.data.regular.balance,
+          current_card.data.regular.deposit,
+          current_state.data_to_write.data.regular.deposit
       );
       trigger_event(WRITE_UNSUCCESSFUL);
       continue;
