@@ -2,6 +2,7 @@
 #include <esp_log.h>
 #include <mbedtls/base64.h>
 #include <string.h>
+#include <time.h>
 #include "constant_time_internal.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -18,8 +19,23 @@ typedef struct {
 } byte_array_t;
 
 static uint8_t NDEF_KEY_A[6] = {0xD3, 0xF7, 0xD3, 0xF7, 0xD3, 0xF7};
-static uint8_t PAGE_4[16] =
-    {0x00, 0x00, 0x03, 0x2B, 0xD1, 0x01, 0x27, 0x55, 0x04, 0x6B, 0x75, 0x6C, 0x74, 0x2E, 0x63, 0x61
+static uint8_t PAGE_4[16] = {
+    0x00,
+    0x00,
+    0x03,
+    0x2B,
+    0xD1,
+    0x01,
+    0x27,
+    0x55,
+    0x04,
+    0x6B,
+    0x75,
+    0x6C,
+    0x74,
+    0x2E,
+    0x63,
+    0x61
 };
 ultralight_card_info_t current_card = {0};
 
@@ -45,8 +61,7 @@ static void calculate_signature_ultralight(uint8_t* target, ultralight_card_info
     memcpy(hash_input + OFFSET_DEPOSIT, &card->data.regular.deposit, LENGTH_DEPOSIT);
     memcpy(hash_input + OFFSET_BALANCE, &card->data.regular.balance, LENGTH_BALANCE);
   } else {
-    // TODO
-    ESP_LOGE(RFID_TASK, "Crew card not implemented");
+    memcpy(hash_input + OFFSET_VAILD_UNTIL, &card->data.crew.valid_until, LENGTH_VAILD_UNTIL);
   }
   memcpy(hash_input + OFFSET_SIGNATURE, SALT, SALT_LENGTH);
   create_sha1_hash(hash_input, len, target);
@@ -82,6 +97,53 @@ static int is_alpha_numeric(char c) {
   return (c >= 'A' && c <= 'Z') ||  // Uppercase letters
          (c >= 'a' && c <= 'z') ||  // Lowercase letters
          (c >= '0' && c <= '9');    // Base64 special characters
+}
+
+static int is_leap_year(const struct tm* time) {
+  uint16_t year = time->tm_year + 1900;  // Adjust for tm_year being years since 1900
+  return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+}
+
+static uint16_t days_since_kult_epoch() {
+  time_t now;
+  time(&now);
+  struct tm* current_time = gmtime(&now);
+  static const uint8_t days_per_month[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+
+  uint16_t year_diff = current_time->tm_year - 125;  // 125 = 2025 - 1900
+
+  // Calculate days from complete years
+  uint16_t days = year_diff * 365;
+
+  // Add leap days from complete years (2025 through last year)
+  // We don't need to check year_diff > 0 since we know it's always true
+  uint16_t complete_years = year_diff;
+  days += complete_years / 4 - complete_years / 100 + complete_years / 400;
+
+  // Current year's leap day (if applicable and we've passed February 29)
+  if (is_leap_year(current_time) &&
+      (current_time->tm_mon > 1 || (current_time->tm_mon == 1 && current_time->tm_mday == 29))) {
+    days++;
+  }
+
+  // Add days in the current year
+  uint16_t current_days = current_time->tm_mday - 1;  // -1 because we start from day 0
+  for (uint8_t i = 0; i < current_time->tm_mon; i++) {
+    current_days += days_per_month[i];
+
+    // Add leap day if February in a leap year
+    if (i == 1 && is_leap_year(current_time)) {
+      current_days++;
+    }
+  }
+  days += current_days;
+
+  // Adjust for UTC reference time (UTC-04:00)
+  if (current_time->tm_hour < 4) {
+    days--;
+  }
+
+  return days;
 }
 
 static event_t read_card(byte_array_t* uid) {
@@ -152,7 +214,7 @@ static event_t read_card(byte_array_t* uid) {
     new_card.data.regular.deposit = *(uint8_t*)(decoded_payload + OFFSET_DEPOSIT);
     new_card.data.regular.balance = *(uint16_t*)(decoded_payload + OFFSET_BALANCE);
   } else if (new_card.type == CREW) {
-    // TODO
+    new_card.data.crew.valid_until = *(uint16_t*)(decoded_payload + OFFSET_VAILD_UNTIL);
   }
 
   // card was sucessfully read, but not yet verified
@@ -170,6 +232,9 @@ static event_t read_card(byte_array_t* uid) {
       );
       return CARD_DETECTED_SKIPPED_SECUIRTY;
     }
+  } else if (new_card.type == CREW) {
+    int days = days_since_kult_epoch();
+    printf("Days since 2025-01-01 06:00:00 UTC: %d\n", days);
   }
 
   // verify signature

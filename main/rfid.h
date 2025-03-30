@@ -5,6 +5,7 @@
 #define LENGTH_DEPOSIT 1
 #define LENGTH_BALANCE 2
 #define LENGTH_SIGNATURE 5
+#define LENGTH_VAILD_UNTIL 2
 
 #include "state_machine.h"
 
