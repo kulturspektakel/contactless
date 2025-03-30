@@ -2,7 +2,6 @@
 #include <esp_log.h>
 #include <mbedtls/base64.h>
 #include <string.h>
-#include <time.h>
 #include "constant_time_internal.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -99,53 +98,6 @@ static int is_alpha_numeric(char c) {
          (c >= '0' && c <= '9');    // Base64 special characters
 }
 
-static int is_leap_year(const struct tm* time) {
-  uint16_t year = time->tm_year + 1900;  // Adjust for tm_year being years since 1900
-  return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
-}
-
-static uint16_t days_since_kult_epoch() {
-  time_t now;
-  time(&now);
-  struct tm* current_time = gmtime(&now);
-  static const uint8_t days_per_month[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-
-  uint16_t year_diff = current_time->tm_year - 125;  // 125 = 2025 - 1900
-
-  // Calculate days from complete years
-  uint16_t days = year_diff * 365;
-
-  // Add leap days from complete years (2025 through last year)
-  // We don't need to check year_diff > 0 since we know it's always true
-  uint16_t complete_years = year_diff;
-  days += complete_years / 4 - complete_years / 100 + complete_years / 400;
-
-  // Current year's leap day (if applicable and we've passed February 29)
-  if (is_leap_year(current_time) &&
-      (current_time->tm_mon > 1 || (current_time->tm_mon == 1 && current_time->tm_mday == 29))) {
-    days++;
-  }
-
-  // Add days in the current year
-  uint16_t current_days = current_time->tm_mday - 1;  // -1 because we start from day 0
-  for (uint8_t i = 0; i < current_time->tm_mon; i++) {
-    current_days += days_per_month[i];
-
-    // Add leap day if February in a leap year
-    if (i == 1 && is_leap_year(current_time)) {
-      current_days++;
-    }
-  }
-  days += current_days;
-
-  // Adjust for UTC reference time (UTC-04:00)
-  if (current_time->tm_hour < 4) {
-    days--;
-  }
-
-  return days;
-}
-
 static event_t read_card(byte_array_t* uid) {
   // read /$$/ prefix and payload
   uint8_t data[4 + PAYLOAD_LENGTH + 1];
@@ -232,9 +184,6 @@ static event_t read_card(byte_array_t* uid) {
       );
       return CARD_DETECTED_SKIPPED_SECUIRTY;
     }
-  } else if (new_card.type == CREW) {
-    int days = days_since_kult_epoch();
-    printf("Days since 2025-01-01 06:00:00 UTC: %d\n", days);
   }
 
   // verify signature
@@ -247,7 +196,7 @@ static event_t read_card(byte_array_t* uid) {
     return CARD_DETECTED_SKIPPED_SECUIRTY;
   }
 
-  return CARD_DETECTED_OK;
+  return  CARD_DETECTED_OK;
 }
 
 static void calculate_password(byte_array_t* uid, uint8_t* password, uint8_t* pack) {
@@ -423,11 +372,6 @@ void rfid(void* params) {
     current_card = new_card;
     card_seen_at = esp_timer_get_time();
 
-    if (is_crew_card(&uid)) {
-      trigger_event(CREW_CARD_DETECTED);
-      continue;
-    }
-
     if (is_old_card(&uid)) {
       trigger_event(CARD_DETECTED_OLD_CARD);
       continue;
@@ -481,8 +425,6 @@ void rfid(void* params) {
       );
       trigger_event(WRITE_UNSUCCESSFUL);
       continue;
-    } else if (current_card.type == CREW) {
-      // TODO
     }
 
     trigger_event(WRITE_SUCCESSFUL);

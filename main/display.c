@@ -583,6 +583,13 @@ static void privileged_repair(u8g2_t* u8g2) {
   u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, 27, line1);
 }
 
+static void privileged_enroll_crew_card(u8g2_t* u8g2) {
+  u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
+  char* line1 = "CrewCard anlegen?";
+  int w = u8g2_GetStrWidth(u8g2, line1);
+  u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, 27, line1);
+}
+
 static void display_error(u8g2_t* u8g2, char* line1, char* line2, int y) {
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
   int r = 8;
@@ -628,6 +635,9 @@ static void read_failed(u8g2_t* u8g2) {
   switch (current_state.card_error) {
     case OLD_CARD:
       old_card(u8g2, y);
+      break;
+    case CARD_EXPIRED:
+      display_error(u8g2, "Karte nicht", "mehr gültig", y);
       break;
     default:
       display_error(u8g2, "Karte defekt", NULL, y);
@@ -697,6 +707,8 @@ static void main_menu_cb(u8g2_t* u8g2, int i, int x, int y) {
         snprintf(value, sizeof(value), "disconnected");
       }
       break;
+    case MENU_ENROLL_CREW_CARD:
+      snprintf(label, sizeof(label), "CrewCard");
     case MENU_USB:
       // notify power management task to update voltage
       xTaskNotifyGive(xTaskGetHandle(POWER_MANAGEMENT_TASK));
@@ -922,6 +934,11 @@ void display(void* params) {
       case PRIVILEGED_CASHOUT:
         status_bar(&u8g2);
         privileged_cashout(&u8g2);
+        keypad_legend(&u8g2, false);
+        break;
+      case PRIVILEGED_ENROLL_CREW_CARD:
+        status_bar(&u8g2);
+        privileged_enroll_crew_card(&u8g2);
         keypad_legend(&u8g2, false);
         break;
       case READ_FAILED:
