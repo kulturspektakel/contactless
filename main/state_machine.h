@@ -26,9 +26,10 @@ typedef enum {
   CARD_DETECTED_OK,
   CARD_DETECTED_SKIPPED_SECUIRTY,
   CARD_DETECTED_NOT_READABLE,
+  CARD_DETECTED_INVALID,
   CARD_DETECTED_OLD_CARD,
+  CARD_DETECTED_UNINITIALIZED,
 
-  PRIVILEGED_CREW_CARD_DETECTED,
   SUSPENDED_CREW_CARD_DETECTED,
   TIMEOUT,
   STARTUP_COMPLETED,
@@ -48,17 +49,19 @@ typedef enum {
   PRODUCT_LIST,
   CHARGE_MANUAL,
   CHARGE_WITHOUT_CARD,
+  INITIALIZE_CARD,
 
   PRIVILEGED_TOPUP,
   PRIVILEGED_CASHOUT,
   PRIVILEGED_REPAIR,
-  PRIVILEGED_ENROLL_CREW_CARD,
 
   WRITE_CARD,
+  WRITE_CARD_INITIALIZE,
   WRITE_NOT_ATTEMPTED,
   WRITE_FAILED,
 
   CARD_BALANCE,
+  CREW_CARD_STATUS,
 
   READ_FAILED,
   BATTERY_TEST,
@@ -88,7 +91,6 @@ typedef struct {
   uint8_t id[7];
   ultralight_card_type_t type;
   uint8_t signature[5];
-
   union {
     struct {
       uint16_t counter;
@@ -133,3 +135,4 @@ extern state_t current_state;
 void trigger_event(event_t event);
 void state_machine(void* params);
 int current_total();
+bool is_privileged_card();

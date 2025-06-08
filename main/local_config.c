@@ -134,6 +134,7 @@ void local_config(void* params) {
     all_lists_checksum = all_lists.checksum;
     config_timestamp = all_lists.timestamp;
     memcpy(privilege_tokens, all_lists.privilege_tokens, sizeof(privilege_tokens));
+    memcpy(suspended_crew_cards, all_lists.suspended_crew_cards, sizeof(suspended_crew_cards));
 
     product_lists = (product_list_t*)pvPortMalloc(lists_count * sizeof(product_list_t));
     int i = 0;

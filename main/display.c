@@ -1,6 +1,5 @@
 #include "display.h"
 #include <esp_app_desc.h>
-#include "antenna_test.h"
 #include "battery_test.h"
 #include "buzzer.h"
 #include "esp_log.h"
@@ -200,7 +199,7 @@ static void keypad_legend_letter(u8g2_t* u8g2, char* letter, char* text, int off
   }
 }
 
-static void keypad_legend(u8g2_t* u8g2, bool with_navigation) {
+static void keypad_legend(u8g2_t* u8g2, bool with_navigation, bool with_ok) {
   u8g2_DrawBox(u8g2, 0, DISPLAY_HEIGHT - LEGEND_HEIGHT, DISPLAY_WIDTH, LEGEND_HEIGHT);
   if (with_navigation) {
     keypad_legend_letter(u8g2, "B", NULL, 26);
@@ -208,12 +207,14 @@ static void keypad_legend(u8g2_t* u8g2, bool with_navigation) {
     u8g2_DrawTriangle(u8g2, 37, DISPLAY_HEIGHT - 5, 39, DISPLAY_HEIGHT - 2, 42, DISPLAY_HEIGHT - 5);
     u8g2_DrawLine(u8g2, 39, DISPLAY_HEIGHT - 6, 39, DISPLAY_HEIGHT - 7);
     u8g2_SetDrawColor(u8g2, 1);
-    keypad_legend_letter(u8g2, "#", "OK", 52);
     keypad_legend_letter(u8g2, "A", NULL, 0);
     u8g2_SetDrawColor(u8g2, 0);
     u8g2_DrawTriangle(u8g2, 10, DISPLAY_HEIGHT - 4, 13, DISPLAY_HEIGHT - 8, 17, DISPLAY_HEIGHT - 4);
     u8g2_DrawLine(u8g2, 13, DISPLAY_HEIGHT - 3, 13, DISPLAY_HEIGHT - 5);
     u8g2_SetDrawColor(u8g2, 1);
+  }
+  if (with_ok) {
+    keypad_legend_letter(u8g2, "#", "OK", 52);
   }
   keypad_legend_letter(u8g2, "D", "Abbrechen", 78);
 }
@@ -441,9 +442,12 @@ static void main_product_lists(u8g2_t* u8g2) {
 }
 
 static void deposit(u8g2_t* u8g2, uint8_t deposit, int y) {
+  if (deposit > MAX_DEPOSIT) {
+    return;
+  }
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
   char str[16];
-  snprintf(str, sizeof(str), "%d Pfandmarken", deposit);
+  snprintf(str, sizeof(str), "%hhu Pfandmarken", deposit);
   if (deposit == 1) {
     str[strlen(str) - 1] = '\0';
   }
@@ -461,9 +465,12 @@ static void equals_to_euro_sign(u8g2_t* u8g2, int x, int y) {
 }
 
 static void balance(u8g2_t* u8g2, uint16_t balance, int y) {
+  if (balance > MAX_BALANCE) {
+    return;
+  }
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
-  char str[16];
-  snprintf(str, sizeof(str), "%2.2f= Guthaben", ((float)balance) / 100);
+  char str[17];
+  snprintf(str, sizeof(str), "%u.%02u= Guthaben", balance / 100, balance % 100);
   bool two_digits = balance > 999;
   str[two_digits ? 2 : 1] = ',';
   int w = u8g2_GetStrWidth(u8g2, str);
@@ -497,8 +504,8 @@ static void card_balance(u8g2_t* u8g2) {
   }
 
   u8g2_SetFont(u8g2, u8g2_font_profont29_tf);
-  char balance[7];
-  snprintf(balance, sizeof(balance), "%.2f=", ((float)bal) / 100);
+  char balance[8];
+  snprintf(balance, sizeof(balance), "%u.%02u=", bal / 100, bal % 100);
   int w = u8g2_GetStrWidth(u8g2, balance) + 6;
   int s = (DISPLAY_WIDTH - w) / 2;
   u8g2_DrawStr(u8g2, s, h, balance);
@@ -576,6 +583,17 @@ static void privileged_cashout(u8g2_t* u8g2) {
   u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, 39, line2);
 }
 
+static void valid_until_date(char* str, int valid_until) {
+  struct tm date = {0};        // Initialize struct to zero
+  date.tm_year = 2025 - 1900;  // Years since 1900
+  date.tm_mon = 0;             // January (0-based)
+  date.tm_mday = 1;            // Day of the month
+  date.tm_mday += valid_until;
+  mktime(&date);
+
+  strftime(str, 11, "%d.%m.%Y", &date);
+}
+
 static void privileged_repair(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
   char* line1 = "Karte reparieren?";
@@ -585,9 +603,20 @@ static void privileged_repair(u8g2_t* u8g2) {
 
 static void privileged_enroll_crew_card(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
-  char* line1 = "CrewCard anlegen?";
+  char* line1 = "CrewCard aktivieren";
   int w = u8g2_GetStrWidth(u8g2, line1);
-  u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, 27, line1);
+  u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, 24, line1);
+
+  char* line2 = "bis inkl.";
+  u8g2_DrawStr(u8g2, 2, 38, line2);
+
+  char line3[11];
+  valid_until_date(line3, current_state.data_to_write.data.crew.valid_until);
+
+  int w2 = u8g2_GetStrWidth(u8g2, line2);
+  int w3 = u8g2_GetStrWidth(u8g2, line3);
+  u8g2_DrawStr(u8g2, w2 + 10, 38, line3);
+  u8g2_DrawRFrame(u8g2, w2 + 6, 28, w3 + 8, 13, 3);
 }
 
 static void display_error(u8g2_t* u8g2, char* line1, char* line2, int y) {
@@ -610,11 +639,11 @@ static void display_error(u8g2_t* u8g2, char* line1, char* line2, int y) {
   x += r * 2 - 2;
 
   if (line2 != NULL) {
-    u8g2_DrawStr(u8g2, x, y + 9, line2);
+    u8g2_DrawUTF8(u8g2, x, y + 9, line2);
   } else {
     y += 5;
   }
-  u8g2_DrawStr(u8g2, x, y - 1, line1);
+  u8g2_DrawUTF8(u8g2, x, y - 1, line1);
 }
 
 static bool has_card() {
@@ -637,6 +666,7 @@ static void read_failed(u8g2_t* u8g2) {
       old_card(u8g2, y);
       break;
     case CARD_EXPIRED:
+    case CARD_SUSPENDED:
       display_error(u8g2, "Karte nicht", "mehr gültig", y);
       break;
     default:
@@ -707,8 +737,14 @@ static void main_menu_cb(u8g2_t* u8g2, int i, int x, int y) {
         snprintf(value, sizeof(value), "disconnected");
       }
       break;
-    case MENU_ENROLL_CREW_CARD:
-      snprintf(label, sizeof(label), "CrewCard");
+    case MENU_INITIALIZE_CARD:
+      snprintf(label, sizeof(label), "INIT");
+      if (current_state.is_privileged) {
+        snprintf(value, sizeof(value), "CrewCard");
+      } else {
+        snprintf(value, sizeof(value), "KultCard");
+      }
+      break;
     case MENU_USB:
       // notify power management task to update voltage
       xTaskNotifyGive(xTaskGetHandle(POWER_MANAGEMENT_TASK));
@@ -742,50 +778,6 @@ static void main_menu_cb(u8g2_t* u8g2, int i, int x, int y) {
           log_files_to_upload,
           log_files_to_upload == 1 ? '\0' : 's'
       );
-      break;
-    case MENU_ANTENNA_TEST:
-      snprintf(label, sizeof(label), "ANTTST");
-      switch (antenna_test_status) {
-        case ANTRNNA_TEST_RUNNING:
-          snprintf(value, sizeof(value), "testing...");
-          break;
-        case ANTENNA_TEST_FAILED:
-          snprintf(value, sizeof(value), "failed");
-          break;
-        case ANTENNA_TEST_TOO_LOW:
-          snprintf(value, sizeof(value), "Error: <25mA");
-          break;
-        case ANTENNA_TEST_NOT_STARTED:
-          snprintf(value, sizeof(value), "not started");
-          break;
-        case ANTENNA_TEST_45MA:
-          snprintf(value, sizeof(value), "OK <45mA");
-          break;
-        case ANTENNA_TEST_60MA:
-          snprintf(value, sizeof(value), "OK <60mA");
-          break;
-        case ANTENNA_TEST_75MA:
-          snprintf(value, sizeof(value), "OK <75mA");
-          break;
-        case ANTENNA_TEST_90MA:
-          snprintf(value, sizeof(value), "OK <90mA");
-          break;
-        case ANTENNA_TEST_105MA:
-          snprintf(value, sizeof(value), "OK <105mA");
-          break;
-        case ANTENNA_TEST_120MA:
-          snprintf(value, sizeof(value), "OK <120mA");
-          break;
-        case ANTENNA_TEST_130MA:
-          snprintf(value, sizeof(value), "OK <130mA");
-          break;
-        case ANTENNA_TEST_150MA:
-          snprintf(value, sizeof(value), "OK <150mA");
-          break;
-        case ANTENNA_TEST_TOO_HIGH:
-          snprintf(value, sizeof(value), "Error: >150mA");
-          break;
-      }
       break;
     case MENU_BATTERY_TEST:
       snprintf(label, sizeof(label), "BATTST");
@@ -822,7 +814,7 @@ static void main_menu_cb(u8g2_t* u8g2, int i, int x, int y) {
 }
 
 static void main_menu(u8g2_t* u8g2) {
-  keypad_legend(u8g2, true);
+  keypad_legend(u8g2, true, true);
   scrollable_list(
       u8g2, main_menu_cb, MENU_COUNT, current_state.menu_index, current_state.menu_index_active
   );
@@ -869,6 +861,40 @@ static void battery_test_menu(u8g2_t* u8g2) {
   }
 }
 
+static void crew_card_status(u8g2_t* u8g2) {
+  u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
+
+  char valid_until[21];
+  snprintf(
+      valid_until,
+      sizeof(valid_until),
+      "%02X:%02X:%02X:%02X:%02X:%02X:%02X",
+      current_card.id[0],
+      current_card.id[1],
+      current_card.id[2],
+      current_card.id[3],
+      current_card.id[4],
+      current_card.id[5],
+      current_card.id[6]
+  );
+  u8g2_DrawStr(u8g2, 0, 27, valid_until);
+
+  char line3[11];
+  valid_until_date(line3, current_card.data.crew.valid_until);
+  u8g2_DrawStr(u8g2, 0, 51, line3);
+  u8g2_DrawStr(u8g2, (DISPLAY_WIDTH / 2) + 3, 51, is_privileged_card() ? "ja" : "nein");
+
+  u8g2_DrawLine(u8g2, 0, 31, DISPLAY_WIDTH, 31);
+  u8g2_DrawLine(u8g2, DISPLAY_WIDTH / 2, 31, DISPLAY_WIDTH / 2, 64);
+
+  u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
+  u8g2_DrawStr(u8g2, 0, 40, "AKTIV BIS");
+  u8g2_DrawStr(u8g2, (DISPLAY_WIDTH / 2) + 3, 40, "BONBUNDE");
+  u8g2_DrawStr(u8g2, 0, 16, "CREWCARD");
+
+  keypad_legend(u8g2, false, false);
+}
+
 void display(void* params) {
   u8g2_esp32_hal_t u8g2_esp32_hal = {
       .clk = 11,
@@ -906,26 +932,30 @@ void display(void* params) {
       case CHARGE_WITHOUT_CARD:
         status_bar(&u8g2);
         charge_without_card(&u8g2);
-        keypad_legend(&u8g2, false);
+        keypad_legend(&u8g2, false, false);
         break;
       case PRODUCT_LIST:
         status_bar(&u8g2);
         product_list(&u8g2);
-        keypad_legend(&u8g2, true);
+        keypad_legend(&u8g2, true, false);
         break;
       case WRITE_FAILED:
         status_bar(&u8g2);
         display_error(&u8g2, "Erneut", "versuchen", 17);
-        keypad_legend(&u8g2, false);
+        keypad_legend(&u8g2, false, false);
         break;
       case CARD_BALANCE:
         status_bar(&u8g2);
         card_balance(&u8g2);
         break;
+      case CREW_CARD_STATUS:
+        status_bar(&u8g2);
+        crew_card_status(&u8g2);
+        break;
       case CHARGE_MANUAL:
         status_bar(&u8g2);
         charge_manual(&u8g2);
-        keypad_legend(&u8g2, false);
+        keypad_legend(&u8g2, false, false);
         break;
       case PRIVILEGED_TOPUP:
         status_bar(&u8g2);
@@ -934,12 +964,12 @@ void display(void* params) {
       case PRIVILEGED_CASHOUT:
         status_bar(&u8g2);
         privileged_cashout(&u8g2);
-        keypad_legend(&u8g2, false);
+        keypad_legend(&u8g2, false, false);
         break;
-      case PRIVILEGED_ENROLL_CREW_CARD:
+      case INITIALIZE_CARD:
         status_bar(&u8g2);
         privileged_enroll_crew_card(&u8g2);
-        keypad_legend(&u8g2, false);
+        keypad_legend(&u8g2, true, false);
         break;
       case READ_FAILED:
         status_bar(&u8g2);
@@ -952,31 +982,33 @@ void display(void* params) {
       case PRIVILEGED_REPAIR:
         status_bar(&u8g2);
         privileged_repair(&u8g2);
-        keypad_legend(&u8g2, false);
+        keypad_legend(&u8g2, false, false);
         break;
       case MAIN_FATAL:
         fatal_error(&u8g2);
         break;
-      case WRITE_CARD:
-        // do not update display while writing card
-        break;
+
       case POWER_SAVE:
         u8g2_SetPowerSave(&u8g2, 1);
         break;
       case MAIN_MENU:
         status_bar(&u8g2);
         main_menu(&u8g2);
-        keypad_legend(&u8g2, true);
+        keypad_legend(&u8g2, true, true);
         break;
       case MAIN_PRODUCT_LISTS:
         status_bar(&u8g2);
         main_product_lists(&u8g2);
-        keypad_legend(&u8g2, true);
+        keypad_legend(&u8g2, true, true);
         break;
       case BATTERY_TEST:
         status_bar(&u8g2);
         battery_test_menu(&u8g2);
         break;
+      case WRITE_CARD:
+      case WRITE_CARD_INITIALIZE:
+        // do not update display while writing card
+        continue;
     }
 
     u8g2_SendBuffer(&u8g2);

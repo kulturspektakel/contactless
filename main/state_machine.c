@@ -1,5 +1,5 @@
 #include "state_machine.h"
-#include "antenna_test.h"
+#include <time.h>
 #include "battery_test.h"
 #include "buzzer.h"
 #include "constants.h"
@@ -16,7 +16,6 @@
 #include "pb_encode.h"
 #include "power_management.h"
 #include "rfid.h"
-#include <time.h>
 
 #define BOOTSCREEN_DELAY_MS 1500
 
@@ -64,6 +63,7 @@ static void timeout(int ms) {
 }
 
 static mode_type default_mode() {
+  current_state.menu_index_active = -1;
   return current_state.is_privileged ? PRIVILEGED_TOPUP : CHARGE_LIST;
 }
 
@@ -81,7 +81,7 @@ static void select_product(int product) {
     return;
   }
   Product p = active_config.products[product];
-  if (current_total() + p.price > 9999) {
+  if (current_total() + p.price > MAX_BALANCE) {
     return;
   }
 
@@ -114,7 +114,7 @@ int current_total() {
 }
 
 static void update_deposit(bool up) {
-  if (up && current_state.cart.deposit < 9 && current_total() + DEPOSIT_VALUE <= 9999) {
+  if (up && current_state.cart.deposit < 9 && current_total() + DEPOSIT_VALUE <= MAX_BALANCE) {
     current_state.cart.deposit++;
   } else if (!up && current_state.cart.deposit > -9) {
     current_state.cart.deposit--;
@@ -127,7 +127,7 @@ static void remove_digit() {
 
 static void add_digit(int d) {
   int add = current_state.manual_amount * 9 + d;
-  if (current_total() + add > 9999) {
+  if (current_total() + add > MAX_BALANCE) {
     return;
   }
   current_state.manual_amount += add;
@@ -137,7 +137,6 @@ static bool cart_is_empty() {
   return current_state.cart.item_count == 0 && current_state.cart.deposit == 0 &&
          current_state.manual_amount == 0;
 }
-
 
 static int is_leap_year(const struct tm* time) {
   uint16_t year = time->tm_year + 1900;  // Adjust for tm_year being years since 1900
@@ -186,6 +185,74 @@ static uint16_t days_since_kult_epoch() {
   return days;
 }
 
+static bool encode_crew_card_id(pb_ostream_t* stream, const pb_field_t* field, void* const* arg) {
+  const uint8_t* card_id = (const uint8_t*)*arg;
+  if (!pb_encode_tag_for_field(stream, field)) {
+    return false;
+  }
+  return pb_encode_string(stream, card_id, LENGTH_ID);
+}
+
+static void log_crew_card_enrollment() {
+  LogMessage* log = pvPortMalloc(sizeof(LogMessage));
+  *log = (LogMessage)LogMessage_init_default;
+
+  log->has_crew_card_enrollment = true;
+  log->crew_card_enrollment.crew_card_id.size = LENGTH_ID;
+  memcpy(log->crew_card_enrollment.crew_card_id.bytes, current_card.id, LENGTH_ID);
+  log->crew_card_enrollment.valid_until = current_card.data.crew.valid_until;
+
+  xQueueSendFromISR(log_queue, &log, NULL);
+}
+
+static void write_log(LogMessage_Order_PaymentMethod payment) {
+  LogMessage* log = pvPortMalloc(sizeof(LogMessage));
+  *log = (LogMessage)LogMessage_init_default;
+
+  if (current_state.cart.item_count > 0) {
+    log->has_order = true;
+    log->order.payment_method = payment;
+    log->order.has_list_id = true;
+    log->order.list_id = active_config.list_id;
+    log->order.cart_items_count = current_state.cart.item_count;
+    for (int i = 0; i < current_state.cart.item_count; i++) {
+      log->order.cart_items[i] = current_state.cart.items[i];
+    }
+  }
+  if (payment == LogMessage_Order_PaymentMethod_KULT_CARD) {
+    log->has_card_transaction = true;
+    log->card_transaction.transaction_type = current_state.transaction_type;
+    log->card_transaction.has_counter = true;
+    log->card_transaction.counter = current_card.data.regular.counter;
+
+    size_t length = sizeof(current_card.id);
+    for (int i = 0; i < length; i++) {
+      sprintf(log->card_transaction.card_id + i * 2, "%02X", current_card.id[i]);
+    }
+    log->card_transaction.card_id[length * 2] = '\0';
+
+    log->card_transaction.balance_before = current_state.data_before_write.data.regular.balance;
+    log->card_transaction.balance_after = current_state.data_to_write.data.regular.balance;
+    log->card_transaction.deposit_before = current_state.data_before_write.data.regular.deposit;
+    log->card_transaction.deposit_after = current_state.data_to_write.data.regular.deposit;
+  } else if (payment == LogMessage_Order_PaymentMethod_FREE_CREW && current_card.type == CREW) {
+    log->order.crew_card_id.funcs.encode = encode_crew_card_id;
+    log->order.crew_card_id.arg = &current_card.id;
+  }
+
+  xQueueSendFromISR(log_queue, &log, NULL);
+}
+
+bool is_privileged_card() {
+  for (int i = 0; i < MAX_PRIVILEGE_TOKENS; i++) {
+    if (privilege_tokens[i].size == sizeof(current_card.id) &&
+        memcmp(current_card.id, privilege_tokens[i].bytes, privilege_tokens[i].size) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static mode_type crew_card_detected(event_t event) {
   for (int i = 0; i < MAX_SUSPENDED_CREW_CARDS; i++) {
     if (suspended_crew_cards[i].size == sizeof(current_card.id) &&
@@ -203,20 +270,17 @@ static mode_type crew_card_detected(event_t event) {
   }
 
   if (cart_is_empty()) {
-    for (int i = 0; i < MAX_PRIVILEGE_TOKENS; i++) {
-      if (privilege_tokens[i].size == sizeof(current_card.id) &&
-      memcmp(current_card.id, privilege_tokens[i].bytes, privilege_tokens[i].size) == 0) {
-        current_state.is_privileged = !current_state.is_privileged;
-        trigger_beep(BEEP_SHORT);
-        return default_mode();
-      }
+    if (is_privileged_card()) {
+      trigger_beep(BEEP_SHORT);
+      current_state.is_privileged = !current_state.is_privileged;
+      return default_mode();
     }
-  } else {
-    write_log(LogMessage_Order_PaymentMethod_FREE_CREW);
-    reset_cart();
-    trigger_beep(BEEP_SHORT);
+    return CREW_CARD_STATUS;
   }
 
+  write_log(LogMessage_Order_PaymentMethod_FREE_CREW);
+  reset_cart();
+  trigger_beep(BEEP_SHORT);
   return default_mode();
 }
 
@@ -279,12 +343,12 @@ static mode_type card_detected(event_t event) {
     trigger_beep(BEEP_LONG);
     return WRITE_NOT_ATTEMPTED;
   }
-  if (new_deposit > 9) {
+  if (new_deposit > MAX_DEPOSIT) {
     current_state.card_error = CARD_LIMIT_EXCEEDED;
     trigger_beep(BEEP_LONG);
     return WRITE_NOT_ATTEMPTED;
   }
-  if (new_balance + new_deposit * DEPOSIT_VALUE > 9999) {
+  if (new_balance + new_deposit * DEPOSIT_VALUE > MAX_BALANCE) {
     current_state.card_error = CARD_LIMIT_EXCEEDED;
     trigger_beep(BEEP_LONG);
     return WRITE_NOT_ATTEMPTED;
@@ -367,55 +431,6 @@ static mode_type product_list(event_t event) {
       break;
   }
   return PRODUCT_LIST;
-}
-
-static bool encode_crew_card_id(pb_ostream_t* stream, const pb_field_t* field, void* const* arg) {
-  const uint8_t* card_id = (const uint8_t*)*arg;
-  if (!pb_encode_tag_for_field(stream, field)) {
-    return false;
-  }
-  return pb_encode_string(stream, card_id, LENGTH_ID);
-}
-
-static void write_log(LogMessage_Order_PaymentMethod payment) {
-  LogMessage* log = pvPortMalloc(sizeof(LogMessage));
-  *log = (LogMessage)LogMessage_init_default;
-
-  if (current_state.cart.item_count > 0) {
-    log->has_order = true;
-    log->order.payment_method = payment;
-    log->order.has_list_id = true;
-    log->order.list_id = active_config.list_id;
-    log->order.cart_items_count = current_state.cart.item_count;
-    for (int i = 0; i < current_state.cart.item_count; i++) {
-      log->order.cart_items[i] = current_state.cart.items[i];
-    }
-  }
-
-  if (payment == LogMessage_Order_PaymentMethod_KULT_CARD) {
-    log->has_card_transaction = true;
-    log->card_transaction.transaction_type = current_state.transaction_type;
-    log->card_transaction.has_counter = true;
-    log->card_transaction.counter = current_card.data.regular.counter;
-
-    size_t length = sizeof(current_card.id);
-    for (int i = 0; i < length; i++) {
-      sprintf(log->card_transaction.card_id + i * 2, "%02X", current_card.id[i]);
-    }
-    log->card_transaction.card_id[length * 2] = '\0';
-
-    log->card_transaction.balance_before = current_state.data_before_write.data.regular.balance;
-    log->card_transaction.balance_after = current_state.data_to_write.data.regular.balance;
-    log->card_transaction.deposit_before = current_state.data_before_write.data.regular.deposit;
-    log->card_transaction.deposit_after = current_state.data_to_write.data.regular.deposit;
-  } else if (payment == LogMessage_Order_PaymentMethod_FREE_CREW &&
-             current_state.data_before_write.type == CREW) {
-    // TODO unverified this is working or not
-    log->order.crew_card_id.funcs.encode = encode_crew_card_id;
-    log->order.crew_card_id.arg = &current_state.data_before_write.id;
-  }
-
-  xQueueSendFromISR(log_queue, &log, NULL);
 }
 
 static mode_type charge_without_card(event_t event) {
@@ -657,6 +672,25 @@ static mode_type main_product_lists(event_t event) {
   return MAIN_PRODUCT_LISTS;
 }
 
+static mode_type write_card_initialize(event_t event) {
+  switch (event) {
+    case WRITE_SUCCESSFUL:
+      trigger_beep(BEEP_SHORT);
+      if (current_card.type == CREW) {
+        log_crew_card_enrollment();
+        return CREW_CARD_STATUS;
+      }
+      return CARD_BALANCE;
+    case WRITE_UNSUCCESSFUL:
+      trigger_beep(BEEP_LONG);
+      current_state.card_error = TECHNICAL_ERROR;
+      return WRITE_FAILED;
+    default:
+      break;
+  }
+  return WRITE_CARD_INITIALIZE;
+}
+
 static mode_type write_card(event_t event) {
   switch (event) {
     case WRITE_SUCCESSFUL:
@@ -691,6 +725,18 @@ static mode_type card_balance(event_t event) {
       return default_mode();
     default:
       return CARD_BALANCE;
+  }
+}
+
+static mode_type crew_card_status(event_t event) {
+  switch (event) {
+    case KEY_D:
+      if (current_state.menu_index_active == MENU_INITIALIZE_CARD) {
+        return INITIALIZE_CARD;
+      }
+      return default_mode();
+    default:
+      return CREW_CARD_STATUS;
   }
 }
 
@@ -733,13 +779,28 @@ static mode_type privileged_repair(event_t event) {
   }
 }
 
-static mode_type privilege_enroll_crew_card(event_t event) {
+static mode_type initialize_card(event_t event) {
   switch (event) {
+    case CARD_DETECTED_UNINITIALIZED:
     case CARD_DETECTED_OK:
-      // TODO
-      return WRITE_CARD;
-    case CARD_DETECTED_NOT_READABLE:
     case CARD_DETECTED_SKIPPED_SECUIRTY:
+      uint16_t valid_until = current_state.data_to_write.data.crew.valid_until;
+      current_state.data_to_write = current_card;
+      if (event == CARD_DETECTED_UNINITIALIZED) {
+        // TODO flip this
+        current_state.data_to_write.type = current_state.is_privileged ? REGULAR : CREW;
+      }
+      if (current_state.data_to_write.type == CREW) {
+        current_state.data_to_write.data.crew.valid_until = valid_until;
+      } else if (current_state.data_to_write.type == REGULAR) {
+        current_state.data_to_write.data.regular.balance = 0;
+        current_state.data_to_write.data.regular.deposit = 0;
+      } else {
+        return MAIN_FATAL;
+      }
+
+      return WRITE_CARD_INITIALIZE;
+    case CARD_DETECTED_NOT_READABLE:
     case CARD_DETECTED_OLD_CARD:
       return card_detected(event);
     case KEY_A:
@@ -753,8 +814,9 @@ static mode_type privilege_enroll_crew_card(event_t event) {
     case KEY_D:
       return default_mode();
     default:
-      return PRIVILEGED_ENROLL_CREW_CARD;
+      break;
   }
+  return INITIALIZE_CARD;
 }
 
 static mode_type read_failed(event_t event) {
@@ -826,11 +888,21 @@ static mode_type main_menu(event_t event) {
           xTaskNotify(xTaskGetHandle(LOG_UPLOADER_TASK), 0, eNoAction);
           timeout(400);
           break;
-        case MENU_ANTENNA_TEST:
-          current_state.menu_index_active = MENU_ANTENNA_TEST;
-          xTaskCreate(&antenna_test, ANTENNA_TEST_TASK, 4096, NULL, TASK_PRIO_NORMAL, NULL);
+        case MENU_INITIALIZE_CARD:
+          current_state.menu_index_active = MENU_INITIALIZE_CARD;
+          // TODO: change
+          if (!current_state.is_privileged) {
+            current_state.data_to_write.type = CREW;
+            static uint16_t valid_until = 0;
+            if (valid_until == 0) {
+              valid_until = days_since_kult_epoch() + 1;
+            }
+            current_state.data_to_write.data.crew.valid_until = valid_until;
+          } else {
+            current_state.data_to_write.type = REGULAR;
+          }
           timeout(400);
-          break;
+          return INITIALIZE_CARD;
 
         default:
           break;
@@ -876,15 +948,20 @@ static mode_type process_event(event_t event) {
       return privileged_cashout(event);
     case PRIVILEGED_REPAIR:
       return privileged_repair(event);
-    case PRIVILEGED_ENROLL_CREW_CARD:
-      return privilege_enroll_crew_card(event);
+    case INITIALIZE_CARD:
+      return initialize_card(event);
     case WRITE_CARD:
       return write_card(event);
+    case WRITE_CARD_INITIALIZE:
+      return write_card_initialize(event);
     case WRITE_FAILED:
       return write_failed(event);
       break;
     case CARD_BALANCE:
       return card_balance(event);
+      break;
+    case CREW_CARD_STATUS:
+      return crew_card_status(event);
       break;
     case READ_FAILED:
       return read_failed(event);

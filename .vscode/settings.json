@@ -18,6 +18,10 @@
     "esp_littlefs.h": "c",
     "configs.pb.h": "c",
     "config.pb.h": "c",
-    "power_management.h": "c"
+    "power_management.h": "c",
+    "time.h": "c",
+    "http_auth_headers.h": "c",
+    "battery_test.h": "c",
+    "queue.h": "c"
   }
 }
