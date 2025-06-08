@@ -324,7 +324,8 @@ static mode_type card_detected(event_t event) {
   } else if (current_state.mode == PRIVILEGED_TOPUP) {
     new_balance += current_total();
     new_deposit -= current_state.cart.deposit;
-  } else if (current_state.mode == PRIVILEGED_CASHOUT) {
+  } else if (current_state.mode == PRIVILEGED_CASHOUT ||
+             current_state.mode == PRIVILEGED_DONATION) {
     new_balance = 0;
     new_deposit = 0;
   } else if (current_state.mode == PRIVILEGED_REPAIR) {
@@ -740,7 +741,7 @@ static mode_type crew_card_status(event_t event) {
   }
 }
 
-static mode_type privileged_cashout(event_t event) {
+static mode_type privileged_cashout_or_donation(event_t event) {
   switch (event) {
     case CARD_DETECTED_OK:
       current_state.data_to_write = current_card;
@@ -753,11 +754,14 @@ static mode_type privileged_cashout(event_t event) {
     case CARD_DETECTED_SKIPPED_SECUIRTY:
     case CARD_DETECTED_OLD_CARD:
       return card_detected(event);
+    case KEY_A:
+    case KEY_B:
+      return current_state.mode == PRIVILEGED_CASHOUT ? PRIVILEGED_DONATION : PRIVILEGED_CASHOUT;
     case KEY_D:
     case TIMEOUT:
       return default_mode();
     default:
-      return PRIVILEGED_CASHOUT;
+      return current_state.mode;
   }
 }
 
@@ -945,7 +949,8 @@ static mode_type process_event(event_t event) {
     case PRIVILEGED_TOPUP:
       return privileged_topup(event);
     case PRIVILEGED_CASHOUT:
-      return privileged_cashout(event);
+    case PRIVILEGED_DONATION:
+      return privileged_cashout_or_donation(event);
     case PRIVILEGED_REPAIR:
       return privileged_repair(event);
     case INITIALIZE_CARD:
@@ -1027,6 +1032,9 @@ void state_machine(void* params) {
         break;
       case PRIVILEGED_CASHOUT:
         current_state.transaction_type = LogMessage_CardTransaction_TransactionType_CASHOUT;
+        break;
+      case PRIVILEGED_DONATION:
+        current_state.transaction_type = LogMessage_CardTransaction_TransactionType_DONATION;
         break;
       case PRIVILEGED_REPAIR:
         current_state.transaction_type = LogMessage_CardTransaction_TransactionType_REPAIR;

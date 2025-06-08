@@ -573,14 +573,17 @@ static void privileged_topup(u8g2_t* u8g2) {
   charge_total(u8g2, DISPLAY_HEIGHT - 13);
 }
 
-static void privileged_cashout(u8g2_t* u8g2) {
+static void privileged_cashout_or_donation(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
-  char* line1 = "Karte auszahlen";
-  int w = u8g2_GetStrWidth(u8g2, line1);
-  u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, 27, line1);
-  char* line2 = "und nullen?";
-  w = u8g2_GetStrWidth(u8g2, line2);
-  u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, 39, line2);
+  char* line1 = "Karte nullen:";
+  u8g2_DrawStr(u8g2, 3, 27, line1);
+  u8g2_DrawDisc(u8g2, 3, 20, 4, U8G2_DRAW_ALL);
+  char* line2 = "Auszahlung";
+  u8g2_DrawStr(u8g2, 13, 39, line2);
+  u8g2_DrawDisc(u8g2, 3, 32, 4, U8G2_DRAW_ALL);
+  u8g2_DrawCircle(u8g2, 5, current_state.mode == PRIVILEGED_DONATION ? 22 : 34, 2, U8G2_DRAW_ALL);
+  char* line3 = "Spende";
+  u8g2_DrawStr(u8g2, 3, 51, line3);
 }
 
 static void valid_until_date(char* str, int valid_until) {
@@ -962,9 +965,10 @@ void display(void* params) {
         privileged_topup(&u8g2);
         break;
       case PRIVILEGED_CASHOUT:
+      case PRIVILEGED_DONATION:
         status_bar(&u8g2);
-        privileged_cashout(&u8g2);
-        keypad_legend(&u8g2, false, false);
+        privileged_cashout_or_donation(&u8g2);
+        keypad_legend(&u8g2, true, false);
         break;
       case INITIALIZE_CARD:
         status_bar(&u8g2);

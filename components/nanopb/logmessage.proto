@@ -26,6 +26,7 @@ message LogMessage {
       CHARGE = 1;
       CASHOUT = 2;
       REPAIR = 3;
+      DONATION = 4;
     }
   }
 
