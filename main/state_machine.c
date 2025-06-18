@@ -609,6 +609,9 @@ static mode_type privileged_topup(event_t event) {
 
     // stay in same state
     case KEY_0:
+      if (cart_is_empty()) {
+        return PRIVILEGED_CASHOUT;
+      }
     case KEY_1:
     case KEY_2:
     case KEY_3:
@@ -635,6 +638,9 @@ static mode_type privileged_topup(event_t event) {
       }
       reset_cart();
       break;
+    case KEY_TRIPPLE_D:
+      current_state.menu_index = 0;
+      return MAIN_MENU;
     case KEY_STAR:
       return PRIVILEGED_REPAIR;
     default:
@@ -791,8 +797,7 @@ static mode_type initialize_card(event_t event) {
       uint16_t valid_until = current_state.data_to_write.data.crew.valid_until;
       current_state.data_to_write = current_card;
       if (event == CARD_DETECTED_UNINITIALIZED) {
-        // TODO flip this
-        current_state.data_to_write.type = current_state.is_privileged ? REGULAR : CREW;
+        current_state.data_to_write.type = current_state.is_privileged ? CREW : REGULAR;
       }
       if (current_state.data_to_write.type == CREW) {
         current_state.data_to_write.data.crew.valid_until = valid_until;
@@ -894,8 +899,7 @@ static mode_type main_menu(event_t event) {
           break;
         case MENU_INITIALIZE_CARD:
           current_state.menu_index_active = MENU_INITIALIZE_CARD;
-          // TODO: change
-          if (!current_state.is_privileged) {
+          if (current_state.is_privileged) {
             current_state.data_to_write.type = CREW;
             static uint16_t valid_until = 0;
             if (valid_until == 0) {

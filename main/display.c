@@ -489,16 +489,23 @@ static void card_balance(u8g2_t* u8g2) {
     bal = current_state.data_before_write.data.regular.balance;
     dep = current_state.data_before_write.data.regular.deposit;
     line1 = "Karte genullt!";
+  } else if (current_state.transaction_type == LogMessage_CardTransaction_TransactionType_REPAIR) {
+    line1 = "Karte repariert!";
+  } else if (current_card.type == REGULAR &&
+             memcmp(current_state.data_before_write.id, current_card.id, sizeof(current_card.id)) ==
+                 0 &&
+             current_state.data_before_write.data.regular.counter ==
+                 current_card.data.regular.counter - 1) {
+    uint16_t balance_before = current_state.data_before_write.data.regular.balance;
+    line1 = "Vorher: 00.00=";
+    snprintf(line1 + 8, 8, "%u.%02u=", balance_before / 100, balance_before % 100);
+    int w = u8g2_GetStrWidth(u8g2, line1);
+    u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2 + w - 3, 19, "C");
   }
-  // TODO: better UI for repair
-  // } else if (current_state.transaction_type == LogMessage_CardTransaction_TransactionType_REPAIR)
-  // {
-  //   char* line1 = "Karte repariert!";
-  // }
 
   int h = 36;
   if (line1 != NULL) {
-    int w = u8g2_GetStrWidth(u8g2, line1) + 6;
+    int w = u8g2_GetStrWidth(u8g2, line1);
     u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, 19, line1);
     h += 10;
   }
@@ -524,7 +531,7 @@ static void charge_without_card(u8g2_t* u8g2) {
   for (int i = 0; i < 3; i++) {
     switch (i) {
       case 0:
-        strncpy(label, "Crew", sizeof(label));
+        strncpy(label, "Intern", sizeof(label));
         break;
       case 1:
         strncpy(label, "Barzahlung", sizeof(label));
@@ -575,15 +582,18 @@ static void privileged_topup(u8g2_t* u8g2) {
 
 static void privileged_cashout_or_donation(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
-  char* line1 = "Karte nullen:";
-  u8g2_DrawStr(u8g2, 3, 27, line1);
-  u8g2_DrawDisc(u8g2, 3, 20, 4, U8G2_DRAW_ALL);
   char* line2 = "Auszahlung";
-  u8g2_DrawStr(u8g2, 13, 39, line2);
-  u8g2_DrawDisc(u8g2, 3, 32, 4, U8G2_DRAW_ALL);
-  u8g2_DrawCircle(u8g2, 5, current_state.mode == PRIVILEGED_DONATION ? 22 : 34, 2, U8G2_DRAW_ALL);
+  u8g2_DrawStr(u8g2, 4, 31, line2);
   char* line3 = "Spende";
-  u8g2_DrawStr(u8g2, 3, 51, line3);
+  u8g2_DrawStr(u8g2, 4, 46, line3);
+  int i = current_state.mode == PRIVILEGED_CASHOUT ? 1 : 2;
+  u8g2_DrawRFrame(u8g2, 0, 6 + (i * 15), DISPLAY_WIDTH - 1, 15, 3);
+  u8g2_DrawHLine(u8g2, 2, 19 + (i * 15), DISPLAY_WIDTH - 5);
+  u8g2_DrawVLine(u8g2, DISPLAY_WIDTH - 3, 7 + (i * 15), 13);
+
+  u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
+  char* line1 = "KARTE NULLEN:";
+  u8g2_DrawStr(u8g2, 4, 18, line1);
 }
 
 static void valid_until_date(char* str, int valid_until) {
@@ -605,6 +615,10 @@ static void privileged_repair(u8g2_t* u8g2) {
 }
 
 static void privileged_enroll_crew_card(u8g2_t* u8g2) {
+  if (current_state.data_to_write.type != CREW) {
+    // TODO init regular card?
+    return;
+  }
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
   char* line1 = "CrewCard aktivieren";
   int w = u8g2_GetStrWidth(u8g2, line1);
@@ -918,7 +932,7 @@ void display(void* params) {
 
   while (1) {
     xEventGroupWaitBits(event_group, DISPLAY_NEEDS_UPDATE, pdTRUE, pdTRUE, portMAX_DELAY);
-    if (current_state.mode == WRITE_CARD) {
+    if (current_state.mode == WRITE_CARD || current_state.mode == WRITE_CARD_INITIALIZE) {
       // do not update display while writing card
       continue;
     }
