@@ -130,6 +130,7 @@ typedef struct {
   uint8_t menu_index;
   int8_t menu_index_active;
   int8_t submenu_index;
+  uint8_t write_attempts;
 } state_t;
 
 extern state_t current_state;
@@ -137,3 +138,4 @@ void trigger_event(event_t event);
 void state_machine(void* params);
 int current_total();
 bool is_privileged_card();
+card_error_t validate_values(uint16_t balance, uint8_t deposit);

@@ -959,7 +959,9 @@ void display(void* params) {
       case WRITE_FAILED:
         status_bar(&u8g2);
         display_error(&u8g2, "Erneut", "versuchen", 17);
-        keypad_legend(&u8g2, false, false);
+        if (current_state.write_attempts > 2) {
+          keypad_legend(&u8g2, false, false);
+        }
         break;
       case CARD_BALANCE:
         status_bar(&u8g2);

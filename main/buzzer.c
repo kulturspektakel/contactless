@@ -23,6 +23,10 @@ typedef struct {
 Note LOW_BATTERY[] = {{698, 70, 20}, {349, 70, 400}, {698, 70, 20}, {349, 70, 0}};
 Note WELCOME[] = {{523, 150, 20}, {659, 150, 20}, {784, 150, 20}, {1046, 500, 0}};
 Note POWER[] = {{349, 70, 20}, {698, 70, 20}};
+Note PRIVILEGE[] = {
+    {784, 100, 20},  // G5
+    {1046, 150, 0}   // C6
+};
 
 void trigger_forced_beep(beep_type_t type) {
   xQueueSend(beep_events, &type, 0);
@@ -126,6 +130,8 @@ void buzzer(void* params) {
       case POWER_CONNECTED:
         play_melody(POWER, sizeof(POWER));
         break;
+      case PRIVILEGE_ON:
+        play_melody(PRIVILEGE, sizeof(PRIVILEGE));
       case KEY_PRESS:
         play_beep(50);
         break;

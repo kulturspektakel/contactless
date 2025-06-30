@@ -6,6 +6,7 @@ typedef enum {
   STARTUP,
   POWER_CONNECTED,
   KEY_PRESS,
+  PRIVILEGE_ON,
 
   _BEEP_COUNT
 } beep_type_t;

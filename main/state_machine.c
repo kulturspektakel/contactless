@@ -35,11 +35,13 @@ state_t current_state = {
             .second_digit = -1,
             .current_index = 0,
         },
-    .cart = {
-        .deposit = 0,
-        .items = {},
-        .item_count = 0,
-    },
+    .cart =
+        {
+            .deposit = 0,
+            .items = {},
+            .item_count = 0,
+        },
+    .write_attempts = 0,
 };
 
 void trigger_event(event_t event) {
@@ -271,7 +273,7 @@ static mode_type crew_card_detected(event_t event) {
 
   if (cart_is_empty()) {
     if (is_privileged_card()) {
-      trigger_beep(BEEP_SHORT);
+      trigger_beep(PRIVILEGE_ON);
       current_state.is_privileged = !current_state.is_privileged;
       return default_mode();
     }
@@ -284,8 +286,28 @@ static mode_type crew_card_detected(event_t event) {
   return default_mode();
 }
 
+card_error_t validate_values(uint16_t balance, uint8_t deposit) {
+  if (balance < 0) {
+    return INSUFFICIENT_FUNDS;
+  }
+  if (deposit < 0) {
+    return INSUFFICIENT_DEPOSIT;
+  }
+  if (deposit > MAX_DEPOSIT) {
+    return CARD_LIMIT_EXCEEDED;
+  }
+  if (balance + deposit * DEPOSIT_VALUE > MAX_BALANCE) {
+    return CARD_LIMIT_EXCEEDED;
+  }
+  return NONE;
+}
+
 static mode_type card_detected(event_t event) {
   if (event == CARD_DETECTED_NOT_READABLE) {
+    current_state.card_error = TECHNICAL_ERROR;
+    trigger_beep(BEEP_LONG);
+    return READ_FAILED;
+  } else if (event == CARD_DETECTED_INVALID) {
     current_state.card_error = TECHNICAL_ERROR;
     trigger_beep(BEEP_LONG);
     return READ_FAILED;
@@ -334,23 +356,9 @@ static mode_type card_detected(event_t event) {
     return current_state.mode;
   }
 
-  if (new_balance < 0) {
-    current_state.card_error = INSUFFICIENT_FUNDS;
-    trigger_beep(BEEP_LONG);
-    return WRITE_NOT_ATTEMPTED;
-  }
-  if (new_deposit < 0) {
-    current_state.card_error = INSUFFICIENT_DEPOSIT;
-    trigger_beep(BEEP_LONG);
-    return WRITE_NOT_ATTEMPTED;
-  }
-  if (new_deposit > MAX_DEPOSIT) {
-    current_state.card_error = CARD_LIMIT_EXCEEDED;
-    trigger_beep(BEEP_LONG);
-    return WRITE_NOT_ATTEMPTED;
-  }
-  if (new_balance + new_deposit * DEPOSIT_VALUE > MAX_BALANCE) {
-    current_state.card_error = CARD_LIMIT_EXCEEDED;
+  card_error_t error = validate_values(new_balance, new_deposit);
+  if (error != NONE) {
+    current_state.card_error = error;
     trigger_beep(BEEP_LONG);
     return WRITE_NOT_ATTEMPTED;
   }
@@ -474,6 +482,7 @@ static mode_type charge_list(event_t event) {
       return PRODUCT_LIST;
     case CARD_DETECTED_OK:
     case CARD_DETECTED_NOT_READABLE:
+    case CARD_DETECTED_INVALID:
     case CARD_DETECTED_SKIPPED_SECUIRTY:
     case CARD_DETECTED_OLD_CARD:
       return card_detected(event);
@@ -526,6 +535,7 @@ static mode_type write_failed(event_t event) {
   switch (event) {
     case CARD_DETECTED_OK:
     case CARD_DETECTED_SKIPPED_SECUIRTY:
+    case CARD_DETECTED_INVALID:
     case CARD_DETECTED_NOT_READABLE:
       if (memcmp(&current_card.id, &current_state.data_to_write.id, LENGTH_ID) == 0) {
         // same card detected, retry writing
@@ -533,6 +543,7 @@ static mode_type write_failed(event_t event) {
       }
       break;
     case KEY_D:
+      current_state.write_attempts = 0;
       return default_mode();
     default:
       break;
@@ -557,6 +568,7 @@ static mode_type charge_manual(event_t event) {
     // change state
     case CARD_DETECTED_OK:
     case CARD_DETECTED_NOT_READABLE:
+    case CARD_DETECTED_INVALID:
     case CARD_DETECTED_SKIPPED_SECUIRTY:
     case CARD_DETECTED_OLD_CARD:
       return card_detected(event);
@@ -603,6 +615,7 @@ static mode_type privileged_topup(event_t event) {
   switch (event) {
     case CARD_DETECTED_OK:
     case CARD_DETECTED_NOT_READABLE:
+    case CARD_DETECTED_INVALID:
     case CARD_DETECTED_SKIPPED_SECUIRTY:
     case CARD_DETECTED_OLD_CARD:
       return card_detected(event);
@@ -713,6 +726,7 @@ static mode_type write_card(event_t event) {
     case WRITE_UNSUCCESSFUL:
       trigger_beep(BEEP_LONG);
       current_state.card_error = TECHNICAL_ERROR;
+      current_state.write_attempts++;
       return WRITE_FAILED;
     default:
       break;
@@ -725,6 +739,7 @@ static mode_type card_balance(event_t event) {
     case CARD_DETECTED_OK:
       return CARD_BALANCE;
     case CARD_DETECTED_NOT_READABLE:
+    case CARD_DETECTED_INVALID:
     case CARD_DETECTED_SKIPPED_SECUIRTY:
     case CARD_DETECTED_OLD_CARD:
       return card_detected(event);
@@ -757,6 +772,7 @@ static mode_type privileged_cashout_or_donation(event_t event) {
       current_state.data_to_write.data.regular.counter = current_card.data.regular.counter + 1;
       return WRITE_CARD;
     case CARD_DETECTED_NOT_READABLE:
+    case CARD_DETECTED_INVALID:
     case CARD_DETECTED_SKIPPED_SECUIRTY:
     case CARD_DETECTED_OLD_CARD:
       return card_detected(event);
@@ -775,11 +791,19 @@ static mode_type privileged_repair(event_t event) {
   switch (event) {
     case CARD_DETECTED_OK:
     case CARD_DETECTED_SKIPPED_SECUIRTY:
+      card_error_t error =
+          validate_values(current_card.data.regular.balance, current_card.data.regular.deposit);
+      if (error != NONE) {
+        current_state.card_error = TECHNICAL_ERROR;
+        trigger_beep(BEEP_LONG);
+        return READ_FAILED;
+      }
       current_state.data_to_write = current_card;
       current_state.data_before_write = current_card;
       current_state.data_to_write.data.regular.counter = current_card.data.regular.counter + 1;
       return WRITE_CARD;
     case CARD_DETECTED_NOT_READABLE:
+    case CARD_DETECTED_INVALID:
     case CARD_DETECTED_OLD_CARD:
       return card_detected(event);
     case KEY_D:
@@ -810,6 +834,7 @@ static mode_type initialize_card(event_t event) {
 
       return WRITE_CARD_INITIALIZE;
     case CARD_DETECTED_NOT_READABLE:
+    case CARD_DETECTED_INVALID:
     case CARD_DETECTED_OLD_CARD:
       return card_detected(event);
     case KEY_A:
@@ -832,6 +857,7 @@ static mode_type read_failed(event_t event) {
   switch (event) {
     case CARD_DETECTED_OK:
     case CARD_DETECTED_NOT_READABLE:
+    case CARD_DETECTED_INVALID:
     case CARD_DETECTED_SKIPPED_SECUIRTY:
     case CARD_DETECTED_OLD_CARD:
       return card_detected(event);

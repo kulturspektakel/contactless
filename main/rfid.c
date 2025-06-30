@@ -179,6 +179,13 @@ static event_t read_card(byte_array_t* uid) {
   current_card = new_card;
 
   if (new_card.type == REGULAR) {
+    card_error_t error =
+        validate_values(new_card.data.regular.balance, new_card.data.regular.deposit);
+    if (error != NONE) {
+      ESP_LOGE(RFID_TASK, "Card values invalid: %d", error);
+      return CARD_DETECTED_INVALID;
+    }
+
     // verify counter
     uint16_t counter_from_payload = *(uint16_t*)(decoded_payload + OFFSET_COUNTER);
     if (new_card.data.regular.counter != counter_from_payload) {
