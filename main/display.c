@@ -912,6 +912,30 @@ static void crew_card_status(u8g2_t* u8g2) {
   keypad_legend(u8g2, false, false);
 }
 
+static void charge_without_card_successful(u8g2_t* u8g2) {
+  u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
+  int r = 10;
+  int y = 25;
+  int x = (DISPLAY_WIDTH / 2) - 2;
+  u8g2_DrawDisc(u8g2, x, y, r, U8G2_DRAW_ALL);
+  u8g2_SetDrawColor(u8g2, 0);
+
+  // draw checkmark
+  u8g2_DrawLine(u8g2, x - 6, y, x - 1, y + 5);
+  u8g2_DrawLine(u8g2, x - 5, y, x - 1, y + 4);
+  u8g2_DrawLine(u8g2, x - 5, y - 1, x - 1, y + 3);
+
+  u8g2_DrawLine(u8g2, x - 1, y + 3, x + 6, y - 4);
+  u8g2_DrawLine(u8g2, x - 1, y + 4, x + 6, y - 3);
+  u8g2_DrawLine(u8g2, x - 1, y + 5, x + 7, y - 3);
+
+  u8g2_SetDrawColor(u8g2, 1);
+
+  char* line1 = "Buchung erfolgreich";
+  int w = u8g2_GetStrWidth(u8g2, line1);
+  u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, 53, line1);
+}
+
 void display(void* params) {
   u8g2_esp32_hal_t u8g2_esp32_hal = {
       .clk = 11,
@@ -1024,6 +1048,10 @@ void display(void* params) {
       case BATTERY_TEST:
         status_bar(&u8g2);
         battery_test_menu(&u8g2);
+        break;
+      case CHARGE_WITHOUT_CARD_SUCCESSFUL:
+        status_bar(&u8g2);
+        charge_without_card_successful(&u8g2);
         break;
       case WRITE_CARD:
       case WRITE_CARD_INITIALIZE:

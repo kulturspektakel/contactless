@@ -245,6 +245,14 @@ static void write_log(LogMessage_Order_PaymentMethod payment) {
   xQueueSendFromISR(log_queue, &log, NULL);
 }
 
+static mode_type charge_without_card_was_successful(LogMessage_Order_PaymentMethod payment) {
+  write_log(LogMessage_Order_PaymentMethod_FREE_CREW);
+  reset_cart();
+  trigger_beep(BEEP_SHORT);
+  timeout(1500);
+  return CHARGE_WITHOUT_CARD_SUCCESSFUL;
+}
+
 bool is_privileged_card() {
   for (int i = 0; i < MAX_PRIVILEGE_TOKENS; i++) {
     if (privilege_tokens[i].size == sizeof(current_card.id) &&
@@ -280,10 +288,7 @@ static mode_type crew_card_detected(event_t event) {
     return CREW_CARD_STATUS;
   }
 
-  write_log(LogMessage_Order_PaymentMethod_FREE_CREW);
-  reset_cart();
-  trigger_beep(BEEP_SHORT);
-  return default_mode();
+  return charge_without_card_was_successful(LogMessage_Order_PaymentMethod_FREE_CREW);
 }
 
 card_error_t validate_values(uint16_t balance, uint8_t deposit) {
@@ -323,6 +328,9 @@ static mode_type card_detected(event_t event) {
     // should not happen
     return MAIN_FATAL;
   }
+
+  // reset data_before_write
+  memset(current_state.data_before_write.id, 0, LENGTH_ID);
 
   if (current_card.type == CREW) {
     return crew_card_detected(event);
@@ -445,20 +453,11 @@ static mode_type product_list(event_t event) {
 static mode_type charge_without_card(event_t event) {
   switch (event) {
     case KEY_1:
-      write_log(LogMessage_Order_PaymentMethod_FREE_CREW);
-      reset_cart();
-      trigger_beep(BEEP_SHORT);
-      return default_mode();
+      return charge_without_card_was_successful(LogMessage_Order_PaymentMethod_FREE_CREW);
     case KEY_2:
-      write_log(LogMessage_Order_PaymentMethod_CASH);
-      reset_cart();
-      trigger_beep(BEEP_SHORT);
-      return default_mode();
+      return charge_without_card_was_successful(LogMessage_Order_PaymentMethod_CASH);
     case KEY_3:
-      write_log(LogMessage_Order_PaymentMethod_VOUCHER);
-      reset_cart();
-      trigger_beep(BEEP_SHORT);
-      return default_mode();
+      return charge_without_card_was_successful(LogMessage_Order_PaymentMethod_VOUCHER);
 
     case KEY_STAR:
     case KEY_C:
@@ -868,6 +867,16 @@ static mode_type read_failed(event_t event) {
   }
 }
 
+static mode_type charge_without_card_successful(event_t event) {
+  switch (event) {
+    case TIMEOUT:
+    case KEY_D:
+      return default_mode();
+    default:
+      return CHARGE_WITHOUT_CARD_SUCCESSFUL;
+  }
+}
+
 static mode_type main_menu(event_t event) {
   switch (event) {
     case KEY_A:
@@ -1010,6 +1019,8 @@ static mode_type process_event(event_t event) {
       return main_menu(event);
     case MAIN_PRODUCT_LISTS:
       return main_product_lists(event);
+    case CHARGE_WITHOUT_CARD_SUCCESSFUL:
+      return charge_without_card_successful(event);
     case MAIN_FATAL:
     case BATTERY_TEST:
     case POWER_SAVE:
