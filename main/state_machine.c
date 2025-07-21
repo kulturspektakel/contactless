@@ -938,7 +938,7 @@ static mode_type main_menu(event_t event) {
             current_state.data_to_write.type = CREW;
             static uint16_t valid_until = 0;
             if (valid_until == 0) {
-              valid_until = days_since_kult_epoch() + 1;
+              valid_until = days_since_kult_epoch() + 7;
             }
             current_state.data_to_write.data.crew.valid_until = valid_until;
           } else {

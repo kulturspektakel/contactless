@@ -1,13 +1,14 @@
 {
   "C_Cpp.intelliSenseEngine": "default",
   "idf.customExtraVars": {
-    "OPENOCD_SCRIPTS": "/Users/danielbuechele/.espressif/tools/openocd-esp32/v0.12.0-esp32-20230419/openocd-esp32/share/openocd/scripts",
-    "ESP_ROM_ELF_DIR": "/Users/danielbuechele/.espressif/tools/esp-rom-elfs/20230320/"
+    "OPENOCD_SCRIPTS": "/Users/dbuchele/.espressif/tools/openocd-esp32/v0.12.0-esp32-20250422/openocd-esp32/share/openocd/scripts",
+    "ESP_ROM_ELF_DIR": "/Users/dbuchele/.espressif/tools/esp-rom-elfs/20241011/",
+    "IDF_TARGET": "esp32s3"
   },
-  "idf.espIdfPath": "/Users/danielbuechele/esp/esp-idf",
+  "idf.espIdfPath": "/Users/dbuchele/esp/v5.4.1/esp-idf",
   "idf.openOcdConfigs": ["board/esp32s3-builtin.cfg"],
-  "idf.port": "/dev/tty.usbmodem41201",
-  "idf.toolsPath": "/Users/danielbuechele/.espressif",
+  "idf.port": "/dev/tty.usbmodem1101",
+  "idf.toolsPath": "/Users/dbuchele/.espressif",
   "idf.flashType": "UART",
   "files.associations": {
     "rfid.h": "c",
