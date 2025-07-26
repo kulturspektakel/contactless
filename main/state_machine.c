@@ -453,10 +453,13 @@ static mode_type product_list(event_t event) {
 static mode_type charge_without_card(event_t event) {
   switch (event) {
     case KEY_1:
+      current_card = (ultralight_card_info_t){0};
       return charge_without_card_was_successful(LogMessage_Order_PaymentMethod_FREE_CREW);
     case KEY_2:
+      current_card = (ultralight_card_info_t){0};
       return charge_without_card_was_successful(LogMessage_Order_PaymentMethod_CASH);
     case KEY_3:
+      current_card = (ultralight_card_info_t){0};
       return charge_without_card_was_successful(LogMessage_Order_PaymentMethod_VOUCHER);
 
     case KEY_STAR:
@@ -543,6 +546,7 @@ static mode_type write_failed(event_t event) {
       break;
     case KEY_D:
       current_state.write_attempts = 0;
+      reset_cart();
       return default_mode();
     default:
       break;
@@ -715,6 +719,7 @@ static mode_type write_card(event_t event) {
     case WRITE_SUCCESSFUL:
       trigger_beep(BEEP_SHORT);
       write_log(LogMessage_Order_PaymentMethod_KULT_CARD);
+      current_state.write_attempts = 0;
       reset_cart();
       bool usb_connected = xEventGroupGetBits(event_group) & USB_CONNECTED;
       if (!usb_connected) {
