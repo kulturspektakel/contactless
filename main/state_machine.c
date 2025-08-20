@@ -246,7 +246,7 @@ static void write_log(LogMessage_Order_PaymentMethod payment) {
 }
 
 static mode_type charge_without_card_was_successful(LogMessage_Order_PaymentMethod payment) {
-  write_log(LogMessage_Order_PaymentMethod_FREE_CREW);
+  write_log(payment);
   reset_cart();
   trigger_beep(BEEP_SHORT);
   timeout(1500);
