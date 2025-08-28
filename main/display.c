@@ -936,6 +936,20 @@ static void charge_without_card_successful(u8g2_t* u8g2) {
   u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, 53, line1);
 }
 
+static void write_card(u8g2_t* u8g2) {
+  char* line1 = "Schreiben...";
+  int w = u8g2_GetStrWidth(u8g2, line1);
+  u8g2_DrawStr(u8g2, (DISPLAY_WIDTH - w) / 2, 53, line1);
+}
+
+static void write_failed(u8g2_t* u8g2) {
+  if (current_state.card_present) {
+    display_error(u8g2, "Karte", "entfernen", 17);
+  } else {
+    display_error(u8g2, "Erneut", "versuchen", 17);
+  }
+}
+
 void display(void* params) {
   u8g2_esp32_hal_t u8g2_esp32_hal = {
       .clk = 11,
@@ -982,7 +996,7 @@ void display(void* params) {
         break;
       case WRITE_FAILED:
         status_bar(&u8g2);
-        display_error(&u8g2, "Erneut", "versuchen", 17);
+        write_failed(&u8g2);
         // if (current_state.write_attempts > 2) {
         //   keypad_legend(&u8g2, false, false);
         // }
@@ -1056,7 +1070,8 @@ void display(void* params) {
       case WRITE_CARD:
       case WRITE_CARD_INITIALIZE:
         // do not update display while writing card
-        continue;
+        write_card(&u8g2);
+        break;
     }
 
     u8g2_SendBuffer(&u8g2);

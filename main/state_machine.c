@@ -26,6 +26,7 @@ static QueueHandle_t state_events;
 state_t current_state = {
     .mode = MAIN_STARTING_UP,
     .is_privileged = false,
+    .card_present = false,
     .manual_amount = 0,
     .menu_index = 0,
     .menu_index_active = -1,
@@ -981,6 +982,14 @@ static mode_type process_event(event_t event) {
     reset_power_off_timer();
   }
 
+  if (event == CARD_DETECTED_OK || event == CARD_DETECTED_SKIPPED_SECUIRTY ||
+      event == CARD_DETECTED_NOT_READABLE || event == CARD_DETECTED_INVALID ||
+      event == CARD_DETECTED_OLD_CARD || event == CARD_DETECTED_UNINITIALIZED) {
+    current_state.card_present = true;
+  } else if (event == CARD_REMOVED) {
+    current_state.card_present = false;
+  }
+
   switch (current_state.mode) {
     case CHARGE_LIST:
       return charge_list(event);
@@ -1005,19 +1014,14 @@ static mode_type process_event(event_t event) {
       return write_card_initialize(event);
     case WRITE_FAILED:
       return write_failed(event);
-      break;
     case CARD_BALANCE:
       return card_balance(event);
-      break;
     case CREW_CARD_STATUS:
       return crew_card_status(event);
-      break;
     case READ_FAILED:
       return read_failed(event);
-      break;
     case WRITE_NOT_ATTEMPTED:
       return write_not_attemted(event);
-      break;
     case MAIN_STARTING_UP:
       return main_starting_up(event);
     case MAIN_MENU:

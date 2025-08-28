@@ -120,6 +120,7 @@ typedef enum {
 typedef struct {
   mode_type mode;
   bool is_privileged;
+  bool card_present;
   cart_t cart;
   product_selection_t product_selection;
   LogMessage_CardTransaction_TransactionType transaction_type;

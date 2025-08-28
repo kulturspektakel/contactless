@@ -518,52 +518,66 @@ void rfid(void* params) {
       continue;
     }
 
-    if (current_state.mode == WRITE_CARD_INITIALIZE &&
-        !initialize_card(
-            &current_state.data_to_write, read_status == CARD_DETECTED_UNINITIALIZED
-        )) {
-      ESP_LOGE(RFID_TASK, "Initialization card failed");
-      trigger_event(WRITE_UNSUCCESSFUL);
-      continue;
-    } else if (current_state.mode == WRITE_CARD && !write_card(&current_state.data_to_write)) {
-      ESP_LOGE(RFID_TASK, "Writing card failed");
-      trigger_event(WRITE_UNSUCCESSFUL);
-      continue;
-    }
-    ESP_LOGI(RFID_TASK, "Card written successfully");
+    bool success = false;
+    for (int i = 0; i < 3; i++) {
+      if (i > 0) {
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+        // reread counter, because it might already be incremented
+        mfu_read_counter(0, &current_card.data.regular.counter);
+        ESP_LOGI(RFID_TASK, "Retrying... (%d)", i);
+      }
 
-    if (read_card(&uid) != CARD_DETECTED_OK) {
-      ESP_LOGE(RFID_TASK, "Rereading card failed");
-      trigger_event(WRITE_UNSUCCESSFUL);
-      continue;
-    }
-    if (current_card.type == REGULAR &&
-        (current_card.data.regular.deposit != current_state.data_to_write.data.regular.deposit ||
-         current_card.data.regular.balance != current_state.data_to_write.data.regular.balance)) {
-      // reread mismatch
-      ESP_LOGE(
-          RFID_TASK,
-          "Reread mismatch: Balance (%d != %d), deposit (%d != %d)",
-          current_card.data.regular.balance,
-          current_state.data_to_write.data.regular.balance,
-          current_card.data.regular.deposit,
-          current_state.data_to_write.data.regular.deposit
-      );
-      trigger_event(WRITE_UNSUCCESSFUL);
-      continue;
-    } else if (current_card.type == CREW && current_card.data.crew.valid_until !=
-                                                current_state.data_to_write.data.crew.valid_until) {
-      // reread mismatch
-      ESP_LOGE(
-          RFID_TASK,
-          "Reread mismatch: Valid until (%d != %d)",
-          current_card.data.crew.valid_until,
-          current_state.data_to_write.data.crew.valid_until
-      );
-      trigger_event(WRITE_UNSUCCESSFUL);
-      continue;
+      if (current_state.mode == WRITE_CARD_INITIALIZE &&
+          !initialize_card(
+              &current_state.data_to_write, read_status == CARD_DETECTED_UNINITIALIZED
+          )) {
+        ESP_LOGE(RFID_TASK, "Initialization card failed");
+        // trigger_event(WRITE_UNSUCCESSFUL);
+        continue;
+      } else if (current_state.mode == WRITE_CARD && !write_card(&current_state.data_to_write)) {
+        ESP_LOGE(RFID_TASK, "Writing card failed");
+        // trigger_event(WRITE_UNSUCCESSFUL);
+        continue;
+      }
+      ESP_LOGI(RFID_TASK, "Card written successfully");
+
+      if (read_card(&uid) != CARD_DETECTED_OK) {
+        ESP_LOGE(RFID_TASK, "Rereading card failed");
+        // trigger_event(WRITE_UNSUCCESSFUL);
+        continue;
+      }
+      if (current_card.type == REGULAR &&
+          (current_card.data.regular.deposit != current_state.data_to_write.data.regular.deposit ||
+           current_card.data.regular.balance != current_state.data_to_write.data.regular.balance)) {
+        // reread mismatch
+        ESP_LOGE(
+            RFID_TASK,
+            "Reread mismatch: Balance (%d != %d), deposit (%d != %d)",
+            current_card.data.regular.balance,
+            current_state.data_to_write.data.regular.balance,
+            current_card.data.regular.deposit,
+            current_state.data_to_write.data.regular.deposit
+        );
+        // trigger_event(WRITE_UNSUCCESSFUL);
+        continue;
+      } else if (current_card.type == CREW &&
+                 current_card.data.crew.valid_until !=
+                     current_state.data_to_write.data.crew.valid_until) {
+        // reread mismatch
+        ESP_LOGE(
+            RFID_TASK,
+            "Reread mismatch: Valid until (%d != %d)",
+            current_card.data.crew.valid_until,
+            current_state.data_to_write.data.crew.valid_until
+        );
+        // trigger_event(WRITE_UNSUCCESSFUL);
+        continue;
+      }
+
+      success = true;
+      break;
     }
 
-    trigger_event(WRITE_SUCCESSFUL);
+    trigger_event(success ? WRITE_SUCCESSFUL : WRITE_UNSUCCESSFUL);
   }
 }
