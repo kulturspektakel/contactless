@@ -1,6 +1,7 @@
 #include "rfid.h"
 #include <esp_log.h>
 #include <mbedtls/base64.h>
+#include <stdbool.h>
 #include <string.h>
 #include "constant_time_internal.h"
 #include "esp_timer.h"
@@ -348,9 +349,9 @@ static bool initialize_card(ultralight_card_info_t* card, bool is_uninitialized)
       // clang-format off
       {0xE1, 0x10, 0x06, 0x00}, // 03: OTP NDEF
       {0x03, 0x29, 0xD1, 0x01},
-      {0x25, 0x55, 0x04, 'k' }, 
-      {'u',  'l',  't',  '.' }, 
-      {'c',  'a',  's',  'h' }, 
+      {0x25, 0x55, 0x04, 'k' },
+      {'u',  'l',  't',  '.' },
+      {'c',  'a',  's',  'h' },
       {'/',  '$',  '$',  '/' },
       // clang-format on
   };
@@ -486,9 +487,6 @@ void rfid(void* params) {
     ESP_LOGI(RFID_TASK, "Card detected:");
     ESP_LOG_BUFFER_HEX(RFID_TASK, uid.bytes, uid.length);
 
-    // reset current card
-    ultralight_card_info_t new_card = {0};
-    current_card = new_card;
     card_seen_at = esp_timer_get_time();
 
     if (is_old_card(&uid)) {
@@ -532,20 +530,21 @@ void rfid(void* params) {
               &current_state.data_to_write, read_status == CARD_DETECTED_UNINITIALIZED
           )) {
         ESP_LOGE(RFID_TASK, "Initialization card failed");
-        // trigger_event(WRITE_UNSUCCESSFUL);
         continue;
       } else if (current_state.mode == WRITE_CARD && !write_card(&current_state.data_to_write)) {
         ESP_LOGE(RFID_TASK, "Writing card failed");
-        // trigger_event(WRITE_UNSUCCESSFUL);
         continue;
       }
       ESP_LOGI(RFID_TASK, "Card written successfully");
 
+      // setting success true in case the re-read fails and we exit here we still want to write the log
+      success = true;
       if (read_card(&uid) != CARD_DETECTED_OK) {
         ESP_LOGE(RFID_TASK, "Rereading card failed");
-        // trigger_event(WRITE_UNSUCCESSFUL);
         continue;
       }
+      success = false;
+
       if (current_card.type == REGULAR &&
           (current_card.data.regular.deposit != current_state.data_to_write.data.regular.deposit ||
            current_card.data.regular.balance != current_state.data_to_write.data.regular.balance)) {
@@ -558,7 +557,6 @@ void rfid(void* params) {
             current_card.data.regular.deposit,
             current_state.data_to_write.data.regular.deposit
         );
-        // trigger_event(WRITE_UNSUCCESSFUL);
         continue;
       } else if (current_card.type == CREW &&
                  current_card.data.crew.valid_until !=
@@ -570,7 +568,6 @@ void rfid(void* params) {
             current_card.data.crew.valid_until,
             current_state.data_to_write.data.crew.valid_until
         );
-        // trigger_event(WRITE_UNSUCCESSFUL);
         continue;
       }
 

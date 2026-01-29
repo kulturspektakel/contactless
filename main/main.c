@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include "bluetooth.h"
 #include "buzzer.h"
 #include "constants.h"
 #include "display.h"
@@ -54,4 +55,5 @@ void app_main(void) {
   xTaskCreate(&load_device_id, "load_device_id", 3072, NULL, TASK_PRIO_NORMAL, NULL);
   xTaskCreate(&load_salt, "load_salt", 3072, NULL, TASK_PRIO_NORMAL, NULL);
   xTaskCreate(&buzzer, "buzzer", 5120, NULL, TASK_PRIO_NORMAL, NULL);
+  xTaskCreate(&bluetooth, BLUETOOTH_TASK, 4096, NULL, TASK_PRIO_NORMAL, NULL);
 }

@@ -22,6 +22,7 @@
 #define POWER_MANAGEMENT_TASK "power_mgmt"
 #define RFID_TASK "rfid"
 #define BATTERY_TEST_TASK "battery_test"
+#define BLUETOOTH_TASK "bluetooth"
 
 extern const char* LOG_DIR;
 extern const char* CONFIG_FILE;
