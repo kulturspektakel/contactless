@@ -15,6 +15,7 @@
 #include "logmessage.pb.h"
 #include "pb_encode.h"
 #include "power_management.h"
+#include "printer.h"
 #include "rfid.h"
 
 #define BOOTSCREEN_DELAY_MS 1500
@@ -248,6 +249,7 @@ static void write_log(LogMessage_Order_PaymentMethod payment) {
 
 static mode_type charge_without_card_was_successful(LogMessage_Order_PaymentMethod payment) {
   write_log(payment);
+  submit_print_job(payment);
   reset_cart();
   trigger_beep(BEEP_SHORT);
   timeout(1500);
@@ -720,6 +722,7 @@ static mode_type write_card(event_t event) {
     case WRITE_SUCCESSFUL:
       trigger_beep(BEEP_SHORT);
       write_log(LogMessage_Order_PaymentMethod_KULT_CARD);
+      submit_print_job(LogMessage_Order_PaymentMethod_KULT_CARD);
       current_state.write_attempts = 0;
       reset_cart();
       bool usb_connected = xEventGroupGetBits(event_group) & USB_CONNECTED;
@@ -932,6 +935,13 @@ static mode_type main_menu(event_t event) {
           current_state.menu_index_active = MENU_WIFI;
           timeout(400);
           vTaskNotifyGiveFromISR(xTaskGetHandle(WIFI_CONNECT_TASK), NULL);
+          break;
+        case MENU_PRINTER:
+          if (printer_status == PRINTER_DISCONNECTED) {
+            current_state.menu_index_active = MENU_PRINTER;
+            timeout(400);
+            printer_start_scan(1);
+          }
           break;
         case MENU_UPLOADS:
           current_state.menu_index_active = MENU_UPLOADS;

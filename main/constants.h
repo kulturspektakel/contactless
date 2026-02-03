@@ -6,6 +6,7 @@
 #define NVS_PRODUCT_LIST "product_list"
 #define NVS_SALT "salt"
 #define NVS_SOUND_MODE "sound_mode"
+#define NVS_ORDER_COUNTER "order_counter"
 
 #define TZ "CET-1CEST,M3.5.0,M10.5.0/3"
 #define API_HOST "api.kulturspektakel.de"
@@ -22,7 +23,7 @@
 #define POWER_MANAGEMENT_TASK "power_mgmt"
 #define RFID_TASK "rfid"
 #define BATTERY_TEST_TASK "battery_test"
-#define BLUETOOTH_TASK "bluetooth"
+#define PRINTER_TASK "printer"
 
 extern const char* LOG_DIR;
 extern const char* CONFIG_FILE;

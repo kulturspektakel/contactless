@@ -16,6 +16,7 @@
 #include "time.h"
 #include "u8g2.h"
 #include "u8g2_esp32_hal.h"
+#include "printer.h"
 #include "wifi_connect.h"
 
 static const char* TAG = "display";
@@ -157,18 +158,30 @@ static void wifi_strength(u8g2_t* u8g2) {
   }
 }
 
-static void pending_uploads(u8g2_t* u8g2, int offset) {
+static int pending_uploads(u8g2_t* u8g2, int offset) {
   if (log_files_to_upload < 1) {
-    return;
+    return offset;
   }
   u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
   char pending[4];
-  sprintf(pending, "%3d", log_files_to_upload);
+  sprintf(pending, "%d", log_files_to_upload);
   // render right aligned
   offset -= u8g2_GetStrWidth(u8g2, pending) + 4;
   u8g2_DrawStr(u8g2, offset, 5, pending);
   u8g2_SetFont(u8g2, u8g2_font_m2icon_5_tf);
   u8g2_DrawStr(u8g2, offset - 2, 5, "b");
+  return offset - 6;
+}
+
+static int printer_icon(u8g2_t* u8g2, int offset) {
+  if (printer_status != PRINTER_CONNECTED) {
+    return offset;
+  }
+  offset -= 8;
+  // Simple printer icon: body with paper
+  u8g2_DrawFrame(u8g2, offset, 1, 7, 4);
+  u8g2_DrawHLine(u8g2, offset + 2, 0, 3);
+  return offset - 2;
 }
 
 static void time_display(u8g2_t* u8g2) {
@@ -222,7 +235,8 @@ static void keypad_legend(u8g2_t* u8g2, bool with_navigation, bool with_ok) {
 static void status_bar(u8g2_t* u8g2) {
   int offset = battery(u8g2);
   wifi_strength(u8g2);
-  pending_uploads(u8g2, offset);
+  offset = pending_uploads(u8g2, offset);
+  offset = printer_icon(u8g2, offset);
   time_display(u8g2);
 }
 
@@ -749,6 +763,16 @@ static void main_menu_cb(u8g2_t* u8g2, int i, int x, int y) {
         snprintf(value, sizeof(value), "%ddBm (Ch %d)", (int)wifi_rssi, primary_channel);
 #pragma GCC diagnostic pop
       } else if (wifi_status == CONNECTING) {
+        snprintf(value, sizeof(value), "connecting");
+      } else {
+        snprintf(value, sizeof(value), "disconnected");
+      }
+      break;
+    case MENU_PRINTER:
+      snprintf(label, sizeof(label), "PRINT");
+      if (printer_status == PRINTER_CONNECTED) {
+        snprintf(value, sizeof(value), "connected");
+      } else if (printer_status == PRINTER_CONNECTING || printer_status == PRINTER_SCANNING) {
         snprintf(value, sizeof(value), "connecting");
       } else {
         snprintf(value, sizeof(value), "disconnected");
