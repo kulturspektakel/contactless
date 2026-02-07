@@ -4,13 +4,17 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "event_group.h"
+#include "freertos/timers.h"
 #include "http_auth_headers.h"
 #include "local_config.h"
 #include "network_request.h"
 #include "pb_decode.h"
 
+#define CONFIG_CHECK_INTERVAL_MS (15 * 60 * 1000)  // 15 minutes
+
 static size_t bytes_written = 0;
 static uint8_t* buffer = NULL;
+static TimerHandle_t periodic_config_timer = NULL;
 
 esp_err_t _http_event_handler(esp_http_client_event_t* evt) {
   switch (evt->event_id) {
@@ -43,6 +47,11 @@ esp_err_t _http_event_handler(esp_http_client_event_t* evt) {
 }
 
 static void send_http_request() {
+  if (!(xEventGroupGetBits(event_group) & WIFI_CONNECTED)) {
+    ESP_LOGI(FETCH_CONFIG_TASK, "WiFi not connected, skipping config fetch");
+    return;
+  }
+
   ESP_LOGI(FETCH_CONFIG_TASK, "start fetching config, etag = %ld", all_lists_checksum);
 
   esp_http_client_config_t config = {
@@ -66,7 +75,9 @@ static void send_http_request() {
   if (err != ESP_OK) {
     ESP_LOGE(FETCH_CONFIG_TASK, "HTTP request failed: %s", esp_err_to_name(err));
     esp_http_client_cleanup(client);
-    return vTaskDelete(NULL);
+    vPortFree(buffer);
+    buffer = NULL;
+    return;
   }
 
   int status_code = esp_http_client_get_status_code(client);
@@ -94,6 +105,7 @@ static void send_http_request() {
       size_t files_written = fwrite(buffer, bytes_written, 1, config_file);
       ESP_LOGI(FETCH_CONFIG_TASK, "written %d files", files_written);
       fclose(config_file);
+      xEventGroupSetBits(event_group, CONFIG_UPDATE_PENDING);
       int new_list_id = -1;
       xQueueSend(config_update_queue, &new_list_id, 0);
       break;
@@ -101,12 +113,29 @@ static void send_http_request() {
       ESP_LOGI(FETCH_CONFIG_TASK, "HTTP status code %d", status_code);
       break;
   }
+
+  vPortFree(buffer);
+  buffer = NULL;
+}
+
+static void periodic_config_timer_callback(TimerHandle_t xTimer) {
+  xTaskNotifyGive(xTaskGetHandle(FETCH_CONFIG_TASK));
 }
 
 void fetch_config(void* params) {
   xEventGroupWaitBits(
       event_group, (READY_TO_FETCH_CONFIG | WIFI_CONNECTED), pdFALSE, pdTRUE, portMAX_DELAY
   );
+
+  // Create and start periodic timer after initial fetch
+  periodic_config_timer = xTimerCreate(
+      "config_timer",
+      pdMS_TO_TICKS(CONFIG_CHECK_INTERVAL_MS),
+      pdTRUE,
+      0,
+      periodic_config_timer_callback
+  );
+  xTimerStart(periodic_config_timer, 0);
 
   while (true) {
     send_http_request();

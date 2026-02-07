@@ -142,6 +142,10 @@ static bool cart_is_empty() {
          current_state.manual_amount == 0;
 }
 
+bool is_safe_for_config_update(void) {
+  return cart_is_empty() && current_state.mode == default_mode();
+}
+
 static int is_leap_year(const struct tm* time) {
   uint16_t year = time->tm_year + 1900;  // Adjust for tm_year being years since 1900
   return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
@@ -294,7 +298,7 @@ static mode_type crew_card_detected(event_t event) {
   return charge_without_card_was_successful(LogMessage_Order_PaymentMethod_FREE_CREW);
 }
 
-card_error_t validate_values(uint16_t balance, uint8_t deposit) {
+card_error_t validate_values(int balance, int deposit) {
   if (balance < 0) {
     return INSUFFICIENT_FUNDS;
   }

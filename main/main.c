@@ -55,6 +55,6 @@ void app_main(void) {
   xTaskCreate(&load_device_id, "load_device_id", 3072, NULL, TASK_PRIO_NORMAL, NULL);
   xTaskCreate(&load_salt, "load_salt", 3072, NULL, TASK_PRIO_NORMAL, NULL);
   xTaskCreate(&buzzer, "buzzer", 5120, NULL, TASK_PRIO_NORMAL, NULL);
-  init_print_queue();
-  xTaskCreate(&printer, PRINTER_TASK, 4096, NULL, TASK_PRIO_NORMAL, NULL);
+  // init_print_queue();
+  // xTaskCreate(&printer, PRINTER_TASK, 4096, NULL, TASK_PRIO_NORMAL, NULL);
 }

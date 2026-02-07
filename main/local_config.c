@@ -8,6 +8,9 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 #include "pb_decode.h"
+#include "state_machine.h"
+
+#define CONFIG_WAIT_TIMEOUT_MS (30 * 1000)
 
 static const char* TAG = "local_config";
 int32_t lists_count = 0;
@@ -158,6 +161,25 @@ void local_config(void* params) {
 
     int new_list_id = -1;
     if (xQueueReceive(config_update_queue, &new_list_id, portMAX_DELAY) == pdPASS) {
+      // For config reloads (new_list_id == -1), wait for safe state
+      if (new_list_id == -1) {
+        TickType_t start_time = xTaskGetTickCount();
+        bool timed_out = false;
+        while (!is_safe_for_config_update()) {
+          vTaskDelay(pdMS_TO_TICKS(100));
+
+          if ((xTaskGetTickCount() - start_time) > pdMS_TO_TICKS(CONFIG_WAIT_TIMEOUT_MS)) {
+            ESP_LOGW(TAG, "Config update deferred - transaction in progress");
+            xEventGroupClearBits(event_group, CONFIG_UPDATE_PENDING);
+            timed_out = true;
+            break;
+          }
+        }
+        if (timed_out) {
+          continue;  // Skip this update, timer will trigger another
+        }
+      }
+      xEventGroupClearBits(event_group, CONFIG_UPDATE_PENDING);
       // update if new list is selected
       select_list(new_list_id);
     }

@@ -25,6 +25,7 @@ static const char* TAG = "display";
 #define LEGEND_HEIGHT 9
 #define LOGO_WIDTH 34
 #define LOGO_HEIGHT 34
+#define STATUS_BAR_SPACING 4
 static const uint8_t logo_bits[] = {
     0xFF, 0xFF, 0xFF, 0xFF, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0x03, 0xFF,
     0xFF, 0xFF, 0xFF, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0x03, 0xFF, 0xFF,
@@ -56,6 +57,13 @@ static unsigned char fatal[] = {
 
 static TimerHandle_t animation_timer;
 static void animation_timer_cb(TimerHandle_t timer) {
+  xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
+}
+
+static TimerHandle_t write_failed_timer = NULL;
+static bool write_failed_show_remove = true;
+static void write_failed_timer_cb(TimerHandle_t timer) {
+  write_failed_show_remove = false;
   xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
 }
 
@@ -165,23 +173,24 @@ static int pending_uploads(u8g2_t* u8g2, int offset) {
   u8g2_SetFont(u8g2, u8g2_font_tiny5_tr);
   char pending[4];
   sprintf(pending, "%d", log_files_to_upload);
-  // render right aligned
-  offset -= u8g2_GetStrWidth(u8g2, pending) + 4;
+  offset -= STATUS_BAR_SPACING;
+  offset -= u8g2_GetStrWidth(u8g2, pending);
   u8g2_DrawStr(u8g2, offset, 5, pending);
   u8g2_SetFont(u8g2, u8g2_font_m2icon_5_tf);
-  u8g2_DrawStr(u8g2, offset - 2, 5, "b");
-  return offset - 6;
+  offset -= 6;
+  u8g2_DrawStr(u8g2, offset, 5, "b");
+  return offset;
 }
 
 static int printer_icon(u8g2_t* u8g2, int offset) {
   if (printer_status != PRINTER_CONNECTED) {
     return offset;
   }
-  offset -= 8;
-  // Simple printer icon: body with paper
-  u8g2_DrawFrame(u8g2, offset, 1, 7, 4);
-  u8g2_DrawHLine(u8g2, offset + 2, 0, 3);
-  return offset - 2;
+  offset -= STATUS_BAR_SPACING;
+  u8g2_SetFont(u8g2, u8g2_font_m2icon_5_tf);
+  offset -= u8g2_GetStrWidth(u8g2, "B");
+  u8g2_DrawStr(u8g2, offset, 5, "B");
+  return offset;
 }
 
 static void time_display(u8g2_t* u8g2) {
@@ -967,10 +976,23 @@ static void write_card(u8g2_t* u8g2) {
 }
 
 static void write_failed(u8g2_t* u8g2) {
-  if (current_state.card_present) {
+  static bool timer_started = false;
+
+  if (!timer_started) {
+    if (write_failed_timer == NULL) {
+      write_failed_timer =
+          xTimerCreate("write_failed_timer", pdMS_TO_TICKS(800), pdFALSE, NULL, write_failed_timer_cb);
+    }
+    write_failed_show_remove = true;
+    xTimerReset(write_failed_timer, 0);
+    timer_started = true;
+  }
+
+  if (write_failed_show_remove || current_state.card_present) {
     display_error(u8g2, "Karte", "entfernen", 17);
   } else {
     display_error(u8g2, "Erneut", "versuchen", 17);
+    timer_started = false;
   }
 }
 

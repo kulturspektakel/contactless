@@ -140,4 +140,5 @@ void trigger_event(event_t event);
 void state_machine(void* params);
 int current_total();
 bool is_privileged_card();
-card_error_t validate_values(uint16_t balance, uint8_t deposit);
+card_error_t validate_values(int balance, int deposit);
+bool is_safe_for_config_update(void);
