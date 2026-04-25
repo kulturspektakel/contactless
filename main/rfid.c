@@ -11,6 +11,7 @@
 #include "local_config.h"
 #include "mbedtls/sha1.h"
 #include "pn532.h"
+#include "event_group.h"
 #include "state_machine.h"
 
 typedef struct {
@@ -41,7 +42,7 @@ ultralight_card_info_t current_card = {0};
 
 #define MINIMUM_CARD_TIME 1500
 #define OFFSET_COUNTER LENGTH_ID
-#define OFFSET_VAILD_UNTIL LENGTH_ID
+#define OFFSET_VALID_UNTIL LENGTH_ID
 #define OFFSET_DEPOSIT LENGTH_ID + LENGTH_COUNTER
 #define OFFSET_BALANCE LENGTH_ID + LENGTH_COUNTER + LENGTH_DEPOSIT
 #define OFFSET_SIGNATURE LENGTH_ID + LENGTH_COUNTER + LENGTH_DEPOSIT + LENGTH_BALANCE
@@ -61,7 +62,7 @@ static void calculate_signature_ultralight(uint8_t* target, ultralight_card_info
     memcpy(hash_input + OFFSET_DEPOSIT, &card->data.regular.deposit, LENGTH_DEPOSIT);
     memcpy(hash_input + OFFSET_BALANCE, &card->data.regular.balance, LENGTH_BALANCE);
   } else {
-    memcpy(hash_input + OFFSET_VAILD_UNTIL, &card->data.crew.valid_until, LENGTH_VAILD_UNTIL);
+    memcpy(hash_input + OFFSET_VALID_UNTIL, &card->data.crew.valid_until, LENGTH_VALID_UNTIL);
   }
   memcpy(hash_input + OFFSET_SIGNATURE, SALT, SALT_LENGTH);
   create_sha1_hash(hash_input, SIGNATURE_INPUT_LENGTH, target);
@@ -173,7 +174,7 @@ static event_t read_card(byte_array_t* uid) {
     new_card.data.regular.deposit = *(uint8_t*)(decoded_payload + OFFSET_DEPOSIT);
     new_card.data.regular.balance = *(uint16_t*)(decoded_payload + OFFSET_BALANCE);
   } else if (new_card.type == CREW) {
-    new_card.data.crew.valid_until = *(uint16_t*)(decoded_payload + OFFSET_VAILD_UNTIL);
+    new_card.data.crew.valid_until = *(uint16_t*)(decoded_payload + OFFSET_VALID_UNTIL);
   }
 
   // card was sucessfully read, but not yet verified
@@ -196,7 +197,7 @@ static event_t read_card(byte_array_t* uid) {
           new_card.data.regular.counter,
           counter_from_payload
       );
-      return CARD_DETECTED_SKIPPED_SECUIRTY;
+      return CARD_DETECTED_SKIPPED_SECURITY;
     }
   }
 
@@ -207,7 +208,7 @@ static event_t read_card(byte_array_t* uid) {
     ESP_LOGE(RFID_TASK, "Signature mismatch: hash != signature");
     ESP_LOG_BUFFER_HEX(RFID_TASK, hash, 5);
     ESP_LOG_BUFFER_HEX(RFID_TASK, new_card.signature, 5);
-    return CARD_DETECTED_SKIPPED_SECUIRTY;
+    return CARD_DETECTED_SKIPPED_SECURITY;
   }
 
   return CARD_DETECTED_OK;
@@ -254,7 +255,7 @@ static bool regular_card_payload(ultralight_card_info_t* card, uint8_t* write_da
 static bool crew_card_payload(ultralight_card_info_t* card, uint8_t* write_data) {
   uint8_t buffer[PAYLOAD_RAW_LENGTH] = {0};
   memcpy(buffer, &card->id, LENGTH_ID);
-  memcpy(buffer + OFFSET_VAILD_UNTIL, &card->data.crew.valid_until, LENGTH_VAILD_UNTIL);
+  memcpy(buffer + OFFSET_VALID_UNTIL, &card->data.crew.valid_until, LENGTH_VALID_UNTIL);
   calculate_signature_ultralight(buffer + OFFSET_SIGNATURE, card);
   ESP_LOG_BUFFER_HEX(RFID_TASK, buffer, PAYLOAD_RAW_LENGTH);
   return encode_payload(buffer, write_data);
@@ -459,6 +460,7 @@ void rfid(void* params) {
 
   byte_array_t uid = {};
 
+  xEventGroupSetBits(event_group, RFID_INITIALIZED);
   ESP_LOGI(RFID_TASK, "Start scanning for tags");
   int64_t card_seen_at = 0;
 
@@ -525,25 +527,25 @@ void rfid(void* params) {
         ESP_LOGI(RFID_TASK, "Retrying... (%d)", i);
       }
 
-      if (current_state.mode == WRITE_CARD_INITIALIZE &&
-          !initialize_card(
-              &current_state.data_to_write, read_status == CARD_DETECTED_UNINITIALIZED
-          )) {
-        ESP_LOGE(RFID_TASK, "Initialization card failed");
-        continue;
-      } else if (current_state.mode == WRITE_CARD && !write_card(&current_state.data_to_write)) {
+      bool write_ok;
+      if (current_state.mode == WRITE_CARD_INITIALIZE) {
+        write_ok =
+            initialize_card(&current_state.data_to_write, read_status == CARD_DETECTED_UNINITIALIZED);
+      } else {
+        write_ok = write_card(&current_state.data_to_write);
+      }
+
+      if (!write_ok) {
         ESP_LOGE(RFID_TASK, "Writing card failed");
         continue;
       }
       ESP_LOGI(RFID_TASK, "Card written successfully");
 
-      // setting success true in case the re-read fails and we exit here we still want to write the log
-      success = true;
+      // verify by re-reading
       if (read_card(&uid) != CARD_DETECTED_OK) {
         ESP_LOGE(RFID_TASK, "Rereading card failed");
         continue;
       }
-      success = false;
 
       if (current_card.type == REGULAR &&
           (current_card.data.regular.deposit != current_state.data_to_write.data.regular.deposit ||

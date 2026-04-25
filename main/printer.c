@@ -4,7 +4,9 @@
 #include "esp_log.h"
 #include "event_group.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/timers.h"
+#include "network_request.h"
 #include "host/ble_gap.h"
 #include "host/ble_gatt.h"
 #include "host/ble_hs.h"
@@ -27,12 +29,28 @@ typedef enum {
 } FontSize;
 #define STARTUP_RETRY_INTERVAL_MS (15 * 1000)
 #define MAX_STARTUP_RETRIES 5
+#define SCAN_DURATION_MS 5000
+
+// BLE operation state machine — callbacks set _REQUESTED states,
+// printer task transitions to _ING after taking semaphore,
+// callbacks transition away from _ING when operations complete.
+typedef enum {
+  BLE_OP_IDLE,
+  BLE_OP_SCAN_REQUESTED,
+  BLE_OP_SCANNING,
+  BLE_OP_CONNECT_REQUESTED,
+  BLE_OP_CONNECTING,
+} ble_op_t;
 
 // ISSC BLE module UUIDs (common in 58mm thermal printers like Netum 1809DD)
 static const ble_uuid128_t printer_service_uuid = BLE_UUID128_INIT(
     0x55, 0xe4, 0x05, 0xd2, 0xaf, 0x9f, 0xa9, 0x8f,
     0xe5, 0x4a, 0x7d, 0xfe, 0x43, 0x53, 0x53, 0x49
 );
+
+// Custom 16-bit service exposed by these printers (GTW HS6622S and family).
+// More likely than the 128-bit UUID to actually fit in the 31-byte adv packet.
+static const ble_uuid16_t printer_service_uuid16 = BLE_UUID16_INIT(0x18F0);
 
 static const ble_uuid128_t printer_write_char_uuid = BLE_UUID128_INIT(
     0xb3, 0x9b, 0x72, 0x34, 0xbe, 0xec, 0xd4, 0xa8,
@@ -48,6 +66,8 @@ static uint16_t conn_handle = BLE_HS_CONN_HANDLE_NONE;
 static uint16_t write_char_handle = 0;
 static TimerHandle_t reconnect_timer = NULL;
 static int retries_remaining = MAX_STARTUP_RETRIES;
+static TaskHandle_t printer_task_handle = NULL;
+static volatile ble_op_t ble_op = BLE_OP_IDLE;
 
 static void start_scan(void);
 static void connect_to_target(void);
@@ -226,6 +246,11 @@ void submit_print_job(LogMessage_Order_PaymentMethod payment) {
     return;
   }
 
+  // Skip orders with no products (e.g. deposit-only / bottle-return transactions).
+  if (current_state.cart.item_count == 0) {
+    return;
+  }
+
   PrintJob* job = pvPortMalloc(sizeof(PrintJob));
   if (job == NULL) {
     return;
@@ -244,18 +269,20 @@ void submit_print_job(LogMessage_Order_PaymentMethod payment) {
 }
 
 static void reconnect_timer_cb(TimerHandle_t timer) {
-  if (target_found) {
-    connect_to_target();
-  } else {
-    start_scan();
-  }
+  ble_op = target_found ? BLE_OP_CONNECT_REQUESTED : BLE_OP_SCAN_REQUESTED;
+  xTaskNotifyGive(printer_task_handle);
 }
 
+// Cancel the active scan and leave NimBLE initialized-but-idle.
+// We used to call nimble_port_stop() + nimble_port_deinit() here to "save
+// energy" when retries ran out, but the deinit/init cycle is broken in
+// this IDF version: when start_bluetooth() later re-runs nimble_port_init(),
+// vListInsert loops forever on a corrupted internal FreeRTOS list and the
+// interrupt watchdog kills the device. The BLE controller does modem sleep
+// on its own when there's no scan/connect/connection in progress, so the
+// power cost of leaving the stack up is negligible.
 static void stop_bluetooth(void) {
   ble_gap_disc_cancel();
-  nimble_port_stop();
-  nimble_port_deinit();
-  ESP_LOGI(PRINTER_TASK, "Bluetooth disabled to save energy");
 }
 
 static void start_bluetooth(void) {
@@ -268,15 +295,18 @@ static void start_bluetooth(void) {
   ESP_LOGI(PRINTER_TASK, "Bluetooth re-enabled");
 }
 
+// Called from BLE host callbacks — must not call ESP_LOGI / vprintf.
+// Reading format strings from flash-mapped .rodata can fault inside the
+// callback's cache-disable window during BLE/coex events.
 static void schedule_reconnect(void) {
   if (retries_remaining <= 0) {
-    ESP_LOGI(PRINTER_TASK, "No retries remaining, waiting for manual trigger");
+    printer_status = PRINTER_DISCONNECTED;
+    xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
     stop_bluetooth();
     return;
   }
 
   retries_remaining--;
-  ESP_LOGI(PRINTER_TASK, "Scheduling reconnect, %d retries remaining", retries_remaining);
 
   if (!reconnect_timer) {
     reconnect_timer =
@@ -309,7 +339,6 @@ static int gatt_chr_disc_cb(
 ) {
   if (error->status == 0 && chr != NULL) {
     write_char_handle = chr->val_handle;
-    ESP_LOGI(PRINTER_TASK, "Found write characteristic, handle=%d", write_char_handle);
   }
   return 0;
 }
@@ -337,17 +366,37 @@ static int gap_event_cb(struct ble_gap_event* event, void* arg) {
   switch (event->type) {
     case BLE_GAP_EVENT_DISC: {
       char* name = extract_device_name(&event->disc);
-      if (name) {
-        ESP_LOGI(PRINTER_TASK, "Found: %s (RSSI=%d)", name, event->disc.rssi);
-        if (strcmp(name, TARGET_DEVICE_NAME) == 0) {
-          ESP_LOGI(PRINTER_TASK, "Target printer found!");
-          target_found = true;
-          memcpy(&target_addr, &event->disc.addr, sizeof(target_addr));
-          connect_to_target();
+      struct ble_hs_adv_fields fields;
+      bool has_printer_uuid = false;
+      if (ble_hs_adv_parse_fields(&fields, event->disc.data, event->disc.length_data) == 0) {
+        for (int i = 0; i < fields.num_uuids128 && !has_printer_uuid; i++) {
+          if (ble_uuid_cmp(&fields.uuids128[i].u, &printer_service_uuid.u) == 0) {
+            has_printer_uuid = true;
+          }
         }
+        for (int i = 0; i < fields.num_uuids16 && !has_printer_uuid; i++) {
+          if (ble_uuid_cmp(&fields.uuids16[i].u, &printer_service_uuid16.u) == 0) {
+            has_printer_uuid = true;
+          }
+        }
+      }
+      bool name_match = name && strcmp(name, TARGET_DEVICE_NAME) == 0;
+      if (name_match || has_printer_uuid) {
+        target_found = true;
+        memcpy(&target_addr, &event->disc.addr, sizeof(target_addr));
+        ble_op = BLE_OP_CONNECT_REQUESTED;
+        xTaskNotifyGive(printer_task_handle);
       }
       break;
     }
+
+    case BLE_GAP_EVENT_DISC_COMPLETE:
+      if (ble_op == BLE_OP_SCANNING) {
+        ble_op = BLE_OP_IDLE;
+        schedule_reconnect();
+      }
+      xTaskNotifyGive(printer_task_handle);
+      break;
 
     case BLE_GAP_EVENT_CONNECT:
       if (event->connect.status == 0) {
@@ -355,7 +404,6 @@ static int gap_event_cb(struct ble_gap_event* event, void* arg) {
         printer_status = PRINTER_CONNECTED;
         write_char_handle = 0;
         retries_remaining = MAX_STARTUP_RETRIES;
-        ESP_LOGI(PRINTER_TASK, "Connected to printer");
         xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
         if (reconnect_timer) {
           xTimerStop(reconnect_timer, 0);
@@ -366,15 +414,17 @@ static int gap_event_cb(struct ble_gap_event* event, void* arg) {
         xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
         schedule_reconnect();
       }
+      ble_op = BLE_OP_IDLE;
+      xTaskNotifyGive(printer_task_handle);
       break;
 
     case BLE_GAP_EVENT_DISCONNECT:
       printer_status = PRINTER_DISCONNECTED;
       conn_handle = BLE_HS_CONN_HANDLE_NONE;
-      ESP_LOGI(PRINTER_TASK, "Disconnected");
       xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
       if (retries_remaining > 0) {
-        connect_to_target();
+        ble_op = BLE_OP_CONNECT_REQUESTED;
+        xTaskNotifyGive(printer_task_handle);
       }
       break;
 
@@ -394,12 +444,18 @@ static void start_scan(void) {
   uint8_t own_addr_type;
   ble_hs_id_infer_auto(0, &own_addr_type);
 
-  int rc = ble_gap_disc(own_addr_type, BLE_HS_FOREVER, &params, gap_event_cb, NULL);
+  // No ESP_LOGI after ble_gap_disc: starting the scan kicks the BLE radio,
+  // which can trigger a PHY NVS write that briefly disables dcache — a
+  // concurrent vprintf reading its format string from flash will fault.
+  // NimBLE's own "GAP procedure initiated: discovery" log already confirms
+  // scan start. The error log below is cheap to keep since it only fires
+  // on rare init failures.
+  int rc = ble_gap_disc(own_addr_type, SCAN_DURATION_MS, &params, gap_event_cb, NULL);
   if (rc != 0) {
     ESP_LOGE(PRINTER_TASK, "Failed to start scan: %d", rc);
+    ble_op = BLE_OP_IDLE;
+    xTaskNotifyGive(printer_task_handle);
     schedule_reconnect();
-  } else {
-    ESP_LOGI(PRINTER_TASK, "Scanning for printer...");
   }
 }
 
@@ -414,6 +470,8 @@ static void connect_to_target(void) {
   if (rc != 0) {
     ESP_LOGE(PRINTER_TASK, "Failed to initiate connection: %d", rc);
     printer_status = PRINTER_DISCONNECTED;
+    ble_op = BLE_OP_IDLE;
+    xTaskNotifyGive(printer_task_handle);
     schedule_reconnect();
   }
 }
@@ -421,18 +479,16 @@ static void connect_to_target(void) {
 void printer_start_scan(int retries) {
   retries_remaining = retries;
   start_bluetooth();
-
-  if (target_found) {
-    connect_to_target();
-  } else {
-    start_scan();
-  }
+  ble_op = target_found ? BLE_OP_CONNECT_REQUESTED : BLE_OP_SCAN_REQUESTED;
+  xTaskNotifyGive(printer_task_handle);
   xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
 }
 
 static void on_ble_sync(void) {
   ble_hs_util_ensure_addr(0);
-  printer_start_scan(MAX_STARTUP_RETRIES);
+  retries_remaining = MAX_STARTUP_RETRIES;
+  ble_op = BLE_OP_SCAN_REQUESTED;
+  xTaskNotifyGive(printer_task_handle);
 }
 
 static void ble_host_task(void* param) {
@@ -441,12 +497,48 @@ static void ble_host_task(void* param) {
 }
 
 void printer(void* params) {
+  printer_task_handle = xTaskGetCurrentTaskHandle();
+  init_print_queue();
+  xEventGroupWaitBits(
+      event_group,
+      STARTUP_BITS | RFID_INITIALIZED | INITIAL_FETCH_DONE,
+      pdFALSE,
+      pdTRUE,
+      pdMS_TO_TICKS(30000)
+  );
   ESP_ERROR_CHECK(nimble_port_init());
   ble_hs_cfg.sync_cb = on_ble_sync;
   nimble_port_freertos_init(ble_host_task);
 
   while (1) {
     process_print_queue();
-    vTaskDelay(pdMS_TO_TICKS(100));
+
+    if (ble_op == BLE_OP_SCAN_REQUESTED || ble_op == BLE_OP_CONNECT_REQUESTED) {
+      // Serialize BLE scan/connect against HTTP. Concurrent BLE active-scan
+      // or connect + mbedtls TLS handshake hits a cache-disable window that
+      // faults mbedtls reading flash-mapped .rodata tables.
+      xSemaphoreTake(network_request, portMAX_DELAY);
+      while (ble_op == BLE_OP_SCAN_REQUESTED || ble_op == BLE_OP_CONNECT_REQUESTED) {
+        if (ble_op == BLE_OP_SCAN_REQUESTED) {
+          ble_op = BLE_OP_SCANNING;
+          start_scan();
+          while (ble_op == BLE_OP_SCANNING) {
+            ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(SCAN_DURATION_MS + 1000));
+          }
+          ble_gap_disc_cancel();
+        }
+
+        if (ble_op == BLE_OP_CONNECT_REQUESTED) {
+          ble_op = BLE_OP_CONNECTING;
+          connect_to_target();
+          while (ble_op == BLE_OP_CONNECTING) {
+            ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(11000));
+          }
+        }
+      }
+      xSemaphoreGive(network_request);
+    }
+
+    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100));
   }
 }

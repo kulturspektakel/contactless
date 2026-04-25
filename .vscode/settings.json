@@ -1,34 +1,62 @@
 {
+  // clangd fights with Microsoft's cpptools over IntelliSense — see
+  // CLAUDE.md. Workspace-disable here in case clangd is installed.
+  "clangd.enable": false,
+
+  // CMake Tools is bundled with the cpptools extension pack but isn't
+  // used here — the ESP-IDF extension drives CMake via idf.py. Stop
+  // it from scanning and validate-by-name to silence the activation
+  // error. Best is to disable the CMake Tools extension for this
+  // workspace entirely (Cmd+Shift+X → CMake Tools → "Disable
+  // (Workspace)"), or uninstall it.
+  "cmake.configureOnOpen": false,
+  "cmake.automaticReconfigure": false,
+  "cmake.cmakePath": "cmake",
+
+  // Force-enable cpptools IntelliSense — needed at workspace level because
+  // some user-level setting (or stale state) was disabling it, which also
+  // disables cpptools' formatter registration. Override here.
   "C_Cpp.intelliSenseEngine": "default",
+  // Semantic highlighting (variables / types / functions distinguished
+  // from each other). Replaces what clangd was providing before.
+  "C_Cpp.enhancedColorization": "enabled",
+
+  // Use cpptools as the C/C++ formatter (it reads .clang-format the same
+  // way clangd would). Format-on-save then uses our project style.
+  "C_Cpp.formatting": "clangFormat",
+  "[c]": {
+    "editor.defaultFormatter": "ms-vscode.cpptools",
+    "editor.formatOnSave": true
+  },
+  "[cpp]": {
+    "editor.defaultFormatter": "ms-vscode.cpptools",
+    "editor.formatOnSave": true
+  },
+
+  "idf.openOcdConfigs": ["board/esp32s3-builtin.cfg"],
+  "idf.flashType": "UART",
+
+  // Resolved from env var at VS Code startup. Each developer needs
+  // IDF_PATH set in the environment VS Code sees.
+  //
+  //   macOS, launched from Finder/Dock:
+  //     launchctl setenv IDF_PATH /path/to/esp-idf
+  //   …then quit & reopen VS Code.
+  //
+  //   macOS/Linux from a terminal: `source $IDF_PATH/export.sh && code .`
+  //   Windows: use the ESP-IDF extension's "Configure ESP-IDF Extension"
+  //   wizard — it writes user-level settings.
+  //
+  // OPENOCD_SCRIPTS / ESP_ROM_ELF_DIR are only needed for JTAG debugging
+  // and auto-resolve from the IDF tools install in most cases. If JTAG
+  // breaks, add them to your user-level VS Code settings.
+  "idf.currentSetup": "${env:IDF_PATH}",
   "idf.customExtraVars": {
-    "OPENOCD_SCRIPTS": "/Users/danielbuechele/.espressif/tools/openocd-esp32/v0.12.0-esp32-20250422/openocd-esp32/share/openocd/scripts",
-    "ESP_ROM_ELF_DIR": "/Users/danielbuechele/.espressif/tools/esp-rom-elfs/20241011/",
     "IDF_TARGET": "esp32s3"
   },
-  "idf.espIdfPath": "/Users/danielbuechele/esp/esp-idf",
-  "idf.openOcdConfigs": ["board/esp32s3-builtin.cfg"],
-  "idf.port": "/dev/tty.usbmodem201201",
-  "idf.toolsPath": "/Users/danielbuechele/.espressif",
-  "idf.flashType": "UART",
+
   "files.associations": {
-    "rfid.h": "c",
-    "local_config.h": "c",
-    "freertos.h": "c",
-    "constants.h": "c",
-    "task.h": "c",
-    "esp_littlefs.h": "c",
-    "configs.pb.h": "c",
-    "config.pb.h": "c",
-    "power_management.h": "c",
-    "time.h": "c",
-    "http_auth_headers.h": "c",
-    "battery_test.h": "c",
-    "queue.h": "c",
-    "expected": "c",
-    "nimble_port.h": "c",
-    "util.h": "c",
-    "ble_hs.h": "c",
-    "esp_nimble_hci.h": "c",
-    "event_group.h": "c"
-  }
+    "*.h": "c"
+  },
+  "idf.port": "/dev/tty.usbmodem201301"
 }

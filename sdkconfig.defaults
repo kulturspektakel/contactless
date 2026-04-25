@@ -17,4 +17,28 @@ CONFIG_BT_CONTROLLER_ENABLED=y
 CONFIG_BT_CONTROLLER_BLE_ONLY=y
 CONFIG_BT_CONTROLLER_MODE_BLE_ONLY=y
 CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_ROLE_CENTRAL=y
 CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y
+
+# Stop the WiFi driver from writing NVS after a station connection. The post-
+# connect NVS commit briefly disables dcache, and mbedtls handshake code
+# reading EC curve / X.509 OID tables from flash-mapped .rodata on the other
+# core panics during the disabled window. Trade-off: WiFi reconnect can't use
+# cached AP info (~1 s slower).
+CONFIG_ESP_WIFI_NVS_ENABLED=n
+
+# Also stop PHY calibration data from being cached to NVS. The runtime NVS
+# write that happens when the BLE radio activates for the first scan opens
+# the same kind of cache-disable window that faulted NimBLE's own
+# `ble_gap_disc_report` while processing the first advertisement. Trade-off:
+# full PHY calibration runs every boot (~tens of ms slower boot).
+CONFIG_ESP_PHY_CALIBRATION_AND_DATA_STORAGE=n
+
+# Belt-and-braces against any remaining flash-write-triggers we haven't
+# tracked down (log_writer, BT controller calibration, etc.).
+# AUTO_SUSPEND keeps cache live during writes when the flash chip supports
+# it (boot log: "Flash suspend feature is enabled").
+# EXTRA_IRAM_OPT places ppProcTxDone and friends in IRAM so they keep
+# running even if cache does briefly disable.
+CONFIG_SPI_FLASH_AUTO_SUSPEND=y
+CONFIG_ESP_WIFI_EXTRA_IRAM_OPT=y

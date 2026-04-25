@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include "printer.h"
 #include "buzzer.h"
 #include "constants.h"
 #include "display.h"
@@ -17,6 +16,7 @@
 #include "network_request.h"
 #include "nvs_flash.h"
 #include "power_management.h"
+#include "printer.h"
 #include "rfid.h"
 #include "state_machine.h"
 #include "time_sync.h"
@@ -55,6 +55,5 @@ void app_main(void) {
   xTaskCreate(&load_device_id, "load_device_id", 3072, NULL, TASK_PRIO_NORMAL, NULL);
   xTaskCreate(&load_salt, "load_salt", 3072, NULL, TASK_PRIO_NORMAL, NULL);
   xTaskCreate(&buzzer, "buzzer", 5120, NULL, TASK_PRIO_NORMAL, NULL);
-  // init_print_queue();
-  // xTaskCreate(&printer, PRINTER_TASK, 4096, NULL, TASK_PRIO_NORMAL, NULL);
+  xTaskCreate(&printer, PRINTER_TASK, 4096, NULL, TASK_PRIO_NORMAL, NULL);
 }

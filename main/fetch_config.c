@@ -139,6 +139,7 @@ void fetch_config(void* params) {
 
   while (true) {
     send_http_request();
+    xEventGroupSetBits(event_group, INITIAL_FETCH_DONE);
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
   }
 }

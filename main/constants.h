@@ -11,7 +11,7 @@
 #define TZ "CET-1CEST,M3.5.0,M10.5.0/3"
 #define API_HOST "api.kulturspektakel.de"
 #define DEPOSIT_VALUE 200
-#define MAX_BALANCE 9999
+#define MAX_BALANCE 12000
 #define MAX_DEPOSIT 9
 
 #define TASK_PRIO_NORMAL 5

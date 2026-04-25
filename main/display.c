@@ -182,14 +182,27 @@ static int pending_uploads(u8g2_t* u8g2, int offset) {
   return offset;
 }
 
+static const uint8_t printer_icon_bits[] = {0x0C, 0x3F, 0x2D, 0x21, 0x3F};
+#define PRINTER_ICON_WIDTH 6
+#define PRINTER_ICON_HEIGHT 5
+
 static int printer_icon(u8g2_t* u8g2, int offset) {
-  if (printer_status != PRINTER_CONNECTED) {
+  if (printer_status == PRINTER_DISCONNECTED) {
     return offset;
   }
+  static bool blink = false;
+  if (printer_status == PRINTER_SCANNING || printer_status == PRINTER_CONNECTING) {
+    static int64_t last_animation_tick = 0;
+    if (animation_tick(500, &last_animation_tick)) {
+      blink = !blink;
+    }
+    if (!blink) {
+      return offset;
+    }
+  }
   offset -= STATUS_BAR_SPACING;
-  u8g2_SetFont(u8g2, u8g2_font_m2icon_5_tf);
-  offset -= u8g2_GetStrWidth(u8g2, "B");
-  u8g2_DrawStr(u8g2, offset, 5, "B");
+  offset -= PRINTER_ICON_WIDTH;
+  u8g2_DrawXBM(u8g2, offset, 0, PRINTER_ICON_WIDTH, PRINTER_ICON_HEIGHT, printer_icon_bits);
   return offset;
 }
 

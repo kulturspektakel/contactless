@@ -323,7 +323,7 @@ static mode_type card_detected(event_t event) {
     current_state.card_error = TECHNICAL_ERROR;
     trigger_beep(BEEP_LONG);
     return READ_FAILED;
-  } else if (event == CARD_DETECTED_SKIPPED_SECUIRTY) {
+  } else if (event == CARD_DETECTED_SKIPPED_SECURITY) {
     current_state.card_error = INVALID_SIGNATURE;
     trigger_beep(BEEP_LONG);
     return READ_FAILED;
@@ -492,7 +492,7 @@ static mode_type charge_list(event_t event) {
     case CARD_DETECTED_OK:
     case CARD_DETECTED_NOT_READABLE:
     case CARD_DETECTED_INVALID:
-    case CARD_DETECTED_SKIPPED_SECUIRTY:
+    case CARD_DETECTED_SKIPPED_SECURITY:
     case CARD_DETECTED_OLD_CARD:
       return card_detected(event);
 
@@ -543,7 +543,7 @@ static mode_type write_not_attemted(event_t event) {
 static mode_type write_failed(event_t event) {
   switch (event) {
     case CARD_DETECTED_OK:
-    case CARD_DETECTED_SKIPPED_SECUIRTY:
+    case CARD_DETECTED_SKIPPED_SECURITY:
     case CARD_DETECTED_INVALID:
     case CARD_DETECTED_NOT_READABLE:
       if (memcmp(&current_card.id, &current_state.data_to_write.id, LENGTH_ID) == 0) {
@@ -579,7 +579,7 @@ static mode_type charge_manual(event_t event) {
     case CARD_DETECTED_OK:
     case CARD_DETECTED_NOT_READABLE:
     case CARD_DETECTED_INVALID:
-    case CARD_DETECTED_SKIPPED_SECUIRTY:
+    case CARD_DETECTED_SKIPPED_SECURITY:
     case CARD_DETECTED_OLD_CARD:
       return card_detected(event);
 
@@ -626,7 +626,7 @@ static mode_type privileged_topup(event_t event) {
     case CARD_DETECTED_OK:
     case CARD_DETECTED_NOT_READABLE:
     case CARD_DETECTED_INVALID:
-    case CARD_DETECTED_SKIPPED_SECUIRTY:
+    case CARD_DETECTED_SKIPPED_SECURITY:
     case CARD_DETECTED_OLD_CARD:
       return card_detected(event);
 
@@ -752,7 +752,7 @@ static mode_type card_balance(event_t event) {
       return CARD_BALANCE;
     case CARD_DETECTED_NOT_READABLE:
     case CARD_DETECTED_INVALID:
-    case CARD_DETECTED_SKIPPED_SECUIRTY:
+    case CARD_DETECTED_SKIPPED_SECURITY:
     case CARD_DETECTED_OLD_CARD:
       return card_detected(event);
     case CARD_REMOVED:
@@ -785,7 +785,7 @@ static mode_type privileged_cashout_or_donation(event_t event) {
       return WRITE_CARD;
     case CARD_DETECTED_NOT_READABLE:
     case CARD_DETECTED_INVALID:
-    case CARD_DETECTED_SKIPPED_SECUIRTY:
+    case CARD_DETECTED_SKIPPED_SECURITY:
     case CARD_DETECTED_OLD_CARD:
       return card_detected(event);
     case KEY_A:
@@ -802,7 +802,7 @@ static mode_type privileged_cashout_or_donation(event_t event) {
 static mode_type privileged_repair(event_t event) {
   switch (event) {
     case CARD_DETECTED_OK:
-    case CARD_DETECTED_SKIPPED_SECUIRTY:
+    case CARD_DETECTED_SKIPPED_SECURITY:
       card_error_t error =
           validate_values(current_card.data.regular.balance, current_card.data.regular.deposit);
       if (error != NONE) {
@@ -829,7 +829,7 @@ static mode_type initialize_card(event_t event) {
   switch (event) {
     case CARD_DETECTED_UNINITIALIZED:
     case CARD_DETECTED_OK:
-    case CARD_DETECTED_SKIPPED_SECUIRTY:
+    case CARD_DETECTED_SKIPPED_SECURITY:
       uint16_t valid_until = current_state.data_to_write.data.crew.valid_until;
       current_state.data_to_write = current_card;
       if (event == CARD_DETECTED_UNINITIALIZED) {
@@ -870,7 +870,7 @@ static mode_type read_failed(event_t event) {
     case CARD_DETECTED_OK:
     case CARD_DETECTED_NOT_READABLE:
     case CARD_DETECTED_INVALID:
-    case CARD_DETECTED_SKIPPED_SECUIRTY:
+    case CARD_DETECTED_SKIPPED_SECURITY:
     case CARD_DETECTED_OLD_CARD:
       return card_detected(event);
     case CARD_REMOVED:
@@ -996,7 +996,7 @@ static mode_type process_event(event_t event) {
     reset_power_off_timer();
   }
 
-  if (event == CARD_DETECTED_OK || event == CARD_DETECTED_SKIPPED_SECUIRTY ||
+  if (event == CARD_DETECTED_OK || event == CARD_DETECTED_SKIPPED_SECURITY ||
       event == CARD_DETECTED_NOT_READABLE || event == CARD_DETECTED_INVALID ||
       event == CARD_DETECTED_OLD_CARD || event == CARD_DETECTED_UNINITIALIZED) {
     current_state.card_present = true;
