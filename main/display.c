@@ -62,6 +62,7 @@ static void animation_timer_cb(TimerHandle_t timer) {
 
 static TimerHandle_t write_failed_timer = NULL;
 static bool write_failed_show_remove = true;
+static bool write_failed_timer_started = false;
 static void write_failed_timer_cb(TimerHandle_t timer) {
   write_failed_show_remove = false;
   xEventGroupSetBits(event_group, DISPLAY_NEEDS_UPDATE);
@@ -989,23 +990,19 @@ static void write_card(u8g2_t* u8g2) {
 }
 
 static void write_failed(u8g2_t* u8g2) {
-  static bool timer_started = false;
-
-  if (!timer_started) {
+  if (!write_failed_timer_started) {
     if (write_failed_timer == NULL) {
       write_failed_timer =
           xTimerCreate("write_failed_timer", pdMS_TO_TICKS(800), pdFALSE, NULL, write_failed_timer_cb);
     }
-    write_failed_show_remove = true;
     xTimerReset(write_failed_timer, 0);
-    timer_started = true;
+    write_failed_timer_started = true;
   }
 
   if (write_failed_show_remove || current_state.card_present) {
     display_error(u8g2, "Karte", "entfernen", 17);
   } else {
     display_error(u8g2, "Erneut", "versuchen", 17);
-    timer_started = false;
   }
 }
 
@@ -1033,6 +1030,16 @@ void display(void* params) {
       // do not update display while writing card
       continue;
     }
+
+    static mode_type previous_mode = MAIN_STARTING_UP;
+    if (current_state.mode != previous_mode) {
+      if (current_state.mode == WRITE_FAILED) {
+        write_failed_timer_started = false;
+        write_failed_show_remove = true;
+      }
+      previous_mode = current_state.mode;
+    }
+
     u8g2_ClearBuffer(&u8g2);
 
     switch (current_state.mode) {
