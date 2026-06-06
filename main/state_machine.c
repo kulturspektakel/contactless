@@ -898,7 +898,7 @@ static mode_type main_menu(event_t event) {
       }
       break;
     case KEY_B:
-      if (current_state.menu_index < MENU_COUNT - 1) {
+      if (current_state.menu_index < main_menu_visible_count() - 1) {
         current_state.menu_index++;
       }
       break;
@@ -945,6 +945,13 @@ static mode_type main_menu(event_t event) {
             current_state.menu_index_active = MENU_PRINTER;
             timeout(400);
             printer_start_scan(1);
+          }
+          break;
+        case MENU_PRINT_CONFIG:
+          if (printer_status == PRINTER_CONNECTED) {
+            current_state.menu_index_active = MENU_PRINT_CONFIG;
+            timeout(400);
+            submit_config_print_job();
           }
           break;
         case MENU_UPLOADS:

@@ -68,6 +68,17 @@ static TimerHandle_t reconnect_timer = NULL;
 static int retries_remaining = MAX_STARTUP_RETRIES;
 static TaskHandle_t printer_task_handle = NULL;
 static volatile ble_op_t ble_op = BLE_OP_IDLE;
+// Set true once the printer task has run nimble_port_init(). Until then no BLE
+// host API may be called — the menu is live well before the printer task
+// finishes its startup wait, and calling into the uninitialized NimBLE host
+// (e.g. ble_hs_is_enabled) faults. See printer_start_scan().
+static volatile bool nimble_ready = false;
+// Write-with-response flow control: printer_write() blocks on this until the
+// GATT write completes, so we never issue the next ATT request before the
+// previous one is acknowledged. A dedicated semaphore (not the task
+// notification used for the scan/connect FSM) avoids any cross-signal.
+static SemaphoreHandle_t write_sem = NULL;
+static volatile int write_status = 0;
 
 static void start_scan(void);
 static void connect_to_target(void);
@@ -96,49 +107,87 @@ static void increment_order_counter(void) {
 
 void init_print_queue(void) {
   print_queue = xQueueCreate(1, sizeof(PrintJob*));
+  write_sem = xSemaphoreCreateBinary();
+}
+
+// GATT write-completion callback. Runs in the NimBLE host context, so it must
+// not log or touch flash-mapped .rodata (see the BLE-callback rule in
+// CLAUDE.md) — it only records the status and releases printer_write().
+static int write_done_cb(
+    uint16_t conn_handle_cb,
+    const struct ble_gatt_error* error,
+    struct ble_gatt_attr* attr,
+    void* arg
+) {
+  write_status = error->status;  // ble_gattc_error() always passes non-NULL
+  xSemaphoreGive(write_sem);
+  return 0;
+}
+
+// Issue one GATT write (Write Request) and block until the peer acknowledges it
+// before returning. This is the flow control the printer needs: ATT allows only
+// one outstanding request per connection, so firing writes back-to-back (the
+// old fixed-vTaskDelay approach) dropped commands/characters whenever a prior
+// write hadn't completed yet — especially under WiFi+BT coex. Returns false if
+// the write can't be initiated, times out, or the peer reports an error.
+static bool printer_write(const uint8_t* data, uint16_t len) {
+  if (printer_status != PRINTER_CONNECTED || write_char_handle == 0) {
+    return false;
+  }
+
+  for (int attempt = 0; attempt < 3; attempt++) {
+    xSemaphoreTake(write_sem, 0);  // drain any stale completion before issuing
+    int rc = ble_gattc_write_flat(conn_handle, write_char_handle, data, len, write_done_cb, NULL);
+    if (rc != 0) {
+      // Transient resource shortage (no proc/mbuf); let buffers free and retry.
+      vTaskDelay(pdMS_TO_TICKS(20));
+      continue;
+    }
+    if (xSemaphoreTake(write_sem, pdMS_TO_TICKS(2000)) != pdTRUE) {
+      return false;  // no completion — connection likely gone
+    }
+    if (write_status == 0) {
+      return true;
+    }
+    vTaskDelay(pdMS_TO_TICKS(20));  // peer returned an ATT error; retry
+  }
+  return false;
 }
 
 static void print_string(const char* str) {
-  ble_gattc_write_flat(conn_handle, write_char_handle, (uint8_t*)str, strlen(str), NULL, NULL);
-  vTaskDelay(pdMS_TO_TICKS(30));
+  printer_write((const uint8_t*)str, strlen(str));
 }
 
 static void print_line(const char* text, FontSize size) {
   // Max chars per line based on font size (58mm printer, 384 dots width)
   int max_chars = (size == FONT_1X) ? 32 : (size == FONT_2X) ? 16 : 10;
-
-  char truncated[33];
-  strncpy(truncated, text, max_chars);
-  truncated[max_chars] = '\0';
-
-  // Set position to column 0
-  uint8_t pos_cmd[] = {0x1B, 0x24, 0x00, 0x00};
-  ble_gattc_write_flat(conn_handle, write_char_handle, pos_cmd, sizeof(pos_cmd), NULL, NULL);
-  vTaskDelay(pdMS_TO_TICKS(10));
-
-  // Set font size using GS ! (supports 1-8x scaling)
-  // GS ! n: bits 0-2 = width-1, bits 4-6 = height-1 (0=1x, 1=2x, 2=3x...)
   uint8_t scale = (uint8_t)size;
-  uint8_t font_cmd[] = {0x1D, 0x21, (scale << 4) | scale};
-  ble_gattc_write_flat(conn_handle, write_char_handle, font_cmd, sizeof(font_cmd), NULL, NULL);
-  vTaskDelay(pdMS_TO_TICKS(10));
 
-  // Print text with newline
-  print_string(truncated);
-  print_string("\n");
+  // Assemble the whole line — position + font-size command, text, newline,
+  // font reset — into one ATT write. Fewer round trips than separate writes,
+  // and the printer consumes it as a single ESC/POS byte stream. Max content is
+  // 4 + 3 + 32 + 1 + 3 = 43 bytes, well under the negotiated MTU.
+  uint8_t buf[64];
+  int n = 0;
+  buf[n++] = 0x1B; buf[n++] = 0x24; buf[n++] = 0x00; buf[n++] = 0x00;  // ESC $ : column 0
+  buf[n++] = 0x1D; buf[n++] = 0x21; buf[n++] = (scale << 4) | scale;   // GS ! : font size
+  for (int i = 0; i < max_chars && text[i] != '\0'; i++) {
+    buf[n++] = (uint8_t)text[i];
+  }
+  buf[n++] = '\n';
+  buf[n++] = 0x1D; buf[n++] = 0x21; buf[n++] = 0x00;  // GS ! 0 : reset to 1x
 
-  // Reset to normal font
-  uint8_t reset_cmd[] = {0x1D, 0x21, 0x00};
-  ble_gattc_write_flat(conn_handle, write_char_handle, reset_cmd, sizeof(reset_cmd), NULL, NULL);
-  vTaskDelay(pdMS_TO_TICKS(10));
+  printer_write(buf, n);
+}
+
+static void get_datetime(time_t when, char* buf, size_t len) {
+  struct tm timeinfo;
+  localtime_r(&when, &timeinfo);
+  strftime(buf, len, "%d.%m.%Y %H:%M", &timeinfo);
 }
 
 static void get_current_datetime(char* buf, size_t len) {
-  time_t now;
-  struct tm timeinfo;
-  time(&now);
-  localtime_r(&now, &timeinfo);
-  strftime(buf, len, "%d.%m.%Y %H:%M", &timeinfo);
+  get_datetime(time(NULL), buf, len);
 }
 
 static const char* get_active_list_name(void) {
@@ -176,9 +225,9 @@ static void print_receipt(PrintJob* job) {
     return;
   }
 
-  // ESC @ - Initialize printer
+  // ESC @ - Initialize printer, then let it settle after the reset.
   uint8_t init_cmd[] = {0x1B, 0x40};
-  ble_gattc_write_flat(conn_handle, write_char_handle, init_cmd, sizeof(init_cmd), NULL, NULL);
+  printer_write(init_cmd, sizeof(init_cmd));
   vTaskDelay(pdMS_TO_TICKS(50));
 
   uint8_t order_num = get_order_counter();
@@ -227,6 +276,99 @@ static void print_receipt(PrintJob* job) {
   ESP_LOGI(PRINTER_TASK, "Receipt printed");
 }
 
+// Print one product row at 2x font (16 cols). The number takes a 3-col prefix
+// ("%2d ", space-padded so single digits align under double digits), leaving 13
+// cols for the name. Names longer than that wrap onto continuation lines with a
+// 3-space indent so the wrapped text lines up under the name. Breaks on spaces,
+// but hard-breaks a single word that is itself wider than the field.
+static void print_product_row(int number, const char* name) {
+  const int field = 13;  // 16 cols (FONT_2X) minus the 3-col prefix
+  char line[20];
+  bool first = true;
+  size_t pos = 0;
+  size_t len = strlen(name);
+
+  while (pos < len) {
+    // Skip a single leading space left by the previous wrap point.
+    if (!first && name[pos] == ' ') {
+      pos++;
+      if (pos >= len) {
+        break;
+      }
+    }
+
+    size_t remaining = len - pos;
+    size_t take = remaining < (size_t)field ? remaining : (size_t)field;
+
+    // If we're mid-name and breaking inside a word, back up to the last space
+    // in this chunk so we wrap on a word boundary (unless the word is too long).
+    if (take < remaining) {
+      size_t brk = take;
+      while (brk > 0 && name[pos + brk] != ' ') {
+        brk--;
+      }
+      if (brk > 0) {
+        take = brk;
+      }
+    }
+
+    if (first) {
+      snprintf(line, sizeof(line), "%2d %.*s", number, (int)take, name + pos);
+    } else {
+      snprintf(line, sizeof(line), "   %.*s", (int)take, name + pos);
+    }
+    print_line(line, FONT_2X);
+
+    pos += take;
+    first = false;
+  }
+
+  // A product with an empty name still gets its number on a line.
+  if (first) {
+    snprintf(line, sizeof(line), "%2d", number);
+    print_line(line, FONT_2X);
+  }
+}
+
+static void print_config(void) {
+  if (printer_status != PRINTER_CONNECTED || write_char_handle == 0) {
+    return;
+  }
+
+  // ESC @ - Initialize printer, then let it settle after the reset.
+  uint8_t init_cmd[] = {0x1B, 0x40};
+  printer_write(init_cmd, sizeof(init_cmd));
+  vTaskDelay(pdMS_TO_TICKS(50));
+
+  // Header: list name
+  print_line(get_active_list_name(), FONT_2X);
+  print_string("\n");
+
+  // One row per product, numbered 1..N (index + 1, matching the UI).
+  for (int i = 0; i < active_config.products_count; i++) {
+    print_product_row(i + 1, active_config.products[i].name);
+  }
+
+  print_string("\n");
+
+  // Footer (1x): the list's last-updated time if known, else the printout time.
+  char line[40];
+  char datetime[20];
+  if (config_timestamp > 0) {
+    get_datetime((time_t)config_timestamp, datetime, sizeof(datetime));
+    snprintf(line, sizeof(line), "Stand: %s", datetime);
+  } else {
+    get_current_datetime(datetime, sizeof(datetime));
+    snprintf(line, sizeof(line), "Gedruckt: %s", datetime);
+  }
+  print_line(line, FONT_1X);
+
+  // Feed paper
+  print_string("\n\n\n");
+
+  ESP_LOGI(PRINTER_TASK, "Config list printed");
+}
+
 static void process_print_queue(void) {
   if (print_queue == NULL) {
     return;
@@ -235,7 +377,11 @@ static void process_print_queue(void) {
   PrintJob* job = NULL;
   if (xQueueReceive(print_queue, &job, 0) == pdTRUE && job != NULL) {
     if (printer_status == PRINTER_CONNECTED && write_char_handle != 0) {
-      print_receipt(job);
+      if (job->type == PRINT_JOB_CONFIG) {
+        print_config();
+      } else {
+        print_receipt(job);
+      }
     }
     vPortFree(job);
   }
@@ -256,12 +402,34 @@ void submit_print_job(LogMessage_Order_PaymentMethod payment) {
     return;
   }
 
+  job->type = PRINT_JOB_RECEIPT;
   job->payment_method = payment;
   job->item_count = current_state.cart.item_count;
   job->total = current_total();
   for (int i = 0; i < current_state.cart.item_count; i++) {
     job->items[i] = current_state.cart.items[i];
   }
+
+  if (xQueueSendFromISR(print_queue, &job, NULL) != pdTRUE) {
+    vPortFree(job);
+  }
+}
+
+// Print the active list's product configuration (number -> name). Reads the
+// active_config global at print time; no snapshot is taken. That's safe because
+// config reloads are gated to is_safe_for_config_update() (cart empty + default
+// mode) and this job is only ever submitted from the menu (MAIN_MENU mode).
+void submit_config_print_job(void) {
+  if (print_queue == NULL) {
+    return;
+  }
+
+  PrintJob* job = pvPortMalloc(sizeof(PrintJob));
+  if (job == NULL) {
+    return;
+  }
+
+  job->type = PRINT_JOB_CONFIG;
 
   if (xQueueSendFromISR(print_queue, &job, NULL) != pdTRUE) {
     vPortFree(job);
@@ -477,6 +645,11 @@ static void connect_to_target(void) {
 }
 
 void printer_start_scan(int retries) {
+  // Ignore manual scan requests until the printer task has initialized NimBLE.
+  // start_bluetooth() -> ble_hs_is_enabled() crashes on an uninitialized host.
+  if (!nimble_ready) {
+    return;
+  }
   retries_remaining = retries;
   start_bluetooth();
   ble_op = target_found ? BLE_OP_CONNECT_REQUESTED : BLE_OP_SCAN_REQUESTED;
@@ -509,6 +682,7 @@ void printer(void* params) {
   ESP_ERROR_CHECK(nimble_port_init());
   ble_hs_cfg.sync_cb = on_ble_sync;
   nimble_port_freertos_init(ble_host_task);
+  nimble_ready = true;
 
   while (1) {
     process_print_queue();

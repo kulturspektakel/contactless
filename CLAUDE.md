@@ -4,15 +4,18 @@ ESP32-S3 firmware for a battery-powered contactless point-of-sale terminal:
 WiFi STA + NimBLE central (to a thermal receipt printer over GATT) +
 PN532 RFID/NFC + SSD1309 OLED + littlefs + HTTPS.
 
-ESP-IDF v5.4. No PSRAM. 16 MB flash (GigaDevice "gd"). DIO mode.
+ESP-IDF v5.4.4 (installed via the ESP-IDF Installation Manager, EIM).
+No PSRAM. 16 MB flash (GigaDevice "gd"). DIO mode.
 
 ## Build / flash
 
 The VS Code ESP-IDF extension is the only working build path on the
-maintainer's machine — the shell `export.sh` is broken by a click/python
-3.14 mismatch in the local IDF venv. Don't try `idf.py` from a terminal
-without confirming the venv works first; ask the user to trigger the
-extension's build/flash action instead.
+maintainer's machine — the legacy `export.sh` checkout was broken by a
+click/python 3.14 mismatch in its venv. The project now uses the EIM
+install at `~/.espressif/v5.4.4/` (its own pinned venv), which the
+extension drives. Don't try `idf.py` from a terminal without confirming a
+working venv first; ask the user to trigger the extension's build/flash
+action instead.
 
 Recommended VS Code extensions are pinned in `.vscode/extensions.json`:
 the ESP-IDF extension and Microsoft's C/C++ extension pack (which
@@ -23,16 +26,17 @@ source file" errors. `c_cpp_properties.json` reads
 `build/compile_commands.json` for accurate per-file include resolution,
 so IntelliSense matches the actual build.
 
-`.vscode/settings.json` is committed but mostly generic — `idf.currentSetup`
-reads `${env:IDF_PATH}`, so each developer just needs that one env var
-set in VS Code's environment. On macOS, the simplest one-time setup is
-`launchctl setenv IDF_PATH /path/to/esp-idf` and a VS Code restart; or
-always launch VS Code from a shell where `export.sh` was sourced.
-**Don't paste an absolute home-directory path back into
-`idf.currentSetup`** — the env-var ref is what makes the file portable.
-`idf.port` is the one per-machine value still checked in (single-
-developer convenience); a second developer would need to override it
-in their user-level settings.
+`.vscode/settings.json` is committed and now points the extension straight
+at the EIM install with absolute paths (`idf.espIdfPath`, `idf.toolsPath`,
+`idf.pythonInstallPath`, `idf.currentSetup`), plus `idf.customExtraPaths`
+for Homebrew's `cmake`. We previously used `idf.currentSetup:
+${env:IDF_PATH}`, but that indirection wasn't resolving on the
+maintainer's machine and the extension's toolbar buttons never appeared;
+the explicit paths (mirroring the `noisemonitor` project) fix that. The
+trade-off is that the paths are home-directory-specific — a second
+developer overrides them in their user-level VS Code settings. Source of
+truth for the paths is `~/.espressif/tools/eim_idf.json`. `idf.port` is
+likewise a per-machine value checked in for single-developer convenience.
 
 When changing config, edit `sdkconfig.defaults` (tracked, with comments
 explaining each non-default flag). The generated `sdkconfig` is gitignored

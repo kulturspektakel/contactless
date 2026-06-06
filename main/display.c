@@ -867,6 +867,11 @@ static void main_menu_cb(u8g2_t* u8g2, int i, int x, int y) {
           break;
       }
       break;
+    case MENU_PRINT_CONFIG:
+      // Only reachable when a printer is connected (see main_menu_visible_count).
+      snprintf(label, sizeof(label), "LISTE");
+      snprintf(value, sizeof(value), "drucken");
+      break;
     default:
       return;
   }
@@ -877,10 +882,20 @@ static void main_menu_cb(u8g2_t* u8g2, int i, int x, int y) {
   u8g2_DrawUTF8(u8g2, x + 32, y, value);
 }
 
+int main_menu_visible_count(void) {
+  return printer_status == PRINTER_CONNECTED ? MENU_COUNT : MENU_COUNT - 1;
+}
+
 static void main_menu(u8g2_t* u8g2) {
+  int count = main_menu_visible_count();
+  // A printer disconnect while sitting on the (now hidden) last item would leave
+  // the cursor out of range — clamp it back so the highlight stays on-screen.
+  if (current_state.menu_index > count - 1) {
+    current_state.menu_index = count - 1;
+  }
   keypad_legend(u8g2, true, true);
   scrollable_list(
-      u8g2, main_menu_cb, MENU_COUNT, current_state.menu_index, current_state.menu_index_active
+      u8g2, main_menu_cb, count, current_state.menu_index, current_state.menu_index_active
   );
 }
 

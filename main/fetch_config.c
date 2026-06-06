@@ -12,6 +12,19 @@
 
 #define CONFIG_CHECK_INTERVAL_MS (15 * 60 * 1000)  // 15 minutes
 
+// Upper bound on the config response body. We accumulate ON_DATA chunks into a
+// fixed buffer of this size instead of trusting Content-Length, so chunked
+// (Transfer-Encoding: chunked, Content-Length: -1) responses work too.
+//
+// The live /api/kultcash/lists payload measured ~3.2 KB: 17 product lists
+// (84-388 B each), privilege_tokens already at its 30-entry cap, 0 suspended
+// crew cards. Size scales with the number of product lists (the server sends
+// them all and the firmware keeps the selected one); the two bytes arrays are
+// capped at 30x7 B each. Expected growth is ~7 more lists and crew cards up to
+// 30, which projects to ~6 KB. 16 KB leaves ample headroom even if new lists
+// are far larger than today's; it's a transient alloc freed after each fetch.
+#define MAX_CONFIG_RESPONSE_SIZE 16384
+
 static size_t bytes_written = 0;
 static uint8_t* buffer = NULL;
 static TimerHandle_t periodic_config_timer = NULL;
@@ -23,18 +36,20 @@ esp_err_t _http_event_handler(esp_http_client_event_t* evt) {
       break;
 
     case HTTP_EVENT_ON_DATA:
-      if (esp_http_client_is_chunked_response(evt->client)) {
-        ESP_LOGE(FETCH_CONFIG_TASK, "chunked response is not supported");
-        return ESP_ERR_NOT_SUPPORTED;
+      // Accumulate the body across however many ON_DATA callbacks arrive. This
+      // handles both Content-Length and chunked responses; we don't know the
+      // total size up front for chunked, so guard each append against the cap.
+      if (buffer == NULL) {
+        buffer = pvPortMalloc(MAX_CONFIG_RESPONSE_SIZE);
+        if (buffer == NULL) {
+          ESP_LOGE(FETCH_CONFIG_TASK, "failed to allocate response buffer");
+          return ESP_ERR_NO_MEM;
+        }
       }
 
-      if (esp_http_client_get_content_length(evt->client) > 4096) {
-        ESP_LOGE(FETCH_CONFIG_TASK, "content length too large");
+      if (bytes_written + evt->data_len > MAX_CONFIG_RESPONSE_SIZE) {
+        ESP_LOGE(FETCH_CONFIG_TASK, "response too large (> %d bytes)", MAX_CONFIG_RESPONSE_SIZE);
         return ESP_ERR_INVALID_SIZE;
-      }
-
-      if (bytes_written == 0) {
-        buffer = pvPortMalloc(esp_http_client_get_content_length(evt->client));
       }
       memcpy(buffer + bytes_written, evt->data, evt->data_len);
       bytes_written += evt->data_len;
@@ -57,7 +72,7 @@ static void send_http_request() {
   esp_http_client_config_t config = {
       .host = API_HOST,
       .transport_type = HTTP_TRANSPORT_OVER_SSL,
-      .path = "/$$$/lists",
+      .path = "/api/kultcash/lists",
       .event_handler = _http_event_handler,
       .timeout_ms = 30000,
   };

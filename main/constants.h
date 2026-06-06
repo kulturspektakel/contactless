@@ -9,7 +9,7 @@
 #define NVS_ORDER_COUNTER "order_counter"
 
 #define TZ "CET-1CEST,M3.5.0,M10.5.0/3"
-#define API_HOST "api.kulturspektakel.de"
+#define API_HOST "www.kulturspektakel.de"
 #define DEPOSIT_VALUE 200
 #define MAX_BALANCE 12000
 #define MAX_DEPOSIT 9

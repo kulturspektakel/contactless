@@ -36,21 +36,18 @@
   "idf.openOcdConfigs": ["board/esp32s3-builtin.cfg"],
   "idf.flashType": "UART",
 
-  // Resolved from env var at VS Code startup. Each developer needs
-  // IDF_PATH set in the environment VS Code sees.
-  //
-  //   macOS, launched from Finder/Dock:
-  //     launchctl setenv IDF_PATH /path/to/esp-idf
-  //   …then quit & reopen VS Code.
-  //
-  //   macOS/Linux from a terminal: `source $IDF_PATH/export.sh && code .`
-  //   Windows: use the ESP-IDF extension's "Configure ESP-IDF Extension"
-  //   wizard — it writes user-level settings.
-  //
-  // OPENOCD_SCRIPTS / ESP_ROM_ELF_DIR are only needed for JTAG debugging
-  // and auto-resolve from the IDF tools install in most cases. If JTAG
-  // breaks, add them to your user-level VS Code settings.
-  "idf.currentSetup": "${env:IDF_PATH}",
+  // ESP-IDF v5.4.4, installed via the ESP-IDF Installation Manager (EIM).
+  // These point straight at the EIM install instead of resolving
+  // ${env:IDF_PATH} — that indirection wasn't resolving on the maintainer's
+  // machine, so the extension never activated and its toolbar buttons never
+  // appeared. Paths come from ~/.espressif/tools/eim_idf.json.
+  "idf.espIdfPath": "/Users/danielbuechele/.espressif/v5.4.4/esp-idf",
+  "idf.toolsPath": "/Users/danielbuechele/.espressif/tools",
+  "idf.pythonInstallPath": "/Users/danielbuechele/.espressif/tools/python/v5.4.4/venv/bin/python",
+  // cmake isn't in ~/.espressif/tools/ (only ninja is); add Homebrew's bin so
+  // the extension finds cmake when it spawns the build.
+  "idf.customExtraPaths": "/opt/homebrew/bin",
+  "idf.currentSetup": "/Users/danielbuechele/.espressif/v5.4.4/esp-idf",
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32s3"
   },

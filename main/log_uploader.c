@@ -51,7 +51,7 @@ static log_uploader_event_t upload_file(char* filename) {
   esp_http_client_config_t config = {
       .host = API_HOST,
       .transport_type = HTTP_TRANSPORT_OVER_SSL,
-      .path = "/$$$/log",
+      .path = "/api/kultcash/log",
       .method = HTTP_METHOD_POST,
   };
 

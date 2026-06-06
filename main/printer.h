@@ -11,7 +11,13 @@ typedef enum {
   PRINTER_CONNECTED
 } printer_status_t;
 
+typedef enum {
+  PRINT_JOB_RECEIPT,
+  PRINT_JOB_CONFIG
+} PrintJobType;
+
 typedef struct {
+  PrintJobType type;
   LogMessage_Order_CartItem items[9];
   int item_count;
   LogMessage_Order_PaymentMethod payment_method;
@@ -24,4 +30,5 @@ extern QueueHandle_t print_queue;
 void printer(void* params);
 void init_print_queue(void);
 void submit_print_job(LogMessage_Order_PaymentMethod payment);
+void submit_config_print_job(void);
 void printer_start_scan(int retries);
