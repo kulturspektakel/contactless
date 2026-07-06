@@ -565,17 +565,18 @@ static void card_balance(u8g2_t* u8g2) {
 static void charge_without_card(u8g2_t* u8g2) {
   u8g2_SetFont(u8g2, u8g2_font_profont11_tf);
   char label[13];
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < 2; i++) {
     switch (i) {
       case 0:
-        strncpy(label, "Intern", sizeof(label));
+        strncpy(label, "Gutschein", sizeof(label));
         break;
       case 1:
         strncpy(label, "Barzahlung", sizeof(label));
         break;
-      case 2:
-        strncpy(label, "Gutschein", sizeof(label));
-        break;
+      // "Intern" (FREE_CREW) disabled for now
+      // case 2:
+      //   strncpy(label, "Intern", sizeof(label));
+      //   break;
     }
     u8g2_DrawRFrame(u8g2, 0, 9 + (i * 15), 13, 13, 2);
     char number[2];
@@ -1008,7 +1009,7 @@ static void write_failed(u8g2_t* u8g2) {
   if (!write_failed_timer_started) {
     if (write_failed_timer == NULL) {
       write_failed_timer =
-          xTimerCreate("write_failed_timer", pdMS_TO_TICKS(800), pdFALSE, NULL, write_failed_timer_cb);
+          xTimerCreate("write_failed_timer", pdMS_TO_TICKS(1750), pdFALSE, NULL, write_failed_timer_cb);
     }
     xTimerReset(write_failed_timer, 0);
     write_failed_timer_started = true;

@@ -361,8 +361,9 @@ static mode_type card_detected(event_t event) {
   } else if (current_state.mode == PRIVILEGED_TOPUP) {
     new_balance += current_total();
     new_deposit -= current_state.cart.deposit;
-  } else if (current_state.mode == PRIVILEGED_CASHOUT ||
-             current_state.mode == PRIVILEGED_DONATION) {
+  } else if (
+      current_state.mode == PRIVILEGED_CASHOUT || current_state.mode == PRIVILEGED_DONATION
+  ) {
     new_balance = 0;
     new_deposit = 0;
   } else if (current_state.mode == PRIVILEGED_REPAIR) {
@@ -422,8 +423,10 @@ static mode_type product_list(event_t event) {
         if (current_state.product_selection.current_index > 0) {
           current_state.product_selection.current_index--;
         }
-      } else if (current_state.product_selection.first_digit > -1 &&
-                 current_state.product_selection.second_digit == -1) {
+      } else if (
+          current_state.product_selection.first_digit > -1 &&
+          current_state.product_selection.second_digit == -1
+      ) {
         int no = current_state.product_selection.first_digit * 10 + event - KEY_0;
         if (no > active_config.products_count || no < 1) {
           break;
@@ -461,13 +464,14 @@ static mode_type charge_without_card(event_t event) {
   switch (event) {
     case KEY_1:
       current_card = (ultralight_card_info_t){0};
-      return charge_without_card_was_successful(LogMessage_Order_PaymentMethod_FREE_CREW);
+      return charge_without_card_was_successful(LogMessage_Order_PaymentMethod_VOUCHER);
     case KEY_2:
       current_card = (ultralight_card_info_t){0};
       return charge_without_card_was_successful(LogMessage_Order_PaymentMethod_CASH);
-    case KEY_3:
-      current_card = (ultralight_card_info_t){0};
-      return charge_without_card_was_successful(LogMessage_Order_PaymentMethod_VOUCHER);
+    // FREE_CREW ("Intern") disabled for now — only voucher + cash offered
+    // case KEY_3:
+    //   current_card = (ultralight_card_info_t){0};
+    //   return charge_without_card_was_successful(LogMessage_Order_PaymentMethod_FREE_CREW);
 
     case KEY_STAR:
     case KEY_C:

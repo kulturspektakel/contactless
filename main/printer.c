@@ -7,6 +7,7 @@
 #include "freertos/semphr.h"
 #include "freertos/timers.h"
 #include "network_request.h"
+#include "host/ble_att.h"
 #include "host/ble_gap.h"
 #include "host/ble_gatt.h"
 #include "host/ble_hs.h"
@@ -30,6 +31,12 @@ typedef enum {
 #define STARTUP_RETRY_INTERVAL_MS (15 * 1000)
 #define MAX_STARTUP_RETRIES 5
 #define SCAN_DURATION_MS 5000
+
+// Print pacing (tunable). After each BLE write we wait so the thermal head can
+// drain its buffer; paper-feed newlines cost the most, so they're weighted.
+// Conservative starting values — lower them if printing feels too slow.
+#define PRINTER_PACE_BASE_MS 8
+#define PRINTER_PACE_LINE_MS 45
 
 // BLE operation state machine — callbacks set _REQUESTED states,
 // printer task transitions to _ING after taking semaphore,
@@ -124,17 +131,14 @@ static int write_done_cb(
   return 0;
 }
 
-// Issue one GATT write (Write Request) and block until the peer acknowledges it
-// before returning. This is the flow control the printer needs: ATT allows only
-// one outstanding request per connection, so firing writes back-to-back (the
-// old fixed-vTaskDelay approach) dropped commands/characters whenever a prior
-// write hadn't completed yet — especially under WiFi+BT coex. Returns false if
-// the write can't be initiated, times out, or the peer reports an error.
-static bool printer_write(const uint8_t* data, uint16_t len) {
-  if (printer_status != PRINTER_CONNECTED || write_char_handle == 0) {
-    return false;
-  }
-
+// Issue one GATT write (Write Request) of at most ATT_MTU-3 bytes and block
+// until the peer acknowledges it. This is the BLE flow control the printer
+// needs: ATT allows only one outstanding request per connection, so firing
+// writes back-to-back (the old fixed-vTaskDelay approach) dropped data whenever
+// a prior write hadn't completed yet — especially under WiFi+BT coex. Returns
+// false if the write can't be initiated, times out, or the peer reports an
+// error.
+static bool ble_write_blocking(const uint8_t* data, uint16_t len) {
   for (int attempt = 0; attempt < 3; attempt++) {
     xSemaphoreTake(write_sem, 0);  // drain any stale completion before issuing
     int rc = ble_gattc_write_flat(conn_handle, write_char_handle, data, len, write_done_cb, NULL);
@@ -154,6 +158,45 @@ static bool printer_write(const uint8_t* data, uint16_t len) {
   return false;
 }
 
+static void printer_pace(const uint8_t* data, uint16_t len) {
+  // Pace to the print mechanism. Write-with-response only confirms the printer's
+  // RADIO buffered the bytes, not that the head printed them; the module ACKs
+  // faster than it prints, so without this its buffer overruns and drops
+  // characters. Line feeds (paper advance) dominate the time, so weight them.
+  int newlines = 0;
+  for (uint16_t i = 0; i < len; i++) {
+    if (data[i] == '\n') {
+      newlines++;
+    }
+  }
+  vTaskDelay(pdMS_TO_TICKS(PRINTER_PACE_BASE_MS + newlines * PRINTER_PACE_LINE_MS));
+}
+
+// Send an arbitrary byte run to the printer, fragmenting to the negotiated ATT
+// MTU (a plain Write Request is not auto-fragmented, so an over-MTU write just
+// fails) and pacing each chunk to the print head.
+static bool printer_write(const uint8_t* data, uint16_t len) {
+  if (printer_status != PRINTER_CONNECTED || write_char_handle == 0) {
+    return false;
+  }
+
+  // ble_att_mtu() is >= 23 (the BLE minimum) for a live connection; the guard
+  // only catches a 0 from a connection that dropped between here and the check.
+  uint16_t mtu = ble_att_mtu(conn_handle);
+  uint16_t chunk = mtu > 3 ? mtu - 3 : 20;
+
+  for (uint16_t off = 0; off < len;) {
+    uint16_t remaining = len - off;
+    uint16_t n = remaining < chunk ? remaining : chunk;
+    if (!ble_write_blocking(data + off, n)) {
+      return false;
+    }
+    printer_pace(data + off, n);
+    off += n;
+  }
+  return true;
+}
+
 static void print_string(const char* str) {
   printer_write((const uint8_t*)str, strlen(str));
 }
@@ -164,9 +207,9 @@ static void print_line(const char* text, FontSize size) {
   uint8_t scale = (uint8_t)size;
 
   // Assemble the whole line — position + font-size command, text, newline,
-  // font reset — into one ATT write. Fewer round trips than separate writes,
-  // and the printer consumes it as a single ESC/POS byte stream. Max content is
-  // 4 + 3 + 32 + 1 + 3 = 43 bytes, well under the negotiated MTU.
+  // font reset — into one buffer so the printer consumes it as a single ESC/POS
+  // byte stream. Max content is 4 + 3 + 32 + 1 + 3 = 43 bytes; printer_write()
+  // fragments it to the ATT MTU if needed.
   uint8_t buf[64];
   int n = 0;
   buf[n++] = 0x1B; buf[n++] = 0x24; buf[n++] = 0x00; buf[n++] = 0x00;  // ESC $ : column 0
@@ -224,7 +267,6 @@ static void print_receipt(PrintJob* job) {
   if (printer_status != PRINTER_CONNECTED || write_char_handle == 0) {
     return;
   }
-
   // ESC @ - Initialize printer, then let it settle after the reset.
   uint8_t init_cmd[] = {0x1B, 0x40};
   printer_write(init_cmd, sizeof(init_cmd));
@@ -334,7 +376,6 @@ static void print_config(void) {
   if (printer_status != PRINTER_CONNECTED || write_char_handle == 0) {
     return;
   }
-
   // ESC @ - Initialize printer, then let it settle after the reset.
   uint8_t init_cmd[] = {0x1B, 0x40};
   printer_write(init_cmd, sizeof(init_cmd));
@@ -377,6 +418,9 @@ static void process_print_queue(void) {
   PrintJob* job = NULL;
   if (xQueueReceive(print_queue, &job, 0) == pdTRUE && job != NULL) {
     if (printer_status == PRINTER_CONNECTED && write_char_handle != 0) {
+      // Logged here (printer-task context) rather than in the connect callback,
+      // where logging isn't crash-safe. MTU drives the write chunk size.
+      ESP_LOGI(PRINTER_TASK, "printing, ATT MTU=%d", ble_att_mtu(conn_handle));
       if (job->type == PRINT_JOB_CONFIG) {
         print_config();
       } else {
@@ -576,6 +620,10 @@ static int gap_event_cb(struct ble_gap_event* event, void* arg) {
         if (reconnect_timer) {
           xTimerStop(reconnect_timer, 0);
         }
+        // Raise the ATT MTU so a print line goes in one write. NimBLE's central
+        // does not auto-exchange; left at the 23-byte default, any write >20 B
+        // fails (a Write Request isn't fragmented) and the line is dropped.
+        ble_gattc_exchange_mtu(conn_handle, NULL, NULL);
         ble_gattc_disc_svc_by_uuid(conn_handle, &printer_service_uuid.u, gatt_svc_disc_cb, NULL);
       } else {
         printer_status = PRINTER_DISCONNECTED;
