@@ -100,7 +100,8 @@ static void IRAM_ATTR gpio_interrupt_handler(void* args) {
 }
 
 static void voltage_update_timer_callback(TimerHandle_t xTimer) {
-  gpio_interrupt_handler(NULL);
+  // runs in the timer-service task, not an ISR, so use the non-ISR notify
+  xTaskNotifyGive(xTaskGetHandle(POWER_MANAGEMENT_TASK));
 }
 
 static void ledc_init() {
@@ -255,10 +256,11 @@ void power_management(void* params) {
   voltage_update_timer = xTimerCreate(
       "voltage_update_timer",
       pdMS_TO_TICKS(UPDATE_INTERVAL),
-      pdFALSE,
+      pdTRUE,
       0,
       voltage_update_timer_callback
   );
+  xTimerStart(voltage_update_timer, 0);
 
   // notify for initial reading
   xTaskNotifyGive(xTaskGetCurrentTaskHandle());
