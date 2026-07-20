@@ -544,15 +544,30 @@ static mode_type write_not_attemted(event_t event) {
   return WRITE_NOT_ATTEMPTED;
 }
 
+static mode_type initialize_card(event_t event);
+
 static mode_type write_failed(event_t event) {
   switch (event) {
     case CARD_DETECTED_OK:
     case CARD_DETECTED_SKIPPED_SECURITY:
     case CARD_DETECTED_INVALID:
     case CARD_DETECTED_NOT_READABLE:
+    case CARD_DETECTED_UNINITIALIZED:
+      // if we failed while enrolling, resume the init flow on the re-presented
+      // card (initialize_card rebuilds data_to_write and routes back to
+      // WRITE_CARD_INITIALIZE, or to READ_FAILED for a genuinely bad card)
+      if (current_state.menu_index_active == MENU_INITIALIZE_CARD) {
+        return initialize_card(event);
+      }
       if (memcmp(&current_card.id, &current_state.data_to_write.id, LENGTH_ID) == 0) {
         // same card detected, retry writing
         return WRITE_CARD;
+      }
+      break;
+    case CARD_REMOVED:
+      // stay in the init loop rather than pinning on the error screen
+      if (current_state.menu_index_active == MENU_INITIALIZE_CARD) {
+        return INITIALIZE_CARD;
       }
       break;
     case KEY_D:
@@ -878,6 +893,11 @@ static mode_type read_failed(event_t event) {
     case CARD_DETECTED_OLD_CARD:
       return card_detected(event);
     case CARD_REMOVED:
+      // if we failed while enrolling, stay in the init loop instead of dropping
+      // the operator back to the default (charge/topup) mode
+      if (current_state.menu_index_active == MENU_INITIALIZE_CARD) {
+        return INITIALIZE_CARD;
+      }
       return default_mode();
     default:
       return READ_FAILED;
