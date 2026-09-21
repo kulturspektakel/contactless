@@ -54,7 +54,10 @@ ultralight_card_info_t current_card = {0};
 #define SIGNATURE_INPUT_LENGTH \
   LENGTH_ID + LENGTH_COUNTER + LENGTH_DEPOSIT + LENGTH_BALANCE + SALT_LENGTH
 
-static void calculate_signature_ultralight(uint8_t* target, ultralight_card_info_t* card) {
+static void calculate_signature_ultralight(
+    uint8_t target[LENGTH_SIGNATURE],
+    ultralight_card_info_t* card
+) {
   char hash_input[SIGNATURE_INPUT_LENGTH] = {0};
   memcpy(hash_input, &card->id, LENGTH_ID);
   if (card->type == REGULAR) {
@@ -65,7 +68,9 @@ static void calculate_signature_ultralight(uint8_t* target, ultralight_card_info
     memcpy(hash_input + OFFSET_VALID_UNTIL, &card->data.crew.valid_until, LENGTH_VALID_UNTIL);
   }
   memcpy(hash_input + OFFSET_SIGNATURE, SALT, SALT_LENGTH);
-  create_sha1_hash(hash_input, SIGNATURE_INPUT_LENGTH, target);
+  uint8_t hash[20];
+  create_sha1_hash(hash_input, SIGNATURE_INPUT_LENGTH, hash);
+  memcpy(target, hash, LENGTH_SIGNATURE);
 }
 
 static int mbedtls_base64_encode_url_safe(
@@ -202,7 +207,7 @@ static event_t read_card(byte_array_t* uid) {
   }
 
   // verify signature
-  uint8_t hash[20];
+  uint8_t hash[LENGTH_SIGNATURE];
   calculate_signature_ultralight(hash, &new_card);
   if (memcmp(hash, new_card.signature, LENGTH_SIGNATURE) != 0) {
     ESP_LOGE(RFID_TASK, "Signature mismatch: hash != signature");

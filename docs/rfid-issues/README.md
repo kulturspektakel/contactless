@@ -1,6 +1,6 @@
 # RFID write and recovery issues
 
-These documents record the investigation into cards becoming unusable during normal payments. They describe proposed fixes; no firmware changes or hardware fault-injection tests were performed as part of this investigation.
+These documents record the investigation into cards becoming unusable during normal payments and the subsequent fixes. The original investigation was read-only; implementation status is recorded below and in each resolved issue. Hardware fault-injection testing has not been performed.
 
 Source links refer to the code inspected during the investigation. Function names remain the useful reference if line numbers move. A confirmed defect does not establish that it caused a particular field incident.
 
@@ -18,7 +18,7 @@ Priorities are for the reported normal-payment failures: **P0** means fix first 
 
 | Order | Priority | Issue | Why this order / effect of re-presentation |
 | --- | --- | --- | --- |
-| 1 | P0 | [01: Signature buffer overflow](01-signature-buffer-overflow.md) | Every attempt, including re-presentation, repeats a 15-byte overrun. Establish memory safety first. |
+| 1 | P0, fixed | [01: Signature buffer overflow](01-signature-buffer-overflow.md) | The signature helper now calculates into a full digest buffer and copies only five bytes to its caller, protecting payload generation and retries. |
 | 2 | P1 | [03: PN532 operation results](03-pn532-operation-results.md) | Reliable operation outcomes and response validation are prerequisites for trustworthy recovery. Transient failures may otherwise recover, but the driver defects remain. |
 | 3 | P1 | [04: Counter reads and retries](04-counter-read-and-retry-errors.md) | Fix ignored/false-zero reads and duplicate increments. Once hardware exceeds the saved target, further re-presentations cannot complete it. Depends on 03. |
 | 4 | P1 | [05: Stale transaction retries](05-stale-transaction-retries.md) | Validate the saved transaction against fresh state before mutation, preserving ordinary retry while rejecting changes made elsewhere. Shares the pre-write checks from 04. |
@@ -28,6 +28,6 @@ Priorities are for the reported normal-payment failures: **P0** means fix first 
 | 8 | P2 | [06: Repair rejects damaged payloads](06-repair-rejects-damaged-payloads.md) | Add trusted privileged recovery when pending transaction context is unavailable. Invalid monetary values alone do not block the existing same-terminal retry. Coordinate with 02. |
 | 9 | P2, conditional | [09: Permanent authentication lockout](09-permanent-authentication-lockout.md) | Re-presentation cannot unlock a locked card and can repeat incorrect credentials. Promote to P1 if actual authentication failures are observed; ordinary payload inconsistency does not establish this cause. |
 
-If a card is re-presented immediately on the same terminal and still never recovers, investigate 01, 03, and 04 first, then establish whether another operation changed the card as in 05. Simple interruption alone is not sufficient to explain persistent failure under otherwise healthy recovery conditions.
+For firmware without the issue 01 fix, the first suspects remain 01, 03, and 04. After deploying that fix, prioritize 03 and 04 for immediate re-presentation failures, then establish whether another operation changed the card as in 05. Simple interruption alone is not sufficient to explain persistent failure under otherwise healthy recovery conditions.
 
 Validate the existing same-terminal recovery path before treating a journal or card-format redesign as necessary for it. Durable transaction records or a new format address additional guarantees after pending state is lost or unavailable; they are not prerequisites for the recovery the current code already attempts.
