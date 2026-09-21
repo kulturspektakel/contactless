@@ -994,9 +994,10 @@ static bool mfu_read_counter_value(uint8_t counter, uint32_t* value) {
   return true;
 }
 
-bool mfu_increment_counter(uint8_t counter, uint8_t value) {
+bool mfu_increment_counter(uint8_t counter, uint8_t value, uint32_t expected_value) {
   uint32_t before;
-  if (!mfu_read_counter_value(counter, &before) || before + value > 0xFFFFFF) {
+  if (!mfu_read_counter_value(counter, &before) || before != expected_value ||
+      before + value > 0xFFFFFF) {
     return false;
   }
   if (value == 0) {
@@ -1025,10 +1026,10 @@ bool mfu_increment_counter(uint8_t counter, uint8_t value) {
 
 bool mfu_read_counter(uint8_t counter, uint16_t* value) {
   uint32_t counter_value;
-  if (!mfu_read_counter_value(counter, &counter_value)) {
+  if (!mfu_read_counter_value(counter, &counter_value) || counter_value > UINT16_MAX) {
     return false;
   }
-  // The application/card format is still 16-bit (tracked separately in issue 08).
+  // Never alias an out-of-format physical counter to a valid 16-bit baseline.
   *value = (uint16_t)counter_value;
   return true;
 }

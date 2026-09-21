@@ -18,8 +18,18 @@ I²C failures, rejected operations, invalid frames, and recovery exchanges.
 
 Cases verify output preservation, full 24-bit increment readback, CRC-error
 handling for the tag's four-bit ACK, no automatic increment replay, and the
-abort/firmware-response barrier before later commands. Every case fails on an
-unexpected command, including an unintended extra write or increment.
+abort/firmware-response barrier before later commands. The expected-counter
+guard rejects advanced, behind, or high-byte-mismatched physical baselines before
+`INCR_CNT`, including a stale caller retry after a lost successful result.
+Zero-delta requests still require an exact baseline match, failed fresh reads
+prevent increment commands, and readback must equal the expected value plus
+the requested delta. Every case fails on an unexpected command, including an
+unintended extra write or increment.
+
+The application's 16-bit counter read accepts its maximum representable value
+and rejects larger physical values without changing the caller's output,
+including a 24-bit value whose low bytes alias a small valid counter. Increment
+fixtures retain their original full 24-bit baselines and carry/readback cases.
 
 Startup, firmware, SAM configuration, deselection, one/two-target polling,
 four/seven-byte UID selection, and legacy Mifare Classic read/write fixtures

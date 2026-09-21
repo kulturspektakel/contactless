@@ -197,8 +197,10 @@ bool mfc_write_ndef_uri(uint8_t sector_num, uint8_t uri_identifier, const char* 
 // Mifare Ultralight functions
 bool mfu_read_page(uint8_t page, uint8_t* buffer, uint8_t buffer_size);
 bool mfu_write_page(uint8_t page, uint8_t* data);
-// Confirms the requested delta by read-back; does not reconcile a transaction target.
-bool mfu_increment_counter(uint8_t counter, uint8_t value);
+// Refuses a changed physical counter, then confirms expected_value + value by read-back.
+// Failure can still mean the increment completed; reconcile before retrying.
+bool mfu_increment_counter(uint8_t counter, uint8_t value, uint32_t expected_value);
+// Rejects physical counters that cannot be represented in the current card format.
 bool mfu_read_counter(uint8_t counter, uint16_t* value);
 
 // NTAG2xx functions

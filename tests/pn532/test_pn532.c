@@ -466,6 +466,22 @@ static void test_read_outputs(void) {
   require(mfu_read_counter(0, &counter) && counter == 0x1234, "counter decoded incorrectly");
   finish_case();
 
+  begin_case("largest representable application counter is accepted");
+  expect_counter(UINT16_MAX);
+  require(mfu_read_counter(0, &counter) && counter == UINT16_MAX,
+          "representable counter boundary rejected");
+  finish_case();
+
+  static const uint32_t unrepresentable_counters[] = {0x010000, 0x010002, 0xFFFFFF};
+  for (size_t i = 0; i < sizeof(unrepresentable_counters) / sizeof(unrepresentable_counters[0]); i++) {
+    begin_case("out-of-format counter cannot alias a valid application value");
+    counter = 0xBEEF;
+    expect_counter(unrepresentable_counters[i]);
+    require(!mfu_read_counter(0, &counter) && counter == 0xBEEF,
+            "out-of-format counter accepted or changed caller output");
+    finish_case();
+  }
+
   begin_case("failed counter read cannot invent zero");
   counter = 0xBEEF;
   expect_counter(0x1234)->error = ESP_FAIL;
@@ -507,7 +523,7 @@ static void test_counter_increment(void) {
   expect_counter(0x123456);
   expect_increment_result(0, 0x0A);
   expect_counter(0x123457);
-  require(mfu_increment_counter(0, 1), "verified increment rejected");
+  require(mfu_increment_counter(0, 1, 0x123456), "verified increment rejected");
   require(i2c_writes == 3, "increment command repeated");
   finish_case();
 
@@ -515,61 +531,61 @@ static void test_counter_increment(void) {
   expect_counter(0x00FFFF);
   expect_increment_result(0, 0x0A);
   expect_counter(0x010000);
-  require(mfu_increment_counter(0, 1), "24-bit counter carry was truncated");
+  require(mfu_increment_counter(0, 1, 0x00FFFF), "24-bit counter carry was truncated");
   finish_case();
 
   begin_case("matching low counter bytes cannot hide an unexpected high byte");
   expect_counter(0x013456);
   expect_increment_result(0, 0x0A);
   expect_counter(0x023457);
-  require(!mfu_increment_counter(0, 1), "counter verification ignored the high byte");
+  require(!mfu_increment_counter(0, 1, 0x013456), "counter verification ignored the high byte");
   finish_case();
 
   begin_case("CRC status on four-bit ACK resolved by counter readback");
   expect_counter(2);
   expect_increment_result(2, -1);
   expect_counter(3);
-  require(mfu_increment_counter(0, 1), "verified CRC-error increment rejected");
+  require(mfu_increment_counter(0, 1, 2), "verified CRC-error increment rejected");
   finish_case();
 
   begin_case("status-only increment result still requires readback");
   expect_counter(2);
   expect_increment_result(0, -1);
   expect_counter(3);
-  require(mfu_increment_counter(0, 1), "verified status-only increment rejected");
+  require(mfu_increment_counter(0, 1, 2), "verified status-only increment rejected");
   finish_case();
 
   begin_case("CRC status does not prove increment success");
   expect_counter(2);
   expect_increment_result(2, -1);
   expect_counter(2);
-  require(!mfu_increment_counter(0, 1), "unchanged counter accepted as increment");
+  require(!mfu_increment_counter(0, 1, 2), "unchanged counter accepted as increment");
   require(i2c_writes == 3, "unconfirmed increment replayed");
   finish_case();
 
   begin_case("tag NAK is not successful increment");
   expect_counter(2);
   expect_increment_result(0, 4);
-  require(!mfu_increment_counter(0, 1), "counter NAK accepted");
+  require(!mfu_increment_counter(0, 1, 2), "counter NAK accepted");
   finish_case();
 
   begin_case("increment RF timeout is not success or automatic replay");
   expect_counter(2);
   expect_increment_result(1, -1);
-  require(!mfu_increment_counter(0, 1), "increment RF timeout accepted");
+  require(!mfu_increment_counter(0, 1, 2), "increment RF timeout accepted");
   require(i2c_writes == 2, "increment replayed after RF timeout");
   finish_case();
 
   begin_case("failed baseline read prevents any increment");
   expect_counter(2)->error = ESP_FAIL;
-  require(!mfu_increment_counter(0, 1), "failed baseline accepted");
+  require(!mfu_increment_counter(0, 1, 2), "failed baseline accepted");
   require(i2c_writes == 1, "increment sent without valid baseline");
   finish_case();
 
   begin_case("lost increment result is not automatically replayed");
   expect_counter(2);
   expect_increment_result(0, 0x0A)->error = ESP_FAIL;
-  require(!mfu_increment_counter(0, 1), "lost increment result accepted");
+  require(!mfu_increment_counter(0, 1, 2), "lost increment result accepted");
   require(i2c_writes == 2 && pn532_needs_resync, "lost increment replayed or uncertainty forgotten");
   finish_case();
 
@@ -577,20 +593,62 @@ static void test_counter_increment(void) {
   expect_counter(2);
   expect_increment_result(0, 0x0A);
   expect_counter(3)->error = ESP_FAIL;
-  require(!mfu_increment_counter(0, 1), "failed readback accepted");
+  require(!mfu_increment_counter(0, 1, 2), "failed readback accepted");
   require(i2c_writes == 3, "increment repeated after failed readback");
   finish_case();
 
   begin_case("zero increment sends no modifying command");
   expect_counter(3);
-  require(mfu_increment_counter(0, 0), "zero increment rejected");
+  require(mfu_increment_counter(0, 0, 3), "zero increment rejected");
   require(i2c_writes == 1, "zero increment sent an unnecessary modifying command");
   finish_case();
 
   begin_case("24-bit overflow prevented before increment");
   expect_counter(0xFFFFFF);
-  require(!mfu_increment_counter(0, 1), "overflowing increment accepted");
+  require(!mfu_increment_counter(0, 1, 0xFFFFFF), "overflowing increment accepted");
   require(i2c_writes == 1, "overflowing increment sent to card");
+  finish_case();
+}
+
+static void test_expected_counter_guard(void) {
+  static const struct {
+    const char *name;
+    uint32_t physical;
+  } changed_counters[] = {
+      {"advanced counter prevents a repeated increment", 3},
+      {"counter behind expected baseline prevents increment", 1},
+      {"matching low bytes cannot hide changed physical baseline", 0x010002},
+  };
+  for (size_t i = 0; i < sizeof(changed_counters) / sizeof(changed_counters[0]); i++) {
+    begin_case(changed_counters[i].name);
+    expect_counter(changed_counters[i].physical);
+    require(!mfu_increment_counter(0, 1, 2), "unexpected physical baseline accepted");
+    require(i2c_writes == 1, "changed baseline allowed an increment command");
+    finish_case();
+  }
+
+  begin_case("zero delta still requires the exact expected physical counter");
+  expect_counter(4);
+  require(!mfu_increment_counter(0, 0, 3), "zero delta accepted a changed counter");
+  require(i2c_writes == 1, "zero delta unexpectedly modified card");
+  finish_case();
+
+  begin_case("readback must equal expected baseline plus requested increment");
+  expect_counter(2);
+  expect_increment_result(0, 0x0A);
+  expect_counter(4);
+  require(!mfu_increment_counter(0, 1, 2), "overshot target accepted as increment success");
+  require(i2c_writes == 3, "unexpected readback triggered automatic increment replay");
+  finish_case();
+
+  begin_case("lost increment outcome cannot be replayed with stale expected baseline");
+  expect_counter(2);
+  expect_increment_result(0, 0x0A)->error = ESP_FAIL;
+  require(!mfu_increment_counter(0, 1, 2), "lost increment result accepted");
+  expect_barrier();
+  expect_counter(3);
+  require(!mfu_increment_counter(0, 1, 2), "stale caller baseline caused a second increment");
+  require(i2c_writes == 5, "recovery replayed the already completed increment");
   finish_case();
 }
 
@@ -783,6 +841,7 @@ int main(void) {
   test_irq_readiness();
   test_read_outputs();
   test_counter_increment();
+  test_expected_counter_guard();
   test_resynchronization();
   test_startup_and_selection();
   test_deselect_and_autopoll();

@@ -3,8 +3,8 @@
 ## Status
 
 Implemented in the driver. Host fault-injection tests pass; physical reader/card
-validation is still required. The application-level counter retry defect in
-[issue 04](04-counter-read-and-retry-errors.md) remains open.
+validation is still required. The application-level counter retry safeguards in
+[issue 04](04-counter-read-and-retry-errors.md) have since been implemented too.
 
 ## Defect
 
@@ -78,15 +78,15 @@ An explicit NAK, another error, or a missing/malformed response returns failure.
 See the [Ultralight EV1 datasheet](https://www.nxp.com/docs/en/data-sheet/MF0ULX1.pdf)
 and [NXP's explanation of raw commands with short ACKs](https://community.nxp.com/t5/NFC/NTAG-I-C-Sector-Select-on-PN532/td-p/505506).
 
-The existing boolean API is retained: `true` means confirmed success; `false`
+The boolean result contract is retained: `true` means confirmed success; `false`
 includes both rejection and unknown outcome. It must never be interpreted as
-proof that retrying a mutation is safe. The driver verifies the **requested
-delta**, not the application's immutable transaction target. If the application
-ignores a failed counter refresh and requests the wrong delta, the driver can
-still execute it correctly and overshoot that target. Reconciliation and
-pre-mutation checks remain [issue 04](04-counter-read-and-retry-errors.md) and
-[issue 05](05-stale-transaction-retries.md); the 16-bit application format remains
-[issue 08](08-counter-overflow.md).
+proof that retrying a mutation is safe. Issue 03 alone verified the requested
+delta without knowing the transaction target. [Issue 04](04-counter-read-and-retry-errors.md)
+now validates fresh counters against the saved transaction before mutation and
+passes an expected physical value to the increment helper, preventing silent
+rebasing between preflight and increment. Same-counter payload reconciliation
+remains [issue 05](05-stale-transaction-retries.md); the 16-bit application format
+remains [issue 08](08-counter-overflow.md).
 
 ## Verification
 
@@ -99,8 +99,8 @@ increment after losing its result. ESP32-S3 compilation of `pn532.c` also passes
 
 Hardware validation remains outstanding: capture PN532 traffic, verify the
 four-bit counter ACK behavior and resynchronization timing, and remove cards
-during writes. These host tests do not exercise the application state machine
-or prove that its issue 04 retry path is safe.
+during writes. These driver tests do not exercise the application state machine;
+issue 04 adds separate host tests of the RFID writer and retry loop.
 
 Also verify re-presentation on hardware: missed readback after a completed write
 leaves physical counter equal to target, requiring zero increment and no second
