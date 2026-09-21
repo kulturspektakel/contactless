@@ -149,9 +149,12 @@
 // Initialize the I2C the the reset/IRQ pint
 bool pn532_init(uint8_t sda, uint8_t scl, uint8_t reset, uint8_t irq, i2c_port_t i2c_port_number);
 
+// Driver ownership is single-task (the RFID task); calls are not reentrant.
+// A failed write may already have changed the card. Reconcile before retrying.
 // Generic PN532 functions
 bool pn532_sam_configuration(void);
 uint32_t pn532_get_firmware_version(void);
+// Low-level command receipt only, not operation completion.
 bool pn532_send_cmd_check_ack(uint8_t* cmd, uint8_t cmdlen, uint16_t timeout);
 bool pn532_write_gpio(uint8_t pinstate);
 uint8_t pn532_read_gpio(void);
@@ -194,6 +197,7 @@ bool mfc_write_ndef_uri(uint8_t sector_num, uint8_t uri_identifier, const char* 
 // Mifare Ultralight functions
 bool mfu_read_page(uint8_t page, uint8_t* buffer, uint8_t buffer_size);
 bool mfu_write_page(uint8_t page, uint8_t* data);
+// Confirms the requested delta by read-back; does not reconcile a transaction target.
 bool mfu_increment_counter(uint8_t counter, uint8_t value);
 bool mfu_read_counter(uint8_t counter, uint16_t* value);
 

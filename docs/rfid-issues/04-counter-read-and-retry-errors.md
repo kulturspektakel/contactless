@@ -1,11 +1,21 @@
 # Failed counter reads can cause extra increments or destructive retries
 
+## Status after issue 03
+
+Still open. The [driver fix](03-pn532-operation-results.md) removes the false-zero
+success path described below: failed reads now return `false` without changing
+the output. However, the application still ignores that return and can use a
+stale counter. The driver's new before/after check confirms the requested delta,
+not the transaction target: if a completed increment and failed refresh leave
+cached N, the application can request another increment of one; the driver can
+correctly confirm N+1 to N+2 while the saved target is only N+1.
+
 ## Defect
 
-[`pn532_read_data()`](../../main/pn532.c#L269) clears the caller's buffer before
-performing I²C and returns `false` when I²C fails.
-[`mfu_read_counter()`](../../main/pn532.c#L1302) ignores that return value,
-accepts the cleared status byte as success, and outputs counter zero.
+Before issue 03 was fixed, `pn532_read_data()` cleared the caller's buffer before
+performing I²C and returned `false` when I²C failed. `mfu_read_counter()` ignored
+that return value, accepted the cleared status byte as success, and output
+counter zero.
 
 The [retry loop](../../main/rfid.c#L523) also ignores counter-read failure,
 allowing a stale counter to persist. [`write_card()`](../../main/rfid.c#L314)
@@ -13,7 +23,8 @@ overwrites payload pages before rejecting counter differences outside 0–3.
 
 ## Failure scenario
 
-Consider a card with physical counter 2 and a pending transaction targeting 3:
+The original false-zero scenario (before the driver fix) involved a card with
+physical counter 2 and a pending transaction targeting 3:
 
 1. The first attempt writes the payload and increments to 3, but verification
    fails.
@@ -73,6 +84,7 @@ preserve those results.
 
 ## Confidence and impact
 
-The ignored returns, false-zero path, and validation ordering are definite.
-They can produce persistent counter/payload disagreement requiring repair;
-they do not establish irreversible physical card damage.
+The original false-zero path was definite and is now fixed in the driver. The
+ignored application returns and validation ordering remain. They can produce
+persistent counter/payload disagreement requiring repair; they do not establish
+irreversible physical card damage.
