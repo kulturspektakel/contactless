@@ -24,6 +24,8 @@ static uint64_t failed_counter_reads, failed_page_reads, failed_page_writes;
 static bool fail_authentication, lost_increment_reply;
 static bool fail_reselection, change_pending_on_failed_write, change_counter_after_pages;
 static bool substitute_counter_readback;
+static bool fail_verification_read;
+static bool force_signature_collision;
 static uint8_t selected_uid_length;
 static uint8_t increment_values[16];
 static uint8_t written_pages[64];
@@ -47,6 +49,10 @@ static bool fails(uint64_t mask, unsigned call) {
 
 /* A deterministic hash seam: signature/password plumbing is real, SHA-1 is not. */
 void create_sha1_hash(const char *input, size_t length, uint8_t *output) {
+  if (force_signature_collision) {
+    memset(output, 0x5A, 20);
+    return;
+  }
   uint32_t hash = UINT32_C(2166136261);
   for (size_t i = 0; i < length; ++i) {
     hash = (hash ^ (uint8_t)input[i]) * UINT32_C(16777619);
@@ -130,7 +136,12 @@ bool mfu_read_page(uint8_t page, uint8_t *buffer, uint8_t size) {
   CHECK(size <= 16 && (size_t)page * 4 + size <= sizeof(tag_pages));
   ++page_reads;
   if (fails(failed_page_reads, page_reads)) return false;
-  if (substitute_counter_readback && page_reads == 3) {
+  if (fail_verification_read && increments > 0 && page == 8) {
+    fail_verification_read = false;
+    return false;
+  }
+  if (substitute_counter_readback && increments > 0 && page == 8) {
+    substitute_counter_readback = false;
     ultralight_card_info_t replacement = current_state.data_to_write;
     physical_counter = ++replacement.data.regular.counter;
     put_card_payload(&replacement);
@@ -227,6 +238,21 @@ static void put_card_payload(const ultralight_card_info_t *card) {
   memcpy(tag_pages[9], encoded, PAYLOAD_BASE64_LENGTH + 1);
 }
 
+/* Capture through production read_card, exactly as transaction creation does. */
+static void save_baseline(event_t expected_status) {
+  byte_array_t uid = {.length = LENGTH_ID};
+  memcpy(uid.bytes, selected_uid, LENGTH_ID);
+  CHECK(read_card(&uid) == expected_status);
+  current_state.data_before_write = current_card;
+  counter_reads = page_reads = 0;
+}
+
+static void install_baseline(void) {
+  physical_counter = current_state.data_before_write.data.regular.counter;
+  put_card_payload(&current_state.data_before_write);
+  save_baseline(CARD_DETECTED_OK);
+}
+
 static void begin_case(const char *name) {
   case_name = name;
   ++cases;
@@ -250,13 +276,18 @@ static void begin_case(const char *name) {
   failed_counter_reads = failed_page_reads = failed_page_writes = 0;
   fail_authentication = lost_increment_reply = in_task = false;
   fail_reselection = change_pending_on_failed_write = change_counter_after_pages = false;
-  substitute_counter_readback = false;
+  substitute_counter_readback = fail_verification_read = false;
+  force_signature_collision = false;
   selected_uid_length = sizeof(selected_uid);
   memset(increment_values, 0, sizeof(increment_values));
   memset(written_pages, 0, sizeof(written_pages));
   memset(written_bytes, 0, sizeof(written_bytes));
   terminal_event = FATAL_ERROR;
   put_card_payload(&current_card);
+  save_baseline(CARD_DETECTED_OK);
+  current_state.data_to_write = current_card;
+  current_state.data_to_write.data.regular.counter = 41;
+  current_state.data_to_write.data.regular.balance = 1700;
 }
 
 static int run_presentation(void) {
@@ -276,6 +307,23 @@ static void check_target_payload(void) {
 
 static bool attempt_write(void) {
   return write_card(&current_state.data_to_write, &current_state.data_before_write);
+}
+
+static void target_image(uint8_t image[28]) {
+  uint8_t encoded[PAYLOAD_BASE64_LENGTH + 2];
+  CHECK(regular_card_payload(&current_state.data_to_write, encoded));
+  memcpy(image, "/$$/", 4);
+  memcpy(image + 4, encoded, PAYLOAD_BASE64_LENGTH + 1);
+}
+
+static void expect_rejected_without_mutation(void) {
+  uint8_t before[sizeof(tag_pages)];
+  ultralight_card_info_t saved_baseline = current_state.data_before_write;
+  memcpy(before, tag_pages, sizeof(before));
+  CHECK(!attempt_write());
+  CHECK(page_writes == 0 && increment_requests == 0 && increments == 0);
+  CHECK(memcmp(before, tag_pages, sizeof(before)) == 0);
+  CHECK(memcmp(&saved_baseline, &current_state.data_before_write, sizeof(saved_baseline)) == 0);
 }
 
 static void test_prewrite_guards(void) {
@@ -327,8 +375,9 @@ static void test_prewrite_guards(void) {
 
   begin_case("already completed target needs no second increment");
   physical_counter = 41;
+  put_card_payload(&current_state.data_to_write);
   CHECK(attempt_write());
-  CHECK(counter_reads == 1 && increments == 0 && page_writes == 4);
+  CHECK(counter_reads == 1 && increments == 0 && page_writes == 0);
   CHECK(physical_counter == 41);
   check_target_payload();
 
@@ -358,7 +407,7 @@ static void test_prewrite_guards(void) {
   begin_case("last representable normal transaction increments exactly once");
   current_state.data_before_write.data.regular.counter = UINT16_MAX - 1;
   current_state.data_to_write.data.regular.counter = UINT16_MAX;
-  physical_counter = UINT16_MAX - 1;
+  install_baseline();
   CHECK(attempt_write());
   CHECK(increments == 1 && increment_values[0] == 1 && physical_counter == UINT16_MAX);
   check_target_payload();
@@ -366,7 +415,9 @@ static void test_prewrite_guards(void) {
   begin_case("last representable completed transaction is retried without increment");
   current_state.data_before_write.data.regular.counter = UINT16_MAX - 1;
   current_state.data_to_write.data.regular.counter = UINT16_MAX;
+  install_baseline();
   physical_counter = UINT16_MAX;
+  put_card_payload(&current_state.data_to_write);
   CHECK(attempt_write());
   CHECK(increment_requests == 0 && physical_counter == UINT16_MAX);
   check_target_payload();
@@ -399,7 +450,7 @@ static void test_retry_loop(void) {
   ++cases;
   failed_counter_reads = 0;
   CHECK(run_presentation() == 1 && terminal_event == WRITE_SUCCESSFUL);
-  CHECK(increments == 1 && physical_counter == 41 && page_writes == 8);
+  CHECK(increments == 1 && physical_counter == 41 && page_writes == 4);
   CHECK(current_state.data_before_write.data.regular.counter == 40);
   CHECK(current_state.data_to_write.data.regular.counter == 41);
   check_target_payload();
@@ -412,9 +463,9 @@ static void test_retry_loop(void) {
   check_target_payload();
 
   begin_case("lost verification read after success never repeats increment");
-  failed_page_reads = UINT64_C(1) << 2;
+  fail_verification_read = true;
   CHECK(run_presentation() == 1 && terminal_event == WRITE_SUCCESSFUL);
-  CHECK(page_writes == 8 && increments == 1 && physical_counter == 41);
+  CHECK(page_writes == 4 && increments == 1 && physical_counter == 41);
   check_target_payload();
 
   begin_case("wrong presented UID never writes saved transaction");
@@ -448,6 +499,7 @@ static void test_retry_loop(void) {
   current_state.transaction_type = LogMessage_CardTransaction_TransactionType_REPAIR;
   current_state.data_to_write.data.regular.balance = current_card.data.regular.balance;
   tag_pages[14][0] = tag_pages[14][0] == 'A' ? 'B' : 'A';
+  save_baseline(CARD_DETECTED_SKIPPED_SECURITY);
   CHECK(run_presentation() == 1 && terminal_event == WRITE_SUCCESSFUL);
   CHECK(increments == 1 && physical_counter == 41);
   check_target_payload();
@@ -495,10 +547,184 @@ static void test_unaffected_paths(void) {
   CHECK(authentications == 3 && counter_reads == 1 && page_writes == 0 && increments == 0);
 }
 
+static void test_payload_reconciliation(void) {
+  begin_case("missing original raw snapshot fails before card I/O");
+  current_state.data_before_write.raw_payload_valid = false;
+  expect_rejected_without_mutation();
+  CHECK(reselections == 0 && authentications == 0 && counter_reads == 0 && page_reads == 0);
+
+  begin_case("exact target payload with baseline counter only finishes the increment");
+  put_card_payload(&current_state.data_to_write);
+  CHECK(attempt_write());
+  CHECK(page_writes == 0 && increments == 1 && increment_values[0] == 1);
+  CHECK(physical_counter == 41);
+  check_target_payload();
+
+  for (unsigned counter = 40; counter <= 41; ++counter) {
+    char name[120];
+    snprintf(name, sizeof(name), "valid unrelated balance at allowed counter %u is not overwritten", counter);
+    begin_case(name);
+    ultralight_card_info_t unrelated = current_state.data_to_write;
+    unrelated.data.regular.counter = counter;
+    unrelated.data.regular.balance = 900;
+    physical_counter = counter;
+    put_card_payload(&unrelated);
+    CHECK(regular_payload_has_valid_signature(tag_pages[8], selected_uid));
+    expect_rejected_without_mutation();
+
+    snprintf(name, sizeof(name), "valid unrelated deposit at allowed counter %u is not overwritten", counter);
+    begin_case(name);
+    unrelated = current_state.data_to_write;
+    unrelated.data.regular.counter = counter;
+    unrelated.data.regular.deposit = 2;
+    physical_counter = counter;
+    put_card_payload(&unrelated);
+    CHECK(regular_payload_has_valid_signature(tag_pages[8], selected_uid));
+    expect_rejected_without_mutation();
+  }
+
+  for (unsigned read = 1; read <= 2; ++read) {
+    char name[100];
+    snprintf(name, sizeof(name), "fresh payload read %u fails before writes or increment", read);
+    begin_case(name);
+    failed_page_reads = UINT64_C(1) << (read - 1);
+    expect_rejected_without_mutation();
+    CHECK(counter_reads == 1 && page_reads == read);
+  }
+
+  begin_case("changed prefix is not accepted as an interrupted write");
+  tag_pages[8][2] = 'c';
+  expect_rejected_without_mutation();
+
+  begin_case("changed immutable UID bytes are not accepted as an interrupted write");
+  tag_pages[9][0] = tag_pages[9][0] == 'A' ? 'B' : 'A';
+  expect_rejected_without_mutation();
+
+  begin_case("unknown torn bytes within one page fail closed");
+  uint8_t intended[28];
+  target_image(intended);
+  memcpy(tag_pages[11], intended + 12, 4);
+  tag_pages[12][1] = '!';
+  expect_rejected_without_mutation();
+
+  begin_case("changed terminator does not become an intended target");
+  put_card_payload(&current_state.data_to_write);
+  physical_counter = 41;
+  tag_pages[14][3] = 0;
+  expect_rejected_without_mutation();
+
+  /* Deliberately collide test signatures to exercise the independent signed-state guard. */
+  begin_case("self-consistently signed prefix mixture is rejected using its stored counter");
+  force_signature_collision = true;
+  install_baseline();
+  target_image(intended);
+  memcpy(tag_pages[11], intended + 12, 4);
+  CHECK(memcmp(tag_pages[8], intended, sizeof(intended)) != 0);
+  CHECK(memcmp(tag_pages[8], current_state.data_before_write.raw_payload, sizeof(intended)) != 0);
+  CHECK(regular_payload_has_valid_signature(tag_pages[8], selected_uid));
+  expect_rejected_without_mutation();
+}
+
+static void test_every_interruption_boundary(void) {
+  for (unsigned completed_pages = 0; completed_pages <= 4; ++completed_pages) {
+    char name[120];
+    snprintf(name, sizeof(name), "baseline counter resumes ordered prefix of %u completed pages", completed_pages);
+    begin_case(name);
+    uint8_t intended[28];
+    target_image(intended);
+    memcpy(tag_pages[11], intended + 12, completed_pages * 4);
+    CHECK(attempt_write());
+    CHECK(page_writes == (completed_pages == 4 ? 0 : 4));
+    CHECK(increments == 1 && increment_values[0] == 1 && physical_counter == 41);
+    check_target_payload();
+
+    snprintf(name, sizeof(name), "target counter accepts only completed image, prefix %u", completed_pages);
+    begin_case(name);
+    target_image(intended);
+    memcpy(tag_pages[11], intended + 12, completed_pages * 4);
+    physical_counter = 41;
+    if (completed_pages == 4) {
+      CHECK(attempt_write());
+      CHECK(page_writes == 0 && increment_requests == 0 && physical_counter == 41);
+    } else {
+      expect_rejected_without_mutation();
+    }
+  }
+
+  for (unsigned mask = 1; mask < 15; ++mask) {
+    if (mask == 1 || mask == 3 || mask == 7) continue; /* Ordered prefixes tested above. */
+    char name[120];
+    snprintf(name, sizeof(name), "out-of-order old/new page mixture mask 0x%X is rejected", mask);
+    begin_case(name);
+    uint8_t intended[28];
+    target_image(intended);
+    for (unsigned page = 0; page < 4; ++page) {
+      CHECK(memcmp(tag_pages[11 + page], intended + 12 + page * 4, 4) != 0);
+      if (mask & (1U << page)) memcpy(tag_pages[11 + page], intended + 12 + page * 4, 4);
+    }
+    expect_rejected_without_mutation();
+  }
+}
+
+static void test_raw_repair_snapshots(void) {
+  begin_case("raw snapshot preserves invalid characters before decoder normalization");
+  tag_pages[14][0] = '!';
+  uint8_t original[28];
+  memcpy(original, tag_pages[8], sizeof(original));
+  save_baseline(CARD_DETECTED_SKIPPED_SECURITY);
+  CHECK(current_card.raw_payload_valid && current_state.data_before_write.raw_payload_valid);
+  CHECK(memcmp(current_card.raw_payload, original, sizeof(original)) == 0);
+  CHECK(memcmp(current_state.data_before_write.raw_payload, original, sizeof(original)) == 0);
+  CHECK(current_card.raw_payload[24] == '!' && current_card.raw_payload[27] == 0xFE);
+
+  begin_case("authorized repair preserves original damaged image during partial retry");
+  tag_pages[14][0] = '!';
+  save_baseline(CARD_DETECTED_SKIPPED_SECURITY);
+  current_state.transaction_type = LogMessage_CardTransaction_TransactionType_REPAIR;
+  current_state.data_to_write = current_card;
+  current_state.data_to_write.data.regular.counter++;
+  failed_page_writes = UINT64_C(1) << 2;
+  CHECK(run_presentation() == 1 && terminal_event == WRITE_SUCCESSFUL);
+  CHECK(increments == 1 && physical_counter == 41 && page_writes == 7);
+  CHECK(current_state.data_before_write.raw_payload[24] == '!');
+  check_target_payload();
+
+  begin_case("repair does not adopt changed damage that normalizes to the same characters");
+  tag_pages[14][0] = '!';
+  save_baseline(CARD_DETECTED_SKIPPED_SECURITY);
+  tag_pages[14][0] = '?';
+  expect_rejected_without_mutation();
+
+  begin_case("repair retains raw payload counter mismatch instead of reconstructing baseline");
+  physical_counter = 43;
+  save_baseline(CARD_DETECTED_SKIPPED_SECURITY);
+  CHECK(current_state.data_before_write.data.regular.counter == 43);
+  current_state.data_to_write = current_card;
+  current_state.data_to_write.data.regular.counter = 44;
+  CHECK(attempt_write());
+  CHECK(increments == 1 && physical_counter == 44 && page_writes == 4);
+  check_target_payload();
+
+  begin_case("unrelated same-counter card is not adopted as baseline on repeated presentation");
+  ultralight_card_info_t saved_baseline = current_state.data_before_write;
+  ultralight_card_info_t unrelated = current_state.data_to_write;
+  unrelated.data.regular.balance = 900;
+  physical_counter = 41;
+  put_card_payload(&unrelated);
+  for (unsigned presentation = 0; presentation < 2; ++presentation) {
+    CHECK(run_presentation() == 1 && terminal_event == WRITE_UNSUCCESSFUL);
+    CHECK(page_writes == 0 && increment_requests == 0 && physical_counter == 41);
+    CHECK(memcmp(&saved_baseline, &current_state.data_before_write, sizeof(saved_baseline)) == 0);
+  }
+}
+
 int main(void) {
   test_prewrite_guards();
   test_retry_loop();
   test_unaffected_paths();
+  test_payload_reconciliation();
+  test_every_interruption_boundary();
+  test_raw_repair_snapshots();
   printf("RFID host regression tests passed: %u cases (production RFID code, ASan/UBSan).\n", cases);
   return 0;
 }

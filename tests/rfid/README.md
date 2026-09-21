@@ -21,6 +21,16 @@ verification, and same-target re-presentation. Boundary cases cover counters
 [`tests/pn532`](../pn532/README.md) suite checks actual wire framing, full 24-bit
 counter handling, and the driver's expected-counter guard.
 
+Payload reconciliation cases cover all ordered page-write interruption
+boundaries, every out-of-order baseline/target page mixture, failed fresh payload
+reads, and valid unrelated monetary contents at either allowed counter. A fully
+written target must not be rewritten: it needs one increment at the baseline
+counter and no mutation at the target counter. The baseline is captured through
+the production reader, including invalid raw characters before normalization;
+repair tests retain that original damaged image across retries. A deliberate
+test-hash collision exercises rejection of a self-consistently signed mixture
+even when it resembles an interrupted write.
+
 The host build uses AddressSanitizer and UndefinedBehaviorSanitizer, including
 alignment checking. Its temporary executable is removed afterward. A
 deterministic hash replaces SHA-1; a standard Base64 implementation replaces
@@ -33,5 +43,5 @@ page write, before the separately documented initialization buffer overrun;
 they do not establish successful enrollment or password/configuration safety.
 The state-machine event consumer is not executed: the harness supplies an
 already-authorized pending transaction and exits at the writer's terminal
-event. RF timing, physical EEPROM behavior, and real task concurrency still
-require hardware/integration testing.
+event. Logging deduplication, RF timing, physical EEPROM behavior, and real task
+concurrency still require hardware/integration testing.

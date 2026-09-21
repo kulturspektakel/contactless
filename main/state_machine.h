@@ -93,6 +93,10 @@ typedef struct {
   uint8_t id[7];
   ultralight_card_type_t type;
   uint8_t signature[5];
+  // Read metadata only: exact pages 8–14, before Base64 normalization. The
+  // data_before_write copy retains the originally authorized recovery baseline.
+  uint8_t raw_payload[28];
+  bool raw_payload_valid;
   union {
     struct {
       uint16_t counter;

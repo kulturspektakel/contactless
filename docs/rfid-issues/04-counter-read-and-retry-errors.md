@@ -9,8 +9,8 @@ Hardware fault-injection and re-presentation validation are still required.
 The [issue 03 driver fix](03-pn532-operation-results.md) removed false-zero reads.
 This fix removes the ignored retry read and stale-delta calculation, moves
 counter validation before page writes, and binds the increment to the expected
-physical counter. Full payload reconciliation for a different transaction at the
-same counter remains [issue 05](05-stale-transaction-retries.md).
+physical counter. [Issue 05](05-stale-transaction-retries.md) subsequently added
+raw-payload reconciliation for different transactions at the same counter.
 
 ## Defect
 
@@ -48,7 +48,9 @@ There are three immediate attempts, followed by further batches when the same
 card is removed and presented again in
 [`WRITE_FAILED`](../../main/state_machine.c#L549). Ordinary-write retries retain
 the saved target. An accurate reread can correct a stale cached counter and
-recover a transient failure. It cannot undo an extra physical increment.
+recover a transient failure when the raw payload also passes issue 05's checks.
+Unknown tears or unrelated contents remain pending without mutation; retries
+cannot undo an extra physical increment.
 
 If hardware has already reached 6 while the target remains 3, unlimited
 re-presentations cannot decrement it. The fixed writer now refuses that state
@@ -72,9 +74,11 @@ For every normal regular-card attempt:
 3. Successfully read the fresh physical counter. Accept only the saved baseline
    or target. Failed reads and counters behind/ahead of those states stop before
    writing any payload page.
-4. Write the same saved payload. At the baseline, request exactly one increment;
-   at the target, issue no increment. This permits both partially written and
-already-incremented transactions to finish without a second charge.
+4. Issue 05 now checks the raw payload before any mutation: at the baseline,
+   accept the original image, exact intended image, or an allowed ordered
+   whole-page prefix. Finish incomplete payloads and increment once. At the
+   target, require the exact intended image and perform no mutations. A complete
+   intended image is not rewritten at either counter.
 5. The driver rereads the full physical counter immediately before incrementing
    and requires it to equal the caller's expected value. A change since preflight
    stops the increment; it cannot silently become a new baseline. Readback must
@@ -92,8 +96,9 @@ old payload signature is invalid. Crew cards do not use the regular-card counter
 guards, and initialization does not require a normal-payment baseline.
 
 Counter equality is not proof of transaction identity. This fix rejects newer or
-unexplained **counter** states; comparing a valid same-counter payload against
-the saved monetary contents remains issue 05. Interrupted multi-page writes,
+unexplained **counter** states; issue 05 now compares fresh raw contents against
+the saved original and intended images. It rejects a different self-consistently
+signed state before admitting mixed pages. Interrupted multi-page writes,
 loss of the pending RAM record, and physical card removal remain possible.
 The driver's read/compare/increment sequence is not an atomic operation against
 another reader; it prevents this terminal from knowingly incrementing a changed
@@ -112,7 +117,9 @@ and retry loop with a mock tag, and the actual PN532 driver with scripted wire
 responses respectively. Test doubles do not establish real RF behavior or
 replace a full firmware/hardware test.
 
-Both suites pass under AddressSanitizer and UndefinedBehaviorSanitizer.
+The current 70 RFID and 78 PN532 cases pass under AddressSanitizer and
+UndefinedBehaviorSanitizer. The state-machine event consumer and logging are
+not integrated, so these results do not establish accounting deduplication.
 `rfid.c` and `pn532.c` also compile with the recorded ESP32-S3 compiler commands;
 only the existing state-structure and IRQ pointer-cast warnings remain.
 
@@ -123,10 +130,11 @@ Require zero page writes when preflight fails and no duplicate increment after
 an uncertain outcome. Exercise 65,534, 65,535 and unrepresentable physical values.
 
 Verify successful re-presentation too: full success followed by missed
-readback leaves physical counter equal to target, so the retry uses zero
-increment and does not charge twice. A partial write with the old counter
-finishes the saved payload and increments once. Repeat presentations must
-preserve those results.
+readback leaves the exact intended image at the target counter, so the retry
+performs no card mutation. An allowed ordered partial write at the old counter
+finishes the saved payload and increments once; a complete payload needs only
+that increment. Reject unknown tears and test accounting across presentations
+separately.
 
 ## Confidence and impact
 

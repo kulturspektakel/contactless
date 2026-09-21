@@ -1,49 +1,86 @@
 # Stale retries can overwrite a card that has changed elsewhere
 
-Confidence: confirmed control-flow defect; occurrence requires an intervening card change. Impact: a valid card can become rejected again, and a repair can preserve an incorrect balance.
+Confidence: confirmed original defect requiring an intervening card change. Its remaining same-counter payload overwrite is now guarded; physical-reader validation is outstanding.
 
-## Status after issue 04
+## Status
 
-Partially addressed, still open. The writer now checks a fresh physical counter
-against the saved baseline and target **before** any payload page write. A
-counter ahead of the target or behind the baseline no longer causes the stale
-overwrite described below. It also re-confirms the UID on each attempt.
+Implemented for normal regular-card transactions, including privileged repair.
+[Issue 04](04-counter-read-and-retry-errors.md) already rejected unexplained
+counters before mutation. The writer now reconciles fresh raw payload bytes
+against immutable original and intended images as well. Unknown damage fails
+closed; initialization remains a separate path.
 
-The equal-counter case remains: another terminal's operation can leave a valid
-payload with different monetary contents at the pending target's counter (or an
-otherwise allowed baseline). The writer still needs fresh payload reconciliation
-to distinguish that from its own interrupted transaction. Counter guards alone
-do not establish transaction identity.
+## Original defect
 
-## Defect
+After failure, [`write_failed()`](../../main/state_machine.c#L549) retains the
+intended transaction and resumes `WRITE_CARD` for the same UID. Originally, it
+could overwrite intervening changes before noticing an advanced physical
+counter. Issue 04 fixed that ordering, but equal counters still permitted
+overwriting a different transaction's monetary contents.
 
-After a failed transaction, [`write_failed()`](../../main/state_machine.c#L549) retains `data_to_write`. On another presentation it resumes `WRITE_CARD` when the UID matches, including for security failures. It does not compare the freshly read balance, deposit, or physical counter with the saved transaction's baseline and intended result.
-
-Before issue 04, `write_card()` wrote pages 11–14 before checking the counter difference, so rejection came after overwriting the card. That ordering is now fixed. Checking identity and counter still does not establish that this card has the expected transaction history.
-
-## Failure scenario
-
-The original counter-ahead scenario (now blocked before mutation by issue 04):
+## Historical failure scenario
 
 1. Till A starts a transaction targeting counter 101, then enters `WRITE_FAILED` after an uncertain write outcome.
-2. The customer takes the card to till B for repair or another transaction. B leaves it valid with physical counter 102 and an updated balance.
-3. The card returns to A while its failed transaction remains pending. Matching the UID triggers the old transaction again.
-4. A writes its old balance and payload counter 101, then notices that the physical counter is already 102 and returns failure. The card now fails counter verification until repaired again.
+2. Till B performs another operation, leaving a valid payload at counter 101 with different monetary values.
+3. The card returns to A. Its UID and counter pass the issue 04 guards, so A could overwrite B's contents with its saved target.
 
-If the intervening operation leaves the physical counter equal to A's intended counter, the negative-difference check does not help: equal counters alone do not identify which operation committed. See also [counter-read and retry errors](04-counter-read-and-retry-errors.md).
+The original counter-102 variant is already blocked by issue 04 before mutation.
+The equal-counter variant is now blocked by the raw-payload checks below.
 
-## Effect of re-presentation recovery
+## Implemented fix
 
-Retaining the original target is useful and should be preserved: without an intervening operation, re-presentation normally completes the same payment rather than charging again. Removal does not discard the target, and another UID generally leaves it pending too. The defect is the missing check for changes to the original card while that target remains pending. Repeated presentation cannot resolve a physical counter already greater than the saved target.
+[`read_card()`](../../main/rfid.c#L110) captures exact pages 8–14 before Base64
+normalization. This [read metadata](../../main/state_machine.h#L96) travels with
+`current_card`; existing transaction creation copies it into `data_before_write`.
+Later reads update `current_card`, never the saved original image. Missing raw
+metadata prevents a regular write.
 
-## Proposed fix
+[`write_card()`](../../main/rfid.c#L394) retains UID, authentication, and counter
+guards. It builds the intended image by copying the original 28 bytes and
+overlaying only mutable pages 11–14 with the encoded target. Pages 8–10 must
+remain exactly as observed originally. A fresh raw read is classified before
+any payload write or counter increment:
 
-Before any page write, authenticate the card and obtain a successful, fresh counter and payload read. Classify that state against both a trusted saved baseline and the intended result. A valid state reflecting an unrelated or newer operation must terminate the stale retry without altering the card.
+| Physical counter | Accepted payload | Action |
+| --- | --- | --- |
+| Original | Exact original or ordered intended-page prefix followed by original pages | Complete the saved payload and increment once. |
+| Original | Exact intended image | Increment once; do not rewrite pages. |
+| Target | Exact intended image only | No page writes or increment; perform final verification. |
 
-Treat an operation as already committed only when the intended contents and available trusted transaction record support that conclusion; counter equality alone is insufficient. A recognized interrupted state may be completed using the saved intended values, subject to the recovery protocol described in [interrupted multipage writes](02-interrupted-multipage-writes.md).
+Before admitting a mixed image, the classifier rejects a different
+self-consistently signed state, using its encoded counter and selected UID.
+The exact originally authorized image is accepted first: privileged repair
+therefore retains its original bad-signature or mismatched-counter baseline.
 
-Counter feasibility checks now precede payload mutation and use the retained baseline and target. Extend that preflight to validate payload contents as well. Unknown states should require explicit reconciliation, not overwrite or an automatic balance adjustment. To extend reconciliation across reboot, persist transaction identity, baseline, and intended values as described in issue 02; persistence is not required to fix the immediate stale-retry check.
+Unknown intra-page tears, out-of-order mixtures, changed untouched bytes, and
+unrelated contents require explicit reconciliation. The existing `WRITE_FAILED`
+remove/retry UI remains pending; rejection does not automatically cancel or
+reconcile the transaction. Whole-page interruption recovery remains available,
+but arbitrary range-invalid bytes are no longer blindly overwritten.
+
+## Limits
+
+Snapshots remain RAM-only. Cancellation abandons the workflow, reboot loses it,
+and a fresh transaction captures a new baseline. Durable recovery is separate
+[issue 02](02-interrupted-multipage-writes.md). A byte-identical target produced
+by another terminal cannot be attributed without transaction identity or a
+shared record. Read/compare/write is not atomic against another reader.
+
+Recognizing an already-written target avoids card mutation and then follows the
+existing success event path. This does not establish cross-terminal exactly-once
+accounting or logging deduplication across crashes.
 
 ## Verification
 
-Simulate a failed A transaction followed by a successful B operation, then retry A. Assert that no page-write command occurs for a newer or unrelated valid state. Cover an unchanged baseline, a matching committed result, an equal-counter result with different contents, a partial write, failed fresh reads, and recovery after reboot. Verify that completing an already committed transaction does not charge or log it twice.
+The [RFID suite](../../tests/rfid/README.md) passes 70 cases and the
+[PN532 suite](../../tests/pn532/README.md) passes 78 under ASan/UBSan. RFID cases
+cover ordered boundaries, out-of-order mixtures, unrelated signed contents,
+failed raw reads, original damaged repair snapshots, and complete-target paths
+with no page rewrites. A deliberate test-hash collision exercises signed-mixture
+rejection; the test hash does not validate SHA-1 compatibility.
+
+ESP32-S3 compilation of the `rfid.c` and `state_machine.c` translation units
+passes with existing warnings; this is not a full firmware build. The
+state-machine event consumer and logging are not integrated into these tests.
+Hardware timing, physical tearing, task concurrency, transaction lifecycle,
+and accounting deduplication still need integration/hardware validation.

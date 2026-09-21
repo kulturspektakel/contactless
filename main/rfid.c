@@ -50,6 +50,13 @@ ultralight_card_info_t current_card = {0};
 #define PAYLOAD_RAW_LENGTH \
   LENGTH_ID + LENGTH_COUNTER + LENGTH_DEPOSIT + LENGTH_BALANCE + LENGTH_SIGNATURE
 #define PAYLOAD_BASE64_LENGTH 23
+#define CARD_IMAGE_LENGTH (4 + PAYLOAD_BASE64_LENGTH + 1)
+#define MUTABLE_IMAGE_OFFSET 12  // Pages 11–14; pages 8–10 never change in a payment.
+
+_Static_assert(
+    sizeof(((ultralight_card_info_t*)0)->raw_payload) == CARD_IMAGE_LENGTH,
+    "Raw card snapshot must cover pages 8 through 14"
+);
 
 #define SIGNATURE_INPUT_LENGTH \
   LENGTH_ID + LENGTH_COUNTER + LENGTH_DEPOSIT + LENGTH_BALANCE + SALT_LENGTH
@@ -105,11 +112,13 @@ static event_t read_card(byte_array_t* uid) {
   memcpy(new_card.id, uid->bytes, LENGTH_ID);
 
   // read /$$/ prefix and payload
-  uint8_t data[4 + PAYLOAD_BASE64_LENGTH + 1];
+  uint8_t data[CARD_IMAGE_LENGTH];
   if (!mfu_read_page(8, data, 16) || !mfu_read_page(12, data + 16, sizeof(data) - 16)) {
     ESP_LOGE(RFID_TASK, "Reading payload failed");
     return CARD_DETECTED_NOT_READABLE;
   }
+  memcpy(new_card.raw_payload, data, sizeof(data));
+  new_card.raw_payload_valid = true;
 
   // check if card is uninitialized
   char zeros[sizeof(data)] = {0};
@@ -308,11 +317,86 @@ static bool authenticate_and_validate_pack(
   return true;
 }
 
+static bool regular_payload_has_valid_signature(const uint8_t* raw, const uint8_t* uid) {
+  if (memcmp(raw, "/$$/", 4) != 0) {
+    return false;
+  }
+  uint8_t encoded[PAYLOAD_BASE64_LENGTH + 1];
+  memcpy(encoded, raw + 4, PAYLOAD_BASE64_LENGTH);
+  encoded[PAYLOAD_BASE64_LENGTH] = '=';
+  for (size_t i = 0; i < PAYLOAD_BASE64_LENGTH; i++) {
+    if (encoded[i] == '-') {
+      encoded[i] = '+';
+    } else if (encoded[i] == '_') {
+      encoded[i] = '/';
+    } else if (!is_alpha_numeric(encoded[i])) {
+      return false;
+    }
+  }
+
+  uint8_t decoded[PAYLOAD_RAW_LENGTH];
+  size_t decoded_length;
+  if (mbedtls_base64_decode(
+          decoded, sizeof(decoded), &decoded_length, encoded, sizeof(encoded)
+      ) != 0 ||
+      decoded_length != sizeof(decoded)) {
+    return false;
+  }
+  ultralight_card_info_t card = {.type = REGULAR};
+  memcpy(card.id, uid, LENGTH_ID);
+  memcpy(&card.data.regular.counter, decoded + OFFSET_COUNTER, LENGTH_COUNTER);
+  memcpy(&card.data.regular.balance, decoded + OFFSET_BALANCE, LENGTH_BALANCE);
+  card.data.regular.deposit = decoded[OFFSET_DEPOSIT];
+  uint8_t signature[LENGTH_SIGNATURE];
+  calculate_signature_ultralight(signature, &card);
+  return memcmp(signature, decoded + OFFSET_SIGNATURE, sizeof(signature)) == 0;
+}
+
+static bool regular_payload_matches_pending(
+    const uint8_t* observed,
+    const uint8_t* intended,
+    const ultralight_card_info_t* baseline,
+    uint16_t physical_counter
+) {
+  if (memcmp(observed, intended, CARD_IMAGE_LENGTH) == 0) {
+    return true;
+  }
+  // Our increment occurs only after every payload page was written. A mixed
+  // payload at the target counter is not an interruption of this sequence.
+  if (physical_counter != baseline->data.regular.counter ||
+      memcmp(observed, baseline->raw_payload, MUTABLE_IMAGE_OFFSET) != 0) {
+    return false;
+  }
+  if (memcmp(observed, baseline->raw_payload, CARD_IMAGE_LENGTH) == 0) {
+    return true;
+  }
+  // Even a page mixture must not overwrite a different, self-consistent signed
+  // state. Verify using its stored counter, not the hardware counter.
+  if (regular_payload_has_valid_signature(observed, baseline->id)) {
+    return false;
+  }
+  for (size_t boundary = MUTABLE_IMAGE_OFFSET + 4; boundary < CARD_IMAGE_LENGTH;
+       boundary += 4) {
+    if (memcmp(
+            observed + MUTABLE_IMAGE_OFFSET,
+            intended + MUTABLE_IMAGE_OFFSET,
+            boundary - MUTABLE_IMAGE_OFFSET
+        ) == 0 &&
+        memcmp(
+            observed + boundary, baseline->raw_payload + boundary, CARD_IMAGE_LENGTH - boundary
+        ) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static bool write_card(ultralight_card_info_t* card, const ultralight_card_info_t* baseline) {
   if (card->type == REGULAR &&
-      (baseline->type != REGULAR || memcmp(card->id, baseline->id, LENGTH_ID) != 0 ||
+      (baseline->type != REGULAR || !baseline->raw_payload_valid ||
+       memcmp(card->id, baseline->id, LENGTH_ID) != 0 ||
        (uint32_t)card->data.regular.counter != (uint32_t)baseline->data.regular.counter + 1)) {
-    ESP_LOGE(RFID_TASK, "Invalid pending counter transition");
+    ESP_LOGE(RFID_TASK, "Invalid pending transaction baseline or counter transition");
     return false;
   }
 
@@ -354,11 +438,34 @@ static bool write_card(ultralight_card_info_t* card, const ultralight_card_info_
     return false;
   }
 
-  // write payload: skip first two bytes, because ID did not change
-  for (size_t i = 2; i < (PAYLOAD_BASE64_LENGTH + 1) / 4; i++) {
-    if (!mfu_write_page(i + 9, &write_data[4 * i])) {
-      ESP_LOGE(RFID_TASK, "Writing payload failed at block %d", i);
+  bool payload_complete = false;
+  if (card->type == REGULAR) {
+    uint8_t observed[CARD_IMAGE_LENGTH];
+    uint8_t intended[CARD_IMAGE_LENGTH];
+    memcpy(intended, baseline->raw_payload, sizeof(intended));
+    memcpy(
+        intended + MUTABLE_IMAGE_OFFSET, write_data + 8, CARD_IMAGE_LENGTH - MUTABLE_IMAGE_OFFSET
+    );
+    if (!mfu_read_page(8, observed, 16) ||
+        !mfu_read_page(12, observed + 16, sizeof(observed) - 16)) {
+      ESP_LOGE(RFID_TASK, "Reading payload before write failed");
       return false;
+    }
+    if (!regular_payload_matches_pending(observed, intended, baseline, physical_counter)) {
+      ESP_LOGE(RFID_TASK, "Card contents conflict with pending transaction; reconciliation required");
+      return false;
+    }
+    payload_complete = memcmp(observed, intended, sizeof(observed)) == 0;
+  }
+
+  // Only pages 11–14 change. A fully written target needs at most its remaining
+  // counter increment, never another payload rewrite.
+  if (!payload_complete) {
+    for (size_t i = 2; i < (PAYLOAD_BASE64_LENGTH + 1) / 4; i++) {
+      if (!mfu_write_page(i + 9, &write_data[4 * i])) {
+        ESP_LOGE(RFID_TASK, "Writing payload failed at block %d", i);
+        return false;
+      }
     }
   }
 

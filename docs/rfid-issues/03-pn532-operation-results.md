@@ -4,7 +4,8 @@
 
 Implemented in the driver. Host fault-injection tests pass; physical reader/card
 validation is still required. The application-level counter retry safeguards in
-[issue 04](04-counter-read-and-retry-errors.md) have since been implemented too.
+[issue 04](04-counter-read-and-retry-errors.md) and raw-payload reconciliation in
+[issue 05](05-stale-transaction-retries.md) have since been implemented too.
 
 ## Defect
 
@@ -39,11 +40,14 @@ remained unchanged.
 
 ## Existing recovery
 
-The [RFID loop](../../main/rfid.c#L522) makes three immediate attempts. After
+The [RFID loop](../../main/rfid.c#L668) makes three immediate attempts. After
 failure, removing and presenting the same card again can start another batch
 through [`write_failed()`](../../main/state_machine.c#L549). For ordinary writes,
 the saved target remains unchanged. A transient failure can therefore recover
-without repair when communications stabilize. Repeated false results, or an
+without repair when communications stabilize and fresh state matches the saved
+transaction. Issue 05 accepts ordered whole-page interruptions, not arbitrary
+tears; rejected unknown states remain pending for explicit reconciliation.
+Repeated false results in the original firmware, or an
 extra physical counter increment, can defeat this recovery; exhausting one
 batch alone does not make the card permanently unusable.
 
@@ -84,14 +88,15 @@ proof that retrying a mutation is safe. Issue 03 alone verified the requested
 delta without knowing the transaction target. [Issue 04](04-counter-read-and-retry-errors.md)
 now validates fresh counters against the saved transaction before mutation and
 passes an expected physical value to the increment helper, preventing silent
-rebasing between preflight and increment. Same-counter payload reconciliation
-remains [issue 05](05-stale-transaction-retries.md); the 16-bit application format
+rebasing between preflight and increment. [Issue 05](05-stale-transaction-retries.md)
+now checks the original, intended, and allowed partial raw images before mutation;
+an unrelated signed state is not an allowed partial image. The 16-bit application format
 remains [issue 08](08-counter-overflow.md).
 
 ## Verification
 
 [`tests/pn532`](../../tests/pn532/README.md) compiles the actual driver against
-scripted I²C/GPIO/queue mocks under AddressSanitizer and UndefinedBehaviorSanitizer.
+scripted I²C/GPIO/queue mocks; all 78 cases pass under AddressSanitizer and UndefinedBehaviorSanitizer.
 It covers delayed/missing responses, NAKs, I²C failures, invalid frames, stale or
 missing IRQ notifications, output preservation, counter read-back and failure
 paths, and the resynchronization barrier. The driver never internally repeats an
@@ -100,12 +105,14 @@ increment after losing its result. ESP32-S3 compilation of `pn532.c` also passes
 Hardware validation remains outstanding: capture PN532 traffic, verify the
 four-bit counter ACK behavior and resynchronization timing, and remove cards
 during writes. These driver tests do not exercise the application state machine;
-issue 04 adds separate host tests of the RFID writer and retry loop.
+issues 04/05 add separate host tests of the RFID writer and retry loop. Neither
+suite integrates the state-machine event consumer or logging.
 
 Also verify re-presentation on hardware: missed readback after a completed write
-leaves physical counter equal to target, requiring zero increment and no second
-charge; a partial write with the old physical counter requires only the pending
-increment.
+leaves the exact intended image at the target counter, requiring no page writes
+or increment. The full intended image at the old counter needs only its pending
+increment; a recognized partial image must first finish the saved payload.
+Unknown tears must fail without mutation. Verify accounting separately.
 
 ## Confidence and impact
 
